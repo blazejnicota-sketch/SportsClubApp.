@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Klub Sportowy",
+    "slug": "SportsClubApp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "sportsclubapp",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.anonymous.SportsClubApp"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "a8350101-df13-4ed4-a56b-eaf89f61832b"
+      }
+    }
+  }
+}
