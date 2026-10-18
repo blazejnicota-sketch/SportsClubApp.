@@ -61,7 +61,9 @@ export const useTeamStore = create<any>((set: any, get: any) => ({
     { id: '2', name: 'Adam Nowak', number: '9', position: 'Napastnik', role: 'Napastnik', birthYear: '2010' },
   ],
   testResults: [
-    { id: '1', playerId: '1', testName: 'Sprint 30m', name: 'Sprint 30m', testType: 'Motoryczny', resultValue: '4.25 s', value: '4.25 s', date: '2026-10-01' },
+    { id: '1', playerId: '1', testName: 'Sprint 30m', name: 'Sprint 30m', testType: 'Motoryczny', resultValue: '4.25', value: '4.25', date: '2026-09-01' },
+    { id: '2', playerId: '1', testName: 'Sprint 30m', name: 'Sprint 30m', testType: 'Motoryczny', resultValue: '4.15', value: '4.15', date: '2026-10-01' },
+    { id: '3', playerId: '1', testName: 'Skok w dal', name: 'Skok w dal', testType: 'Motoryczny', resultValue: '210', value: '210', date: '2026-10-01' },
   ],
   events: [
     { id: '1', title: 'Mecz Wyjazdowy z Orłami', date: '2026-10-20', time: '13:00', type: 'MECZ LIGOWY', location: 'Stadion Miejski', squad: [], callups: [], responses: {}, attendance: {} },
