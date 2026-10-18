@@ -56,6 +56,10 @@ export interface FeeItem {
 }
 
 export const useTeamStore = create<any>((set: any, get: any) => ({
+  // Domyślna rola i aktywny profil
+  currentRole: 'TRENER', // 'TRENER' | 'ZAWODNIK' | 'RODZIC'
+  activePlayerId: '1',
+
   players: [
     { id: '1', name: 'Jan Kowalski', number: '10', position: 'Pomocnik', role: 'Kapitan', birthYear: '2010' },
     { id: '2', name: 'Adam Nowak', number: '9', position: 'Napastnik', role: 'Napastnik', birthYear: '2010' },
@@ -72,6 +76,10 @@ export const useTeamStore = create<any>((set: any, get: any) => ({
     { id: '1', playerId: '1', month: 'Październik', amount: 100, paid: true },
     { id: '2', playerId: '2', month: 'Październik', amount: 100, paid: false },
   ],
+
+  // Metody do zmiany roli i aktywnego zawodnika
+  setCurrentRole: (role: 'TRENER' | 'ZAWODNIK' | 'RODZIC') => set({ currentRole: role }),
+  setActivePlayerId: (id: string) => set({ activePlayerId: id }),
 
   addPlayer: (player: any) => {
     set((state: any) => ({
