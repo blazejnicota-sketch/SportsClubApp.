@@ -1,81 +1,75 @@
-import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function AppLayout() {
+export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
+        tabBarActiveTintColor: '#2563eb',
+        tabBarInactiveTintColor: '#64748b',
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#161b22',
-          borderTopColor: '#30363d',
+          paddingBottom: 4,
+          paddingTop: 4,
           height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
         },
-        tabBarActiveTintColor: '#2f81f7',
-        tabBarInactiveTintColor: '#8b949e',
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '600',
+        },
       }}
     >
+      {/* 1. START / PANEL GŁÓWNY */}
       <Tabs.Screen
         name="index"
         options={{
           title: 'Start',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size} color={color} />
-          ),
+          tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
         }}
       />
-      <Tabs.Screen
-        name="Boisko"
-        options={{
-          title: 'Boisko',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="football-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="Szatnia"
-        options={{
-          title: 'Szatnia',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="shirt-outline" size={size} color={color} />
-          ),
-        }}
-      />
+
+      {/* 2. KALENDARZ */}
       <Tabs.Screen
         name="Kalendarz"
         options={{
           title: 'Kalendarz',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" size={size} color={color} />
-          ),
+          tabBarIcon: ({ color, size }) => <Ionicons name="calendar-outline" size={size} color={color} />,
         }}
       />
+
+      {/* 3. BOISKO / SKŁAD */}
       <Tabs.Screen
-        name="Klub"
+        name="Boisko"
         options={{
-          title: 'Klub',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="shield-outline" size={size} color={color} />
-          ),
+          title: 'Boisko',
+          tabBarIcon: ({ color, size }) => <Ionicons name="football-outline" size={size} color={color} />,
         }}
       />
+
+      {/* 4. SZATNIA (Sportowa baza zawodników i zdrowie) */}
+      <Tabs.Screen
+        name="Szatnia"
+        options={{
+          title: 'Szatnia',
+          tabBarIcon: ({ color, size }) => <Ionicons name="shirt-outline" size={size} color={color} />,
+        }}
+      />
+
+      {/* 5. ZAWODNICY (Pełna baza danych) */}
       <Tabs.Screen
         name="Zawodnicy"
         options={{
           title: 'Zawodnicy',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="people-outline" size={size} color={color} />
-          ),
+          tabBarIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />,
         }}
       />
 
-      {/* UKRYTE PLIKI I STRONY Z DOLNEGO PASKA */}
-      <Tabs.Screen name="testy" options={{ href: null }} />
+      {/* UKRYTE MODUŁY (Niewidoczne na dolnym pasku, dostępne w kodzie / nawigacji) */}
+      <Tabs.Screen name="Finanse" options={{ href: null }} />
+      <Tabs.Screen name="Klub" options={{ href: null }} />
+      <Tabs.Screen name="ZadaniaDomowe" options={{ href: null }} />
       <Tabs.Screen name="Raporty" options={{ href: null }} />
+      <Tabs.Screen name="testy" options={{ href: null }} />
       <Tabs.Screen name="Auth" options={{ href: null }} />
     </Tabs>
   );

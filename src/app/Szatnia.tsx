@@ -7,182 +7,184 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { MOCK_100_PLAYERS, Player } from './data/mockPlayers';
 
-interface PlayerPayment extends Player {
-  paymentStatus: 'paid' | 'pending' | 'overdue';
-  amount: number;
-  lastPaidDate?: string;
-}
-
 export default function SzatniaScreen() {
-  // Inicjalizacja danych finansowych na bazie 100 zawodników
-  const [playersPayments, setPlayersPayments] = useState<PlayerPayment[]>(
-    MOCK_100_PLAYERS.map((p, index) => ({
-      ...p,
-      paymentStatus: index % 3 === 0 ? 'paid' : index % 5 === 0 ? 'overdue' : 'pending',
-      amount: 150, // np. 150 zł składki miesięcznej
-      lastPaidDate: index % 3 === 0 ? '2026-10-05' : undefined,
-    }))
-  );
-
+  const [players] = useState<Player[]>(MOCK_100_PLAYERS);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'pending' | 'overdue'>('all');
+  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
 
-  // Statystyki finansowe
-  const totalPaid = playersPayments.filter((p) => p.paymentStatus === 'paid').length;
-  const totalPending = playersPayments.filter((p) => p.paymentStatus === 'pending').length;
-  const totalOverdue = playersPayments.filter((p) => p.paymentStatus === 'overdue').length;
-
-  const handleUpdateStatus = (id: string, status: 'paid' | 'pending' | 'overdue') => {
-    setPlayersPayments(
-      playersPayments.map((p) =>
-        p.id === id ? { ...p, paymentStatus: status, lastPaidDate: status === 'paid' ? '2026-10-22' : p.lastPaidDate } : p
-      )
-    );
-  };
-
-  const sendReminder = (player: PlayerPayment) => {
-    Alert.alert(
-      'Przypomnienie wysłane',
-      `Wysłano SMS/powiadomienie do rodziców zawodnika: ${player.firstName} ${player.lastName} z prośbą o uregulowanie składki (${player.amount} zł).`
-    );
-  };
-
-  const filteredPlayers = playersPayments.filter((p) => {
-    const matchesSearch = `${p.firstName} ${p.lastName}`.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = filterStatus === 'all' || p.paymentStatus === filterStatus;
-    return matchesSearch && matchesFilter;
-  });
-
-  const getStatusBadge = (status: 'paid' | 'pending' | 'overdue') => {
-    switch (status) {
-      case 'paid':
-        return { label: 'Opłacone', color: '#10b981', bg: '#ecfdf5' };
-      case 'pending':
-        return { label: 'Oczekuje', color: '#d97706', bg: '#fffbeb' };
-      case 'overdue':
-        return { label: 'Zaległość', color: '#ef4444', bg: '#fef2f2' };
-    }
-  };
+  const filteredPlayers = players.filter((p) =>
+    `${p.firstName} ${p.lastName}`.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <View style={styles.container}>
-      {/* NAGŁÓWEK I PODSUMOWANIE FINANSOWE */}
+      {/* NAGŁÓWEK */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Szatnia i Finanse Drużyny</Text>
-        <Text style={styles.headerSubtitle}>Kontrola składek członkowskich (100 zawodników)</Text>
-
-        <View style={styles.statsRow}>
-          <View style={[styles.statCard, { backgroundColor: '#ecfdf5' }]}>
-            <Text style={[styles.statNumber, { color: '#10b981' }]}>{totalPaid}</Text>
-            <Text style={styles.statLabel}>Opłacone</Text>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: '#fffbeb' }]}>
-            <Text style={[styles.statNumber, { color: '#d97706' }]}>{totalPending}</Text>
-            <Text style={styles.statLabel}>Oczekujące</Text>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: '#fef2f2' }]}>
-            <Text style={[styles.statNumber, { color: '#ef4444' }]}>{totalOverdue}</Text>
-            <Text style={styles.statLabel}>Zaległe</Text>
-          </View>
-        </View>
+        <Text style={styles.headerTitle}>Szatnia Zawodników</Text>
+        <Text style={styles.headerSubtitle}>
+          Karty zawodników, frekwencja, zdrowie i rozwój
+        </Text>
       </View>
 
-      {/* WYSZUKIWARKA I FILTRY */}
-      <View style={styles.filterSection}>
+      {/* WYSZUKIWARKA */}
+      <View style={styles.searchSection}>
         <View style={styles.searchBox}>
           <Ionicons name="search" size={18} color="#6b7280" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Szukaj zawodnika..."
+            placeholder="Wyszukaj zawodnika..."
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
         </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
-          {(['all', 'paid', 'pending', 'overdue'] as const).map((status) => (
-            <TouchableOpacity
-              key={status}
-              style={[
-                styles.filterChip,
-                filterStatus === status && styles.filterChipActive,
-              ]}
-              onPress={() => setFilterStatus(status)}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  filterStatus === status && styles.filterChipTextActive,
-                ]}
-              >
-                {status === 'all'
-                  ? 'Wszyscy'
-                  : status === 'paid'
-                  ? 'Opłacone'
-                  : status === 'pending'
-                  ? 'Oczekujące'
-                  : 'Zaległości'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
       </View>
 
-      {/* LISTA ZAWODNIKÓW I STATUS SKŁADEK */}
+      {/* LISTA ZAWODNIKÓW */}
       <ScrollView style={styles.content}>
-        {filteredPlayers.map((player) => {
-          const badge = getStatusBadge(player.paymentStatus);
-          return (
-            <View key={player.id} style={styles.playerCard}>
-              <View style={styles.playerInfoRow}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>
-                    {player.firstName[0]}
-                    {player.lastName[0]}
-                  </Text>
-                </View>
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={styles.playerName}>
-                    {player.firstName} {player.lastName}
-                  </Text>
-                  <Text style={styles.playerMeta}>
-                    Rocznik {player.birthYear} • {player.category} • Składka: {player.amount} zł
-                  </Text>
-                </View>
-
-                <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
-                  <Text style={[styles.statusBadgeText, { color: badge.color }]}>{badge.label}</Text>
-                </View>
-              </View>
-
-              {/* PRZYCISKI ZARZĄDZANIA PŁATNOŚCIĄ */}
-              <View style={styles.actionsRow}>
-                <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: '#10b981' }]}
-                  onPress={() => handleUpdateStatus(player.id, 'paid')}
-                >
-                  <Text style={styles.actionBtnText}>Oznacz jako opłacone</Text>
-                </TouchableOpacity>
-
-                {player.paymentStatus !== 'paid' && (
-                  <TouchableOpacity
-                    style={[styles.actionBtn, { backgroundColor: '#f59e0b' }]}
-                    onPress={() => sendReminder(player)}
-                  >
-                    <Ionicons name="notifications-outline" size={14} color="#fff" style={{ marginRight: 4 }} />
-                    <Text style={styles.actionBtnText}>Przypomnij</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+        {filteredPlayers.map((player) => (
+          <TouchableOpacity
+            key={player.id}
+            style={styles.playerCard}
+            onPress={() => {
+              setSelectedPlayer(player);
+              setDetailsModalVisible(true);
+            }}
+          >
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {player.firstName[0]}
+                {player.lastName[0]}
+              </Text>
             </View>
-          );
-        })}
+
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.playerName}>
+                {player.firstName} {player.lastName}
+              </Text>
+              <Text style={styles.playerMeta}>
+                Rocznik {player.birthYear} • {player.position}
+              </Text>
+            </View>
+
+            <View style={styles.statusBadge}>
+              <Ionicons name="medical" size={12} color="#10b981" />
+              <Text style={styles.statusBadgeText}>Zdrowy</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
+
+      {/* MODAL KARTY SPORTOWEJ ZAWODNIKA */}
+      <Modal visible={detailsModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {selectedPlayer && (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Karta Sportowa</Text>
+                  <TouchableOpacity onPress={() => setDetailsModalVisible(false)}>
+                    <Ionicons name="close" size={24} color="#374151" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* NAGŁÓWEK PROFILU */}
+                <View style={styles.profileHeader}>
+                  <View style={[styles.avatar, { width: 56, height: 56, borderRadius: 28 }]}>
+                    <Text style={[styles.avatarText, { fontSize: 20 }]}>
+                      {selectedPlayer.firstName[0]}
+                      {selectedPlayer.lastName[0]}
+                    </Text>
+                  </View>
+                  <Text style={styles.profileName}>
+                    {selectedPlayer.firstName} {selectedPlayer.lastName}
+                  </Text>
+                  <Text style={styles.profileMeta}>
+                    {selectedPlayer.position} • Kat. {selectedPlayer.category} (Rocznik {selectedPlayer.birthYear})
+                  </Text>
+                </View>
+
+                {/* SEKCJA 1: FREKWENCJA I OBECNOŚCI */}
+                <View style={styles.sectionCard}>
+                  <View style={styles.sectionTitleRow}>
+                    <Ionicons name="calendar-outline" size={18} color="#2563eb" />
+                    <Text style={styles.sectionTitle}>Frekwencja (Treningi i Mecze)</Text>
+                  </View>
+                  <View style={styles.statGrid}>
+                    <View style={styles.statItem}>
+                      <Text style={styles.statValue}>88%</Text>
+                      <Text style={styles.statLabel}>Treningi</Text>
+                    </View>
+                    <View style={styles.statItem}>
+                      <Text style={styles.statValue}>95%</Text>
+                      <Text style={styles.statLabel}>Mecze</Text>
+                    </View>
+                    <View style={styles.statItem}>
+                      <Text style={styles.statValue}>22/25</Text>
+                      <Text style={styles.statLabel}>Obecności</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* SEKCJA 2: ZDROWIE I KONTUZJE */}
+                <View style={styles.sectionCard}>
+                  <View style={styles.sectionTitleRow}>
+                    <Ionicons name="fitness-outline" size={18} color="#10b981" />
+                    <Text style={styles.sectionTitle}>Status Zdrowotny</Text>
+                  </View>
+                  <View style={styles.healthRow}>
+                    <Text style={styles.healthLabel}>Aktualny stan:</Text>
+                    <Text style={styles.healthStatusActive}>Gotowy do gry (100%)</Text>
+                  </View>
+                  <Text style={styles.healthNote}>Brak zgłoszonych urazów w ostatnim miesiącu.</Text>
+                </View>
+
+                {/* SEKCJA 3: OSTATNIE TESTY MOTORYCZNE */}
+                <View style={styles.sectionCard}>
+                  <View style={styles.sectionTitleRow}>
+                    <Ionicons name="stats-chart-outline" size={18} color="#8b5cf6" />
+                    <Text style={styles.sectionTitle}>Testy Motoryczne</Text>
+                  </View>
+                  <View style={styles.testRow}>
+                    <Text style={styles.testName}>Sprint 30m:</Text>
+                    <Text style={styles.testResult}>4.25 s</Text>
+                  </View>
+                  <View style={styles.testRow}>
+                    <Text style={styles.testName}>BEEP Test:</Text>
+                    <Text style={styles.testResult}>Poziom 10.2</Text>
+                  </View>
+                  <View style={styles.testRow}>
+                    <Text style={styles.testName}>Skok w dal z miejsca:</Text>
+                    <Text style={styles.testResult}>215 cm</Text>
+                  </View>
+                </View>
+
+                {/* SEKCJA 4: UWAGI TRENERSKIE */}
+                <View style={styles.sectionCard}>
+                  <View style={styles.sectionTitleRow}>
+                    <Ionicons name="create-outline" size={18} color="#f59e0b" />
+                    <Text style={styles.sectionTitle}>Notatki Trenerskie</Text>
+                  </View>
+                  <Text style={styles.trainerNote}>
+                    Praca nad wykończeniem lewą nogą. Świetne zaangażowanie na treningach taktycznych.
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.closeBtn}
+                  onPress={() => setDetailsModalVisible(false)}
+                >
+                  <Text style={styles.closeBtnText}>Zamknij kartę</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -197,21 +199,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
   },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#111827' },
-  headerSubtitle: { fontSize: 12, color: '#6b7280', marginTop: 2, marginBottom: 12 },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  statCard: {
-    flex: 1,
-    padding: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginHorizontal: 3,
-  },
-  statNumber: { fontSize: 16, fontWeight: 'bold' },
-  statLabel: { fontSize: 11, color: '#4b5563', marginTop: 2 },
-  filterSection: {
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
+  headerSubtitle: { fontSize: 12, color: '#6b7280', marginTop: 2 },
+  searchSection: {
     backgroundColor: '#fff',
-    paddingBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
   },
@@ -219,60 +212,92 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f3f4f6',
-    marginHorizontal: 16,
-    marginTop: 10,
     paddingHorizontal: 12,
     borderRadius: 8,
     height: 38,
   },
   searchInput: { flex: 1, marginLeft: 8, fontSize: 14 },
-  filterRow: { paddingHorizontal: 16, marginTop: 10 },
-  filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#f3f4f6',
-    marginRight: 8,
-  },
-  filterChipActive: { backgroundColor: '#2563eb' },
-  filterChipText: { fontSize: 12, fontWeight: '600', color: '#4b5563' },
-  filterChipTextActive: { color: '#fff' },
   content: { flex: 1, padding: 16 },
   playerCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 12,
-    marginBottom: 12,
-    elevation: 2,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 1,
   },
-  playerInfoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#eff6ff',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  avatarText: { color: '#1d4ed8', fontWeight: 'bold', fontSize: 13 },
+  avatarText: { color: '#1d4ed8', fontWeight: 'bold', fontSize: 14 },
   playerName: { fontSize: 14, fontWeight: 'bold', color: '#1f2937' },
   playerMeta: { fontSize: 11, color: '#6b7280', marginTop: 2 },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  statusBadgeText: { fontSize: 11, fontWeight: 'bold' },
-  actionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
-    paddingTop: 8,
-  },
-  actionBtn: {
+  statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    marginLeft: 6,
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  actionBtnText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
+  statusBadgeText: { fontSize: 10, color: '#059669', fontWeight: 'bold', marginLeft: 4 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  modalTitle: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
+  profileHeader: { alignItems: 'center', marginBottom: 16 },
+  profileName: { fontSize: 18, fontWeight: 'bold', color: '#1f2937', marginTop: 8 },
+  profileMeta: { fontSize: 12, color: '#6b7280', marginTop: 2 },
+  sectionCard: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#f3f4f6',
+  },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  sectionTitle: { fontSize: 13, fontWeight: 'bold', color: '#374151', marginLeft: 6 },
+  statGrid: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 6 },
+  statItem: { alignItems: 'center' },
+  statValue: { fontSize: 16, fontWeight: 'bold', color: '#2563eb' },
+  statLabel: { fontSize: 11, color: '#6b7280', marginTop: 2 },
+  healthRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  healthLabel: { fontSize: 12, color: '#6b7280' },
+  healthStatusActive: { fontSize: 12, fontWeight: 'bold', color: '#10b981' },
+  healthNote: { fontSize: 11, color: '#9ca3af', marginTop: 4 },
+  testRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
+  testName: { fontSize: 12, color: '#4b5563' },
+  testResult: { fontSize: 12, fontWeight: 'bold', color: '#1f2937' },
+  trainerNote: { fontSize: 12, color: '#4b5563', fontStyle: 'italic' },
+  closeBtn: {
+    backgroundColor: '#e5e7eb',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  closeBtnText: { color: '#374151', fontWeight: 'bold', fontSize: 14 },
 });
