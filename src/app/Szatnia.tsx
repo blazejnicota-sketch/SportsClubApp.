@@ -1,411 +1,278 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  StyleSheet,
-  Text,
   View,
+  Text,
+  StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView
+  TextInput,
+  Modal,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTeamStore, Player, TestResult, FeeItem, EventItem } from './store/useTeamStore';
+import { MOCK_100_PLAYERS, Player } from './data/mockPlayers';
+
+interface PlayerPayment extends Player {
+  paymentStatus: 'paid' | 'pending' | 'overdue';
+  amount: number;
+  lastPaidDate?: string;
+}
 
 export default function SzatniaScreen() {
-  const players: Player[] = useTeamStore((state: any) => state.players);
-  const testResults: TestResult[] = useTeamStore((state: any) => state.testResults);
-  const fees: FeeItem[] = useTeamStore((state: any) => state.fees);
-  const events: EventItem[] = useTeamStore((state: any) => state.events);
+  // Inicjalizacja danych finansowych na bazie 100 zawodników
+  const [playersPayments, setPlayersPayments] = useState<PlayerPayment[]>(
+    MOCK_100_PLAYERS.map((p, index) => ({
+      ...p,
+      paymentStatus: index % 3 === 0 ? 'paid' : index % 5 === 0 ? 'overdue' : 'pending',
+      amount: 150, // np. 150 zł składki miesięcznej
+      lastPaidDate: index % 3 === 0 ? '2026-10-05' : undefined,
+    }))
+  );
 
-  const currentRole = useTeamStore((state: any) => state.currentRole);
-  const activePlayerId = useTeamStore((state: any) => state.activePlayerId);
-  const setCurrentRole = useTeamStore((state: any) => state.setCurrentRole);
-  const setActivePlayerId = useTeamStore((state: any) => state.setActivePlayerId);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'pending' | 'overdue'>('all');
 
-  const activePlayer = players.find((p) => p.id === activePlayerId) || players[0];
-  const playerTests = testResults.filter((t) => t.playerId === activePlayer?.id);
-  const playerFees = fees.filter((f) => f.playerId === activePlayer?.id);
+  // Statystyki finansowe
+  const totalPaid = playersPayments.filter((p) => p.paymentStatus === 'paid').length;
+  const totalPending = playersPayments.filter((p) => p.paymentStatus === 'pending').length;
+  const totalOverdue = playersPayments.filter((p) => p.paymentStatus === 'overdue').length;
+
+  const handleUpdateStatus = (id: string, status: 'paid' | 'pending' | 'overdue') => {
+    setPlayersPayments(
+      playersPayments.map((p) =>
+        p.id === id ? { ...p, paymentStatus: status, lastPaidDate: status === 'paid' ? '2026-10-22' : p.lastPaidDate } : p
+      )
+    );
+  };
+
+  const sendReminder = (player: PlayerPayment) => {
+    Alert.alert(
+      'Przypomnienie wysłane',
+      `Wysłano SMS/powiadomienie do rodziców zawodnika: ${player.firstName} ${player.lastName} z prośbą o uregulowanie składki (${player.amount} zł).`
+    );
+  };
+
+  const filteredPlayers = playersPayments.filter((p) => {
+    const matchesSearch = `${p.firstName} ${p.lastName}`.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesFilter = filterStatus === 'all' || p.paymentStatus === filterStatus;
+    return matchesSearch && matchesFilter;
+  });
+
+  const getStatusBadge = (status: 'paid' | 'pending' | 'overdue') => {
+    switch (status) {
+      case 'paid':
+        return { label: 'Opłacone', color: '#10b981', bg: '#ecfdf5' };
+      case 'pending':
+        return { label: 'Oczekuje', color: '#d97706', bg: '#fffbeb' };
+      case 'overdue':
+        return { label: 'Zaległość', color: '#ef4444', bg: '#fef2f2' };
+    }
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* NAGŁÓWEK */}
+    <View style={styles.container}>
+      {/* NAGŁÓWEK I PODSUMOWANIE FINANSOWE */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Szatnia & Profile</Text>
-          <Text style={styles.headerSubtitle}>Przełączanie ról i perspektywy użytkownika</Text>
+        <Text style={styles.headerTitle}>Szatnia i Finanse Drużyny</Text>
+        <Text style={styles.headerSubtitle}>Kontrola składek członkowskich (100 zawodników)</Text>
+
+        <View style={styles.statsRow}>
+          <View style={[styles.statCard, { backgroundColor: '#ecfdf5' }]}>
+            <Text style={[styles.statNumber, { color: '#10b981' }]}>{totalPaid}</Text>
+            <Text style={styles.statLabel}>Opłacone</Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: '#fffbeb' }]}>
+            <Text style={[styles.statNumber, { color: '#d97706' }]}>{totalPending}</Text>
+            <Text style={styles.statLabel}>Oczekujące</Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: '#fef2f2' }]}>
+            <Text style={[styles.statNumber, { color: '#ef4444' }]}>{totalOverdue}</Text>
+            <Text style={styles.statLabel}>Zaległe</Text>
+          </View>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* SEKCJA PRZEŁĄCZANIA RÓL */}
-        <Text style={styles.sectionTitle}>Wybierz aktywną rolę:</Text>
-        <View style={styles.roleToggleRow}>
-          <TouchableOpacity
-            style={[styles.roleBtn, currentRole === 'TRENER' && styles.roleBtnActive]}
-            onPress={() => setCurrentRole('TRENER')}
-          >
-            <Ionicons
-              name="briefcase"
-              size={18}
-              color={currentRole === 'TRENER' ? '#ffffff' : '#475569'}
-            />
-            <Text style={[styles.roleBtnText, currentRole === 'TRENER' && styles.roleBtnTextActive]}>
-              Trener
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.roleBtn, currentRole === 'ZAWODNIK' && styles.roleBtnActive]}
-            onPress={() => setCurrentRole('ZAWODNIK')}
-          >
-            <Ionicons
-              name="fitness"
-              size={18}
-              color={currentRole === 'ZAWODNIK' ? '#ffffff' : '#475569'}
-            />
-            <Text style={[styles.roleBtnText, currentRole === 'ZAWODNIK' && styles.roleBtnTextActive]}>
-              Zawodnik
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.roleBtn, currentRole === 'RODZIC' && styles.roleBtnActive]}
-            onPress={() => setCurrentRole('RODZIC')}
-          >
-            <Ionicons
-              name="heart"
-              size={18}
-              color={currentRole === 'RODZIC' ? '#ffffff' : '#475569'}
-            />
-            <Text style={[styles.roleBtnText, currentRole === 'RODZIC' && styles.roleBtnTextActive]}>
-              Rodzic
-            </Text>
-          </TouchableOpacity>
+      {/* WYSZUKIWARKA I FILTRY */}
+      <View style={styles.filterSection}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={18} color="#6b7280" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Szukaj zawodnika..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
         </View>
 
-        {/* WYBÓR AKTYWNEGO ZAWODNIKA / DZIECKA (Gdy rola to Zawodnik lub Rodzic) */}
-        {currentRole !== 'TRENER' && (
-          <View style={styles.playerSelectBox}>
-            <Text style={styles.inputLabel}>
-              {currentRole === 'RODZIC' ? 'Wybierz swoje dziecko:' : 'Wybierz swój profil:'}
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
-              {players.map((p) => {
-                const isSelected = p.id === activePlayerId;
-                return (
-                  <TouchableOpacity
-                    key={p.id}
-                    style={[styles.playerChip, isSelected && styles.playerChipActive]}
-                    onPress={() => setActivePlayerId(p.id)}
-                  >
-                    <Text style={[styles.playerChipText, isSelected && styles.playerChipTextActive]}>
-                      {p.name} #{p.number}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
+          {(['all', 'paid', 'pending', 'overdue'] as const).map((status) => (
+            <TouchableOpacity
+              key={status}
+              style={[
+                styles.filterChip,
+                filterStatus === status && styles.filterChipActive,
+              ]}
+              onPress={() => setFilterStatus(status)}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  filterStatus === status && styles.filterChipTextActive,
+                ]}
+              >
+                {status === 'all'
+                  ? 'Wszyscy'
+                  : status === 'paid'
+                  ? 'Opłacone'
+                  : status === 'pending'
+                  ? 'Oczekujące'
+                  : 'Zaległości'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
-        {/* WIDOK TRENERA */}
-        {currentRole === 'TRENER' && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="shield-checkmark" size={22} color="#2563eb" />
-              <Text style={styles.cardTitle}>Panel Trenera / Administratora</Text>
-            </View>
-            <Text style={styles.cardDesc}>
-              Masz pełne uprawnienia do zarządzania zespołem, dodawania wydarzeń, analizy wyników oraz prowadzenia meczu na żywo.
-            </Text>
-            <View style={styles.infoBadge}>
-              <Text style={styles.infoBadgeText}>Liczba zawodników w kadrze: {players.length}</Text>
-            </View>
-          </View>
-        )}
-
-        {/* WIDOK ZAWODNIKA */}
-        {currentRole === 'ZAWODNIK' && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="person" size={22} color="#16a34a" />
-              <Text style={styles.cardTitle}>Profil Zawodnika: {activePlayer?.name}</Text>
-            </View>
-
-            <View style={styles.playerDetailsGrid}>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Numer:</Text>
-                <Text style={styles.detailValue}>#{activePlayer?.number || '-'}</Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Pozycja:</Text>
-                <Text style={styles.detailValue}>{activePlayer?.position || '-'}</Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Rola:</Text>
-                <Text style={styles.detailValue}>{activePlayer?.role || '-'}</Text>
-              </View>
-            </View>
-
-            <Text style={styles.subHeaderTitle}>Ostatnie wyniki testów:</Text>
-            {playerTests.length === 0 ? (
-              <Text style={styles.emptyText}>Brak zarejestrowanych testów motorycznych.</Text>
-            ) : (
-              playerTests.map((t) => (
-                <View key={t.id} style={styles.rowItem}>
-                  <Text style={styles.rowTitle}>{t.testName || t.name}</Text>
-                  <Text style={styles.rowVal}>{t.resultValue ?? t.value}</Text>
-                </View>
-              ))
-            )}
-          </View>
-        )}
-
-        {/* WIDOK RODZICA */}
-        {currentRole === 'RODZIC' && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="heart-circle" size={22} color="#dc2626" />
-              <Text style={styles.cardTitle}>Karta Rodzica: {activePlayer?.name}</Text>
-            </View>
-
-            <Text style={styles.subHeaderTitle}>Status składek członkowskich:</Text>
-            {playerFees.length === 0 ? (
-              <Text style={styles.emptyText}>Brak przypisanych składek.</Text>
-            ) : (
-              playerFees.map((f) => (
-                <View key={f.id} style={styles.rowItem}>
-                  <Text style={styles.rowTitle}>{f.month} ({f.amount} PLN)</Text>
-                  <Text style={[styles.statusTag, f.paid ? styles.statusPaid : styles.statusUnpaid]}>
-                    {f.paid ? 'OPŁACONE' : 'DO ZAPŁATY'}
+      {/* LISTA ZAWODNIKÓW I STATUS SKŁADEK */}
+      <ScrollView style={styles.content}>
+        {filteredPlayers.map((player) => {
+          const badge = getStatusBadge(player.paymentStatus);
+          return (
+            <View key={player.id} style={styles.playerCard}>
+              <View style={styles.playerInfoRow}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>
+                    {player.firstName[0]}
+                    {player.lastName[0]}
                   </Text>
                 </View>
-              ))
-            )}
-
-            <Text style={styles.subHeaderTitle}>Nadchodzące mecze i treningi:</Text>
-            {events.map((e) => (
-              <View key={e.id} style={styles.rowItem}>
-                <View>
-                  <Text style={styles.rowTitle}>{e.title}</Text>
-                  <Text style={styles.rowSub}>{e.date} o godz. {e.time}</Text>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.playerName}>
+                    {player.firstName} {player.lastName}
+                  </Text>
+                  <Text style={styles.playerMeta}>
+                    Rocznik {player.birthYear} • {player.category} • Składka: {player.amount} zł
+                  </Text>
                 </View>
-                <Text style={styles.eventTypeTag}>{e.type}</Text>
+
+                <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
+                  <Text style={[styles.statusBadgeText, { color: badge.color }]}>{badge.label}</Text>
+                </View>
               </View>
-            ))}
-          </View>
-        )}
+
+              {/* PRZYCISKI ZARZĄDZANIA PŁATNOŚCIĄ */}
+              <View style={styles.actionsRow}>
+                <TouchableOpacity
+                  style={[styles.actionBtn, { backgroundColor: '#10b981' }]}
+                  onPress={() => handleUpdateStatus(player.id, 'paid')}
+                >
+                  <Text style={styles.actionBtnText}>Oznacz jako opłacone</Text>
+                </TouchableOpacity>
+
+                {player.paymentStatus !== 'paid' && (
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: '#f59e0b' }]}
+                    onPress={() => sendReminder(player)}
+                  >
+                    <Ionicons name="notifications-outline" size={14} color="#fff" style={{ marginRight: 4 }} />
+                    <Text style={styles.actionBtnText}>Przypomnij</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          );
+        })}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
+  container: { flex: 1, backgroundColor: '#f3f4f6' },
   header: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
+    borderBottomColor: '#e5e7eb',
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#0f172a',
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: '#64748b',
-    marginTop: 2,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#475569',
-    marginBottom: 8,
-  },
-  roleToggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  roleBtn: {
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#111827' },
+  headerSubtitle: { fontSize: 12, color: '#6b7280', marginTop: 2, marginBottom: 12 },
+  statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  statCard: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ffffff',
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginHorizontal: 3,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-  },
-  roleBtnActive: {
-    backgroundColor: '#2563eb',
-    borderColor: '#2563eb',
-  },
-  roleBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#475569',
-    marginLeft: 6,
-  },
-  roleBtnTextActive: {
-    color: '#ffffff',
-  },
-  playerSelectBox: {
-    marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#475569',
-    marginBottom: 6,
-  },
-  horizontalList: {
-    flexDirection: 'row',
-  },
-  playerChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    marginRight: 8,
-  },
-  playerChipActive: {
-    backgroundColor: '#0f172a',
-    borderColor: '#0f172a',
-  },
-  playerChipText: {
-    fontSize: 13,
-    color: '#334155',
-  },
-  playerChipTextActive: {
-    color: '#ffffff',
-    fontWeight: 'bold',
-  },
-  card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#0f172a',
-    marginLeft: 8,
-  },
-  cardDesc: {
-    fontSize: 13,
-    color: '#64748b',
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  infoBadge: {
-    backgroundColor: '#eff6ff',
     padding: 10,
     borderRadius: 8,
     alignItems: 'center',
+    marginHorizontal: 3,
   },
-  infoBadgeText: {
-    color: '#2563eb',
-    fontWeight: 'bold',
-    fontSize: 13,
-  },
-  playerDetailsGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: '#f8fafc',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  detailItem: {
-    alignItems: 'center',
-  },
-  detailLabel: {
-    fontSize: 11,
-    color: '#64748b',
-  },
-  detailValue: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#0f172a',
-    marginTop: 2,
-  },
-  subHeaderTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#0f172a',
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 12,
-    color: '#94a3b8',
-    fontStyle: 'italic',
-  },
-  rowItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
+  statNumber: { fontSize: 16, fontWeight: 'bold' },
+  statLabel: { fontSize: 11, color: '#4b5563', marginTop: 2 },
+  filterSection: {
+    backgroundColor: '#fff',
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: '#e5e7eb',
   },
-  rowTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#334155',
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f3f4f6',
+    marginHorizontal: 16,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    height: 38,
   },
-  rowSub: {
-    fontSize: 11,
-    color: '#64748b',
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 14 },
+  filterRow: { paddingHorizontal: 16, marginTop: 10 },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#f3f4f6',
+    marginRight: 8,
   },
-  rowVal: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#2563eb',
+  filterChipActive: { backgroundColor: '#2563eb' },
+  filterChipText: { fontSize: 12, fontWeight: '600', color: '#4b5563' },
+  filterChipTextActive: { color: '#fff' },
+  content: { flex: 1, padding: 16 },
+  playerCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    elevation: 2,
   },
-  statusTag: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  statusPaid: {
-    backgroundColor: '#dcfce7',
-    color: '#166534',
-  },
-  statusUnpaid: {
-    backgroundColor: '#fee2e2',
-    color: '#991b1b',
-  },
-  eventTypeTag: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    color: '#2563eb',
+  playerInfoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  avatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#eff6ff',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
+  avatarText: { color: '#1d4ed8', fontWeight: 'bold', fontSize: 13 },
+  playerName: { fontSize: 14, fontWeight: 'bold', color: '#1f2937' },
+  playerMeta: { fontSize: 11, color: '#6b7280', marginTop: 2 },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  statusBadgeText: { fontSize: 11, fontWeight: 'bold' },
+  actionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+    paddingTop: 8,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginLeft: 6,
+  },
+  actionBtnText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
 });

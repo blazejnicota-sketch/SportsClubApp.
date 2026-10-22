@@ -1,501 +1,424 @@
 import React, { useState } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  ScrollView, 
-  TouchableOpacity, 
-  TextInput, 
-  Modal, 
-  SafeAreaView, 
-  Dimensions 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Modal,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTeamStore, Player, TestResult } from './store/useTeamStore';
-
-const screenWidth = Dimensions.get('window').width;
+import { MOCK_100_PLAYERS, Player } from './data/mockPlayers';
 
 export default function TestyScreen() {
-  const players: Player[] = useTeamStore((state: any) => state.players);
-  const testResults: TestResult[] = useTeamStore((state: any) => state.testResults);
-  const addTestResult = useTeamStore((state: any) => state.addTestResult);
-  const deleteTestResult = useTeamStore((state: any) => state.deleteTestResult);
-
-  const [selectedPlayerId, setSelectedPlayerId] = useState<string>(players[0]?.id || '');
-  const [selectedTestName, setSelectedTestName] = useState<string>('Sprint 30m');
+  const [playersList, setPlayersList] = useState<Player[]>(MOCK_100_PLAYERS);
+  const [selectedYear, setSelectedYear] = useState<number | 'Wszystkie'>('Wszystkie');
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Modal wprowadzania/edycji wyników testów
   const [modalVisible, setModalVisible] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
 
-  // Formularz nowego testu
-  const [newTestName, setNewTestName] = useState('Sprint 30m');
-  const [newTestValue, setNewTestValue] = useState('');
-  const [newTestDate, setNewTestDate] = useState(new Date().toISOString().split('T')[0]);
+  // Formularz wyników
+  const [speed10m, setSpeed10m] = useState('');
+  const [speed30m, setSpeed30m] = useState('');
+  const [jumpCMJ, setJumpCMJ] = useState('');
+  const [beepTest, setBeepTest] = useState('');
 
-  // Lista unikalnych nazw testów dostępnych w systemie lub domyślnych
-  const availableTestTypes = ['Sprint 30m', 'Skok w dal', 'Bieg wahadłowy 10x5', 'Wyskok dosiężny', 'Wytrzymałość (Beep test)'];
+  const yearsOptions = ['Wszystkie', 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018];
 
-  // Przefiltrowane wyniki dla wybranego zawodnika i wybranego testu
-  const playerTests = testResults.filter(
-    (t) => t.playerId === selectedPlayerId && (t.testName === selectedTestName || t.name === selectedTestName)
-  ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-  // Wyciąganie wartości numerycznych do wykresu
-  const chartData = playerTests.map((t) => {
-    const rawVal = t.resultValue ?? t.value ?? '0';
-    const num = parseFloat(String(rawVal).replace(',', '.').replace(/[^0-9.]/g, '')) || 0;
-    return {
-      date: t.date,
-      value: num,
-      raw: rawVal,
-      id: t.id
-    };
+  const filteredPlayers = playersList.filter((p) => {
+    const matchesYear = selectedYear === 'Wszystkie' || p.birthYear === selectedYear;
+    const matchesSearch = `${p.firstName} ${p.lastName}`.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesYear && matchesSearch;
   });
 
-  const maxVal = chartData.length > 0 ? Math.max(...chartData.map(d => d.value), 1) : 1;
-
-  const handleAddTest = () => {
-    if (!newTestValue.trim()) return;
-    addTestResult({
-      playerId: selectedPlayerId,
-      testName: newTestName,
-      name: newTestName,
-      testType: 'Motoryczny',
-      resultValue: newTestValue,
-      value: newTestValue,
-      date: newTestDate,
-    });
-    setNewTestValue('');
-    setModalVisible(false);
+  const handleOpenTestModal = (player: Player) => {
+    setSelectedPlayer(player);
+    setSpeed10m(player.tests?.speed10m?.toString() || '');
+    setSpeed30m(player.tests?.speed30m?.toString() || '');
+    setJumpCMJ(player.tests?.jumpCMJ?.toString() || '');
+    setBeepTest(player.tests?.beepTestLevel || '');
+    setModalVisible(true);
   };
 
-  const selectedPlayer = players.find(p => p.id === selectedPlayerId);
+  const handleSaveTests = () => {
+    if (!selectedPlayer) return;
+
+    const updated = playersList.map((p) => {
+      if (p.id === selectedPlayer.id) {
+        return {
+          ...p,
+          tests: {
+            speed10m: parseFloat(speed10m) || undefined,
+            speed30m: parseFloat(speed30m) || undefined,
+            jumpCMJ: parseInt(jumpCMJ) || undefined,
+            beepTestLevel: beepTest || undefined,
+            date: new Date().toISOString().split('T')[0],
+          },
+        };
+      }
+      return p;
+    });
+
+    setPlayersList(updated);
+    setModalVisible(false);
+    Alert.alert('Sukces', 'Wyniki testów zostały zapisane!');
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Nagłówek */}
+    <View style={styles.container}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Analiza Testów Motorycznych</Text>
-          <Text style={styles.headerSubtitle}>Śledź postępy i trendy zawodników</Text>
-        </View>
-        <TouchableOpacity style={styles.addButton} onPress={() => setModalVisible(true)}>
-          <Ionicons name="add" size={24} color="#fff" />
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Testy Motoryczne</Text>
+        <Text style={styles.headerSubtitle}>Baza zawodników: {filteredPlayers.length} / 100</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Wybór zawodnika */}
-        <Text style={styles.sectionLabel}>Wybierz zawodnika:</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
-          {players.map((player) => {
-            const isSelected = player.id === selectedPlayerId;
-            return (
-              <TouchableOpacity
-                key={player.id}
-                style={[styles.playerChip, isSelected && styles.playerChipActive]}
-                onPress={() => setSelectedPlayerId(player.id)}
-              >
-                <Text style={[styles.playerChipText, isSelected && styles.playerChipTextActive]}>
-                  {player.name} {player.number ? `(${player.number})` : ''}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+      {/* WYSZUKIWARKA I FILTR ROCZNIKA */}
+      <View style={styles.filterSection}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={18} color="#6b7280" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Szukaj zawodnika..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
 
-        {/* Wybór rodzaju testu */}
-        <Text style={styles.sectionLabel}>Rodzaj testu:</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
-          {availableTestTypes.map((testName) => {
-            const isSelected = testName === selectedTestName;
-            return (
-              <TouchableOpacity
-                key={testName}
-                style={[styles.testChip, isSelected && styles.testChipActive]}
-                onPress={() => setSelectedTestName(testName)}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.yearsRow}>
+          {yearsOptions.map((y) => (
+            <TouchableOpacity
+              key={y.toString()}
+              style={[
+                styles.yearChip,
+                selectedYear === y && styles.yearChipActive,
+              ]}
+              onPress={() => setSelectedYear(y as any)}
+            >
+              <Text
+                style={[
+                  styles.yearChipText,
+                  selectedYear === y && styles.yearChipTextActive,
+                ]}
               >
-                <Text style={[styles.testChipText, isSelected && styles.testChipTextActive]}>
-                  {testName}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* Sekcja Wykresu Trendu */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="trending-up" size={20} color="#2563eb" />
-            <Text style={styles.cardTitle}>Wykres postępów: {selectedTestName}</Text>
-          </View>
-          
-          {chartData.length === 0 ? (
-            <View style={styles.emptyChart}>
-              <Ionicons name="bar-chart-outline" size={48} color="#94a3b8" />
-              <Text style={styles.emptyText}>Brak pomiarów dla tego testu.</Text>
-              <Text style={styles.emptySubtext}>Kliknij '+' w prawym górnym rogu, aby dodać nowy pomiar.</Text>
-            </View>
-          ) : (
-            <View style={styles.chartContainer}>
-              <View style={styles.chartBarsArea}>
-                {chartData.map((item, index) => {
-                  const barHeight = Math.max((item.value / maxVal) * 140, 20);
-                  return (
-                    <View key={index} style={styles.barColumn}>
-                      <Text style={styles.barValueText}>{item.raw}</Text>
-                      <View style={[styles.barFill, { height: barHeight }]} />
-                      <Text style={styles.barDateText}>{item.date.slice(5)}</Text>
-                    </View>
-                  );
-                })}
-              </View>
-              <Text style={styles.chartFooterInfo}>
-                Zawodnik: {selectedPlayer?.name} • Łącznie pomiarów: {chartData.length}
+                {y === 'Wszystkie' ? 'Wszystkie' : `Rocznik ${y}`}
               </Text>
-            </View>
-          )}
-        </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
-        {/* Historia pomiarów (Lista) */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Historia pomiarów w czasie</Text>
-          {playerTests.length === 0 ? (
-            <Text style={styles.noHistoryText}>Brak zarejestrowanych wyników.</Text>
-          ) : (
-            playerTests.map((t) => (
-              <View key={t.id} style={styles.historyRow}>
-                <View>
-                  <Text style={styles.historyDate}>{t.date}</Text>
-                  <Text style={styles.historyTestName}>{t.testName || t.name}</Text>
-                </View>
-                <View style={styles.historyRight}>
-                  <Text style={styles.historyValue}>{t.resultValue ?? t.value}</Text>
-                  <TouchableOpacity onPress={() => deleteTestResult(t.id)} style={styles.deleteIconBtn}>
-                    <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                  </TouchableOpacity>
-                </View>
+      {/* LISTA ZAWODNIKÓW I WYNIKÓW TESTÓW */}
+      <ScrollView style={styles.content}>
+        {filteredPlayers.map((player) => (
+          <View key={player.id} style={styles.playerCard}>
+            <View style={styles.playerMainInfo}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {player.firstName[0]}
+                  {player.lastName[0]}
+                </Text>
               </View>
-            ))
-          )}
-        </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.playerName}>
+                  {player.firstName} {player.lastName}
+                </Text>
+                <Text style={styles.playerMeta}>
+                  Rocznik {player.birthYear} • {player.position} • {player.category}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.editTestBtn}
+                onPress={() => handleOpenTestModal(player)}
+              >
+                <Ionicons name="stats-chart" size={16} color="#fff" />
+                <Text style={styles.editTestBtnText}>Wpisz testy</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* SIATKA WYNIKÓW TESTÓW */}
+            <View style={styles.resultsGrid}>
+              <View style={styles.resultItem}>
+                <Text style={styles.resultLabel}>Szybkość 10m</Text>
+                <Text style={styles.resultValue}>
+                  {player.tests?.speed10m ? `${player.tests.speed10m}s` : '-'}
+                </Text>
+              </View>
+
+              <View style={styles.resultItem}>
+                <Text style={styles.resultLabel}>Szybkość 30m</Text>
+                <Text style={styles.resultValue}>
+                  {player.tests?.speed30m ? `${player.tests.speed30m}s` : '-'}
+                </Text>
+              </View>
+
+              <View style={styles.resultItem}>
+                <Text style={styles.resultLabel}>Skok CMJ</Text>
+                <Text style={styles.resultValue}>
+                  {player.tests?.jumpCMJ ? `${player.tests.jumpCMJ} cm` : '-'}
+                </Text>
+              </View>
+
+              <View style={styles.resultItem}>
+                <Text style={styles.resultLabel}>Beep Test</Text>
+                <Text style={styles.resultValue}>
+                  {player.tests?.beepTestLevel ? `Lvl ${player.tests.beepTestLevel}` : '-'}
+                </Text>
+              </View>
+            </View>
+          </View>
+        ))}
       </ScrollView>
 
-      {/* Modal dodawania nowego pomiaru */}
-      <Modal visible={modalVisible} animationType="slide" transparent={true}>
+      {/* MODAL EDYCJI TESTU */}
+      <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Dodaj wynik testu motorycznego</Text>
-            
-            <Text style={styles.inputLabel}>Nazwa testu:</Text>
-            <TextInput
-              style={styles.input}
-              value={newTestName}
-              onChangeText={setNewTestName}
-              placeholder="np. Sprint 30m"
-            />
-
-            <Text style={styles.inputLabel}>Wynik (np. 4.15 s lub 210 cm):</Text>
-            <TextInput
-              style={styles.input}
-              value={newTestValue}
-              onChangeText={setNewTestValue}
-              placeholder="Wprowadź wynik"
-              keyboardType="default"
-            />
-
-            <Text style={styles.inputLabel}>Data (YYYY-MM-DD):</Text>
-            <TextInput
-              style={styles.input}
-              value={newTestDate}
-              onChangeText={setNewTestDate}
-            />
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={[styles.modalBtn, styles.cancelBtn]} 
-                onPress={() => setModalVisible(false)}
-              >
-                <Text style={styles.cancelBtnText}>Anuluj</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalBtn, styles.saveBtn]} 
-                onPress={handleAddTest}
-              >
-                <Text style={styles.saveBtnText}>Zapisz</Text>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                Testy: {selectedPlayer?.firstName} {selectedPlayer?.lastName}
+              </Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#374151" />
               </TouchableOpacity>
             </View>
+
+            <Text style={styles.inputLabel}>Szybkość 10m (sekundy)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="np. 1.85"
+              keyboardType="numeric"
+              value={speed10m}
+              onChangeText={setSpeed10m}
+            />
+
+            <Text style={styles.inputLabel}>Szybkość 30m (sekundy)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="np. 4.45"
+              keyboardType="numeric"
+              value={speed30m}
+              onChangeText={setSpeed30m}
+            />
+
+            <Text style={styles.inputLabel}>Skok w dal / CMJ (cm)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="np. 35"
+              keyboardType="numeric"
+              value={jumpCMJ}
+              onChangeText={setJumpCMJ}
+            />
+
+            <Text style={styles.inputLabel}>Beep Test / Wydolność (Poziom.Wahadło)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="np. 9.4"
+              value={beepTest}
+              onChangeText={setBeepTest}
+            />
+
+            <TouchableOpacity style={styles.saveBtn} onPress={handleSaveTests}>
+              <Text style={styles.saveBtnText}>Zapisz Wyniki Testu</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f3f4f6',
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
-    color: '#0f172a',
+    color: '#111827',
   },
   headerSubtitle: {
-    fontSize: 13,
-    color: '#64748b',
+    fontSize: 12,
+    color: '#6b7280',
     marginTop: 2,
   },
-  addButton: {
-    backgroundColor: '#2563eb',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
+  filterSection: {
+    backgroundColor: '#fff',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  searchBox: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#f3f4f6',
+    marginHorizontal: 16,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    height: 38,
   },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  sectionLabel: {
+  searchInput: {
+    flex: 1,
+    marginLeft: 8,
     fontSize: 14,
-    fontWeight: '600',
-    color: '#475569',
-    marginBottom: 8,
-    marginTop: 12,
   },
-  horizontalList: {
-    marginBottom: 8,
-  },
-  playerChip: {
+  yearsRow: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
+    marginTop: 10,
+  },
+  yearChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#f3f4f6',
     marginRight: 8,
   },
-  playerChipActive: {
+  yearChipActive: {
     backgroundColor: '#2563eb',
-    borderColor: '#2563eb',
   },
-  playerChipText: {
-    fontSize: 14,
-    color: '#334155',
-    fontWeight: '500',
+  yearChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4b5563',
   },
-  playerChipTextActive: {
-    color: '#ffffff',
+  yearChipTextActive: {
+    color: '#fff',
   },
-  testChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    backgroundColor: '#e2e8f0',
-    borderRadius: 16,
-    marginRight: 6,
-  },
-  testChipActive: {
-    backgroundColor: '#0f172a',
-  },
-  testChipText: {
-    fontSize: 13,
-    color: '#334155',
-  },
-  testChipTextActive: {
-    color: '#ffffff',
-  },
-  card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
+  content: {
+    flex: 1,
     padding: 16,
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
+  },
+  playerCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
     elevation: 2,
   },
-  cardHeader: {
+  playerMainInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
   },
-  cardTitle: {
-    fontSize: 16,
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#dbeafe',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  avatarText: {
+    color: '#1d4ed8',
     fontWeight: 'bold',
-    color: '#1e293b',
-    marginLeft: 8,
+    fontSize: 14,
   },
-  emptyChart: {
-    alignItems: 'center',
-    paddingVertical: 30,
-  },
-  emptyText: {
+  playerName: {
     fontSize: 15,
-    fontWeight: '600',
-    color: '#64748b',
-    marginTop: 8,
+    fontWeight: 'bold',
+    color: '#1f2937',
   },
-  emptySubtext: {
-    fontSize: 13,
-    color: '#94a3b8',
-    textAlign: 'center',
-    marginTop: 4,
+  playerMeta: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginTop: 2,
   },
-  chartContainer: {
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  chartBarsArea: {
+  editTestBtn: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: 160,
-    width: '100%',
-    justifyContent: 'space-around',
-    paddingHorizontal: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#cbd5e1',
-    paddingBottom: 4,
-  },
-  barColumn: {
     alignItems: 'center',
-    flex: 1,
-    maxWidth: 50,
+    backgroundColor: '#2563eb',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
   },
-  barValueText: {
+  editTestBtnText: {
+    color: '#fff',
     fontSize: 11,
     fontWeight: 'bold',
-    color: '#2563eb',
-    marginBottom: 4,
+    marginLeft: 4,
   },
-  barFill: {
-    width: 24,
-    backgroundColor: '#3b82f6',
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 4,
-  },
-  barDateText: {
-    fontSize: 10,
-    color: '#64748b',
-    marginTop: 6,
-  },
-  chartFooterInfo: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 12,
-  },
-  noHistoryText: {
-    fontSize: 14,
-    color: '#94a3b8',
-    fontStyle: 'italic',
-    marginTop: 8,
-  },
-  historyRow: {
+  resultsGrid: {
     flexDirection: 'row',
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    padding: 8,
     justifyContent: 'space-between',
+  },
+  resultItem: {
     alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    flex: 1,
   },
-  historyDate: {
-    fontSize: 12,
-    color: '#64748b',
+  resultLabel: {
+    fontSize: 10,
+    color: '#6b7280',
+    fontWeight: '500',
   },
-  historyTestName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  historyRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  historyValue: {
-    fontSize: 15,
+  resultValue: {
+    fontSize: 13,
     fontWeight: 'bold',
-    color: '#2563eb',
-    marginRight: 16,
-  },
-  deleteIconBtn: {
-    padding: 4,
+    color: '#111827',
+    marginTop: 2,
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#ffffff',
-    width: '90%',
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#0f172a',
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 16,
   },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
   inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#475569',
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#374151',
+    marginTop: 8,
     marginBottom: 4,
-    marginTop: 10,
   },
   input: {
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f9fafb',
     borderWidth: 1,
-    borderColor: '#cbd5e1',
+    borderColor: '#d1d5db',
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 8,
     fontSize: 14,
-    color: '#0f172a',
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 20,
-  },
-  modalBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginLeft: 10,
-  },
-  cancelBtn: {
-    backgroundColor: '#e2e8f0',
-  },
-  cancelBtnText: {
-    color: '#475569',
-    fontWeight: '600',
   },
   saveBtn: {
     backgroundColor: '#2563eb',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 12,
   },
   saveBtnText: {
-    color: '#ffffff',
-    fontWeight: '600',
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
   },
 });

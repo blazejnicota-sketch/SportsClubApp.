@@ -1,791 +1,311 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import {
-  StyleSheet,
-  Text,
   View,
-  TouchableOpacity,
+  Text,
+  StyleSheet,
   ScrollView,
-  SafeAreaView,
+  TouchableOpacity,
   Modal,
-  Alert
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTeamStore, Player } from './store/useTeamStore';
-
-interface MatchEvent {
-  id: string;
-  minute: number;
-  type: 'GOAL' | 'YELLOW_CARD' | 'RED_CARD' | 'SUBSTITUTION';
-  playerId: string;
-  playerName: string;
-  secondaryPlayerId?: string;
-  secondaryPlayerName?: string;
-  notes?: string;
-}
+import { MOCK_100_PLAYERS, Player } from './data/mockPlayers';
 
 export default function BoiskoScreen() {
-  const players: Player[] = useTeamStore((state: any) => state.players);
+  const [playersList] = useState<Player[]>(MOCK_100_PLAYERS);
+  
+  // Wybrana 11-stka wyjściowa oraz rezerwowi
+  const [startingLineup, setStartingLineup] = useState<Player[]>(
+    MOCK_100_PLAYERS.slice(0, 11)
+  );
+  const [substitutes, setSubstitutes] = useState<Player[]>(
+    MOCK_100_PLAYERS.slice(11, 18)
+  );
 
-  // --- STOPER MECZOWY ---
-  const [seconds, setSeconds] = useState<number>(0);
-  const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [half, setHalf] = useState<number>(1);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  // Modal wyboru zawodnika do składu
+  const [modalVisible, setModalVisible] = useState(false);
+  const [targetSlot, setTargetSlot] = useState<'starting' | 'sub'>('starting');
 
-  useEffect(() => {
-    if (isRunning) {
-      timerRef.current = setInterval(() => {
-        setSeconds((prev) => prev + 1);
-      }, 1000);
-    } else if (timerRef.current) {
-      clearInterval(timerRef.current);
+  // Stoper meczowy na żywo
+  const [matchTime, setMatchTime] = useState(0);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [matchPeriod, setMatchPeriod] = useState<'Przed meczem' | 'I Połowa' | 'Przerwa' | 'II Połowa' | 'Koniec'>('Przed meczem');
+
+  // Obsługa stopera (symulacja)
+  const toggleTimer = () => {
+    setIsTimerRunning(!isTimerRunning);
+    if (matchPeriod === 'Przed meczem') setMatchPeriod('I Połowa');
+  };
+
+  const handleRemovePlayer = (id: string, type: 'starting' | 'sub') => {
+    if (type === 'starting') {
+      setStartingLineup(startingLineup.filter((p) => p.id !== id));
+    } else {
+      setSubstitutes(substitutes.filter((p) => p.id !== id));
     }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isRunning]);
-
-  const toggleTimer = () => setIsRunning(!isRunning);
-
-  const resetTimer = () => {
-    setIsRunning(false);
-    setSeconds(0);
-    setHalf(1);
   };
 
-  const formatTime = (totalSeconds: number) => {
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const currentMinute = Math.max(1, Math.ceil(seconds / 60));
-
-  // --- WYNIK MECZU ---
-  const [ourScore, setOurScore] = useState<number>(0);
-  const [opponentScore, setOpponentScore] = useState<number>(0);
-  const [opponentName, setOpponentName] = useState<string>('Rywal');
-
-  // --- SKŁAD I ZMIANY ---
-  // Domyślnie pierwsi zawodnicy na boisku, reszta na ławce
-  const [onPitchIds, setOnPitchIds] = useState<string[]>(
-    players.slice(0, 7).map((p) => p.id)
-  );
-  const [benchIds, setBenchIds] = useState<string[]>(
-    players.slice(7).map((p) => p.id)
-  );
-
-  // --- LOG ZDARZEŃ ---
-  const [events, setEvents] = useState<MatchEvent[]>([]);
-
-  // --- MODALE MODUŁÓW AKCJI ---
-  const [modalType, setModalType] = useState<'GOAL' | 'CARD' | 'SUB' | null>(null);
-  const [selectedPlayerId, setSelectedPlayerId] = useState<string>('');
-  const [selectedAssistId, setSelectedAssistId] = useState<string>('');
-  const [cardType, setCardType] = useState<'YELLOW' | 'RED'>('YELLOW');
-  const [subOutId, setSubOutId] = useState<string>('');
-  const [subInId, setSubInId] = useState<string>('');
-
-  // Szybkie dodanie gola przeciwko nam
-  const handleOpponentGoal = () => {
-    setOpponentScore((prev) => prev + 1);
-    setEvents((prev) => [
-      {
-        id: Date.now().toString(),
-        minute: currentMinute,
-        type: 'GOAL',
-        playerId: 'opponent',
-        playerName: opponentName,
-        notes: 'Gol dla przeciwnika',
-      },
-      ...prev,
-    ]);
-  };
-
-  // Zapisywanie zdarzenia Gol
-  const handleSaveGoal = () => {
-    if (!selectedPlayerId) return;
-    const scorer = players.find((p) => p.id === selectedPlayerId);
-    const assistant = players.find((p) => p.id === selectedAssistId);
-
-    setOurScore((prev) => prev + 1);
-    setEvents((prev) => [
-      {
-        id: Date.now().toString(),
-        minute: currentMinute,
-        type: 'GOAL',
-        playerId: selectedPlayerId,
-        playerName: scorer?.name || 'Zawodnik',
-        secondaryPlayerId: selectedAssistId || undefined,
-        secondaryPlayerName: assistant?.name,
-      },
-      ...prev,
-    ]);
-
-    setModalType(null);
-    setSelectedPlayerId('');
-    setSelectedAssistId('');
-  };
-
-  // Zapisywanie kartki
-  const handleSaveCard = () => {
-    if (!selectedPlayerId) return;
-    const player = players.find((p) => p.id === selectedPlayerId);
-
-    setEvents((prev) => [
-      {
-        id: Date.now().toString(),
-        minute: currentMinute,
-        type: cardType === 'YELLOW' ? 'YELLOW_CARD' : 'RED_CARD',
-        playerId: selectedPlayerId,
-        playerName: player?.name || 'Zawodnik',
-      },
-      ...prev,
-    ]);
-
-    setModalType(null);
-    setSelectedPlayerId('');
-  };
-
-  // Zapisywanie zmiany
-  const handleSaveSub = () => {
-    if (!subOutId || !subInId) return;
-    const playerOut = players.find((p) => p.id === subOutId);
-    const playerIn = players.find((p) => p.id === subInId);
-
-    // Zamiana miejscami w składzie
-    setOnPitchIds((prev) => prev.filter((id) => id !== subOutId).concat(subInId));
-    setBenchIds((prev) => prev.filter((id) => id !== subInId).concat(subOutId));
-
-    setEvents((prev) => [
-      {
-        id: Date.now().toString(),
-        minute: currentMinute,
-        type: 'SUBSTITUTION',
-        playerId: subInId,
-        playerName: playerIn?.name || 'Zawodnik Wchodzący',
-        secondaryPlayerId: subOutId,
-        secondaryPlayerName: playerOut?.name || 'Zawodnik Schodzący',
-      },
-      ...prev,
-    ]);
-
-    setModalType(null);
-    setSubOutId('');
-    setSubInId('');
+  const handleAddPlayerToSquad = (player: Player) => {
+    if (targetSlot === 'starting') {
+      if (startingLineup.length >= 11) {
+        Alert.alert('Uwaga', 'Wyjściowa 11-stka jest już pełna.');
+        return;
+      }
+      if (startingLineup.some((p) => p.id === player.id)) {
+        Alert.alert('Uwaga', 'Ten zawodnik jest już w składzie.');
+        return;
+      }
+      setStartingLineup([...startingLineup, player]);
+    } else {
+      if (substitutes.length >= 7) {
+        Alert.alert('Uwaga', 'Ławka rezerwowych jest pełna (max 7).');
+        return;
+      }
+      if (substitutes.some((p) => p.id === player.id)) {
+        Alert.alert('Uwaga', 'Ten zawodnik jest już na ławce.');
+        return;
+      }
+      setSubstitutes([...substitutes, player]);
+    }
+    setModalVisible(false);
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* NAGŁÓWEK Z TABLICĄ WYNIKÓW I STOPEREM */}
-      <View style={styles.scoreboardCard}>
-        <View style={styles.teamsRow}>
-          <View style={styles.teamBox}>
-            <Text style={styles.teamName}>NASZ KLUB</Text>
-            <Text style={styles.scoreText}>{ourScore}</Text>
-          </View>
-          <View style={styles.timerCenterBox}>
-            <Text style={styles.halfText}>{half}. POŁOWA</Text>
-            <Text style={styles.timerText}>{formatTime(seconds)}</Text>
-            <View style={styles.timerControls}>
-              <TouchableOpacity style={styles.timerBtn} onPress={toggleTimer}>
-                <Ionicons
-                  name={isRunning ? 'pause' : 'play'}
-                  size={18}
-                  color="#ffffff"
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.timerBtn, styles.resetBtn]}
-                onPress={resetTimer}
-              >
-                <Ionicons name="refresh" size={18} color="#ffffff" />
-              </TouchableOpacity>
-            </View>
-          </View>
-          <View style={styles.teamBox}>
-            <Text style={styles.teamName}>{opponentName}</Text>
-            <Text style={styles.scoreText}>{opponentScore}</Text>
-          </View>
+    <View style={styles.container}>
+      {/* NAGŁÓWEK I STATUS MECZU */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>Skład i Boisko (Match Day)</Text>
+          <Text style={styles.headerSubtitle}>Status: <Text style={{ fontWeight: 'bold', color: '#2563eb' }}>{matchPeriod}</Text></Text>
         </View>
 
-        {/* PRZYCISKI SZYBKICH AKCJI */}
-        <View style={styles.actionButtonsRow}>
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: '#16a34a' }]}
-            onPress={() => setModalType('GOAL')}
-          >
-            <Ionicons name="football" size={18} color="#fff" />
-            <Text style={styles.actionBtnText}>GOL NASZ</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: '#dc2626' }]}
-            onPress={handleOpponentGoal}
-          >
-            <Ionicons name="remove-circle" size={18} color="#fff" />
-            <Text style={styles.actionBtnText}>GOL RYWALA</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: '#eab308' }]}
-            onPress={() => setModalType('CARD')}
-          >
-            <Ionicons name="square" size={16} color="#fff" />
-            <Text style={styles.actionBtnText}>KARTKA</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: '#2563eb' }]}
-            onPress={() => setModalType('SUB')}
-          >
-            <Ionicons name="swap-horizontal" size={18} color="#fff" />
-            <Text style={styles.actionBtnText}>ZMIANA</Text>
+        <View style={styles.timerBox}>
+          <Text style={styles.timerText}>
+            {Math.floor(matchTime / 60)}:{('0' + (matchTime % 60)).slice(-2)}
+          </Text>
+          <TouchableOpacity style={styles.timerBtn} onPress={toggleTimer}>
+            <Ionicons name={isTimerRunning ? 'pause' : 'play'} size={14} color="#fff" />
           </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* BOISKO I SKŁAD NA ŻYWO */}
-        <View style={styles.sectionHeader}>
-          <Ionicons name="people" size={20} color="#0f172a" />
-          <Text style={styles.sectionTitle}>Na boisku ({onPitchIds.length})</Text>
+      <ScrollView style={styles.content}>
+        {/* WIZUALIZACJA BOISKA / SKŁAD WYJŚCIOWY */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Wyjściowa 11-stka ({startingLineup.length}/11)</Text>
+          <TouchableOpacity
+            style={styles.actionAddBtn}
+            onPress={() => { setTargetSlot('starting'); setModalVisible(true); }}
+          >
+            <Ionicons name="add" size={14} color="#fff" />
+            <Text style={styles.actionAddBtnText}>Dodaj zawodnika</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.pitchCard}>
-          <View style={styles.pitchGrid}>
-            {onPitchIds.map((id) => {
-              const player = players.find((p) => p.id === id);
-              return (
-                <View key={id} style={styles.playerOnPitch}>
-                  <View style={styles.numberBadge}>
-                    <Text style={styles.numberBadgeText}>
-                      {player?.number || '#'}
-                    </Text>
-                  </View>
-                  <Text style={styles.playerNameOnPitch} numberOfLines={1}>
-                    {player?.name || 'Zawodnik'}
-                  </Text>
+          {startingLineup.length === 0 ? (
+            <Text style={styles.emptyPitchText}>Brak zawodników w składzie wyjściowym.</Text>
+          ) : (
+            startingLineup.map((player, index) => (
+              <View key={player.id} style={styles.playerRow}>
+                <View style={styles.playerNumberBadge}>
+                  <Text style={styles.playerNumberText}>{index + 1}</Text>
                 </View>
-              );
-            })}
-          </View>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.playerName}>{player.firstName} {player.lastName}</Text>
+                  <Text style={styles.playerMeta}>{player.position} • Rocznik {player.birthYear}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => handleRemovePlayer(player.id, 'starting')}
+                  style={styles.removeBtn}
+                >
+                  <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
         </View>
 
         {/* ŁAWKA REZERWOWYCH */}
-        <View style={styles.sectionHeader}>
-          <Ionicons name="time-outline" size={20} color="#0f172a" />
-          <Text style={styles.sectionTitle}>Ławka rezerwowych ({benchIds.length})</Text>
+        <View style={[styles.sectionHeaderRow, { marginTop: 10 }]}>
+          <Text style={styles.sectionTitle}>Ławka Rezerwowych ({substitutes.length}/7)</Text>
+          <TouchableOpacity
+            style={[styles.actionAddBtn, { backgroundColor: '#d97706' }]}
+            onPress={() => { setTargetSlot('sub'); setModalVisible(true); }}
+          >
+            <Ionicons name="add" size={14} color="#fff" />
+            <Text style={styles.actionAddBtnText}>Dodaj rezerwowego</Text>
+          </TouchableOpacity>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.benchScroll}>
-          {benchIds.map((id) => {
-            const player = players.find((p) => p.id === id);
-            return (
-              <View key={id} style={styles.benchPlayerChip}>
-                <Text style={styles.benchPlayerText}>
-                  {player?.number ? `#${player.number} ` : ''}
-                  {player?.name}
-                </Text>
-              </View>
-            );
-          })}
-        </ScrollView>
-
-        {/* DZIENNIK ZDARZEŃ MECZOWYCH */}
-        <View style={styles.sectionHeader}>
-          <Ionicons name="list" size={20} color="#0f172a" />
-          <Text style={styles.sectionTitle}>Dziennik zdarzeń ({events.length})</Text>
-        </View>
-
-        <View style={styles.eventsCard}>
-          {events.length === 0 ? (
-            <Text style={styles.emptyEventsText}>Brak zarejestrowanych zdarzeń meczowych.</Text>
+        <View style={styles.pitchCard}>
+          {substitutes.length === 0 ? (
+            <Text style={styles.emptyPitchText}>Brak zawodników na ławce.</Text>
           ) : (
-            events.map((e) => (
-              <View key={e.id} style={styles.eventRow}>
-                <Text style={styles.eventMinute}>{e.minute}'</Text>
-                <View style={styles.eventDetails}>
-                  {e.type === 'GOAL' && (
-                    <Text style={styles.eventText}>
-                      ⚽ <Text style={styles.boldText}>{e.playerName}</Text>
-                      {e.secondaryPlayerName ? ` (Asysta: ${e.secondaryPlayerName})` : ''}
-                    </Text>
-                  )}
-                  {e.type === 'YELLOW_CARD' && (
-                    <Text style={styles.eventText}>
-                      🟨 Żółta kartka: <Text style={styles.boldText}>{e.playerName}</Text>
-                    </Text>
-                  )}
-                  {e.type === 'RED_CARD' && (
-                    <Text style={styles.eventText}>
-                      🟥 Czerwona kartka: <Text style={styles.boldText}>{e.playerName}</Text>
-                    </Text>
-                  )}
-                  {e.type === 'SUBSTITUTION' && (
-                    <Text style={styles.eventText}>
-                      🔄 Zmiana: <Text style={styles.boldText}>{e.playerName}</Text> (WEJŚCIE) 
-                      {' <- '} <Text style={styles.subOutText}>{e.secondaryPlayerName}</Text> (ZEJŚCIE)
-                    </Text>
-                  )}
+            substitutes.map((player, index) => (
+              <View key={player.id} style={styles.playerRow}>
+                <View style={[styles.playerNumberBadge, { backgroundColor: '#fef3c7', borderColor: '#d97706' }]}>
+                  <Text style={[styles.playerNumberText, { color: '#d97706' }]}>R{index + 1}</Text>
                 </View>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.playerName}>{player.firstName} {player.lastName}</Text>
+                  <Text style={styles.playerMeta}>{player.position} • Rocznik {player.birthYear}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => handleRemovePlayer(player.id, 'sub')}
+                  style={styles.removeBtn}
+                >
+                  <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                </TouchableOpacity>
               </View>
             ))
           )}
         </View>
       </ScrollView>
 
-      {/* MODAL GOL */}
-      <Modal visible={modalType === 'GOAL'} animationType="slide" transparent>
+      {/* MODAL WYBORU ZAWODNIKA Z BAZY 100 */}
+      <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>⚽ Rejestracja Gola</Text>
-
-            <Text style={styles.inputLabel}>Strzelec gola:</Text>
-            <ScrollView style={styles.modalPlayerList}>
-              {onPitchIds.map((id) => {
-                const player = players.find((p) => p.id === id);
-                const isSelected = selectedPlayerId === id;
-                return (
-                  <TouchableOpacity
-                    key={id}
-                    style={[styles.modalPlayerOption, isSelected && styles.modalPlayerOptionActive]}
-                    onPress={() => setSelectedPlayerId(id)}
-                  >
-                    <Text style={[styles.modalPlayerOptionText, isSelected && styles.modalPlayerOptionTextActive]}>
-                      {player?.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <Text style={styles.inputLabel}>Asysta (opcjonalnie):</Text>
-            <ScrollView style={styles.modalPlayerList}>
-              {onPitchIds.map((id) => {
-                if (id === selectedPlayerId) return null;
-                const player = players.find((p) => p.id === id);
-                const isSelected = selectedAssistId === id;
-                return (
-                  <TouchableOpacity
-                    key={id}
-                    style={[styles.modalPlayerOption, isSelected && styles.modalPlayerOptionActive]}
-                    onPress={() => setSelectedAssistId(id)}
-                  >
-                    <Text style={[styles.modalPlayerOptionText, isSelected && styles.modalPlayerOptionTextActive]}>
-                      {player?.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalType(null)}>
-                <Text style={styles.cancelBtnText}>Anuluj</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveGoal}>
-                <Text style={styles.saveBtnText}>Zapisz Gol</Text>
+          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                Wybierz zawodnika ({targetSlot === 'starting' ? 'Skład Główny' : 'Rezerwa'})
+              </Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#374151" />
               </TouchableOpacity>
             </View>
+
+            <ScrollView style={{ marginTop: 10 }}>
+              {playersList.map((player) => (
+                <TouchableOpacity
+                  key={player.id}
+                  style={styles.modalPlayerRow}
+                  onPress={() => handleAddPlayerToSquad(player)}
+                >
+                  <View style={styles.avatarMini}>
+                    <Text style={styles.avatarMiniText}>{player.firstName[0]}{player.lastName[0]}</Text>
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.playerName}>{player.firstName} {player.lastName}</Text>
+                    <Text style={styles.playerMeta}>Rocznik {player.birthYear} • {player.position} • {player.category}</Text>
+                  </View>
+                  <Ionicons name="add-circle" size={22} color="#2563eb" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         </View>
       </Modal>
-
-      {/* MODAL KARTKA */}
-      <Modal visible={modalType === 'CARD'} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>🟨 / 🟥 Rejestracja Kartki</Text>
-
-            <View style={styles.cardTypeToggle}>
-              <TouchableOpacity
-                style={[styles.cardTypeBtn, cardType === 'YELLOW' && { backgroundColor: '#eab308' }]}
-                onPress={() => setCardType('YELLOW')}
-              >
-                <Text style={styles.cardTypeBtnText}>Żółta</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.cardTypeBtn, cardType === 'RED' && { backgroundColor: '#dc2626' }]}
-                onPress={() => setCardType('RED')}
-              >
-                <Text style={styles.cardTypeBtnText}>Czerwona</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.inputLabel}>Ukarany zawodnik:</Text>
-            <ScrollView style={styles.modalPlayerList}>
-              {onPitchIds.map((id) => {
-                const player = players.find((p) => p.id === id);
-                const isSelected = selectedPlayerId === id;
-                return (
-                  <TouchableOpacity
-                    key={id}
-                    style={[styles.modalPlayerOption, isSelected && styles.modalPlayerOptionActive]}
-                    onPress={() => setSelectedPlayerId(id)}
-                  >
-                    <Text style={[styles.modalPlayerOptionText, isSelected && styles.modalPlayerOptionTextActive]}>
-                      {player?.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalType(null)}>
-                <Text style={styles.cancelBtnText}>Anuluj</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveCard}>
-                <Text style={styles.saveBtnText}>Zapisz Kartkę</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* MODAL ZMIANA */}
-      <Modal visible={modalType === 'SUB'} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>🔄 Zmiana Zawodnika</Text>
-
-            <Text style={styles.inputLabel}>Schodzi z boiska:</Text>
-            <ScrollView style={styles.modalPlayerList}>
-              {onPitchIds.map((id) => {
-                const player = players.find((p) => p.id === id);
-                const isSelected = subOutId === id;
-                return (
-                  <TouchableOpacity
-                    key={id}
-                    style={[styles.modalPlayerOption, isSelected && styles.modalPlayerOptionActive]}
-                    onPress={() => setSubOutId(id)}
-                  >
-                    <Text style={[styles.modalPlayerOptionText, isSelected && styles.modalPlayerOptionTextActive]}>
-                      ⬇️ {player?.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <Text style={styles.inputLabel}>Wchodzi z ławki:</Text>
-            <ScrollView style={styles.modalPlayerList}>
-              {benchIds.map((id) => {
-                const player = players.find((p) => p.id === id);
-                const isSelected = subInId === id;
-                return (
-                  <TouchableOpacity
-                    key={id}
-                    style={[styles.modalPlayerOption, isSelected && styles.modalPlayerOptionActive]}
-                    onPress={() => setSubInId(id)}
-                  >
-                    <Text style={[styles.modalPlayerOptionText, isSelected && styles.modalPlayerOptionTextActive]}>
-                      ⬆️ {player?.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalType(null)}>
-                <Text style={styles.cancelBtnText}>Anuluj</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveSub}>
-                <Text style={styles.saveBtnText}>Wykonaj Zmianę</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f1f5f9',
-  },
-  scoreboardCard: {
-    backgroundColor: '#0f172a',
-    padding: 16,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-  },
-  teamsRow: {
+  container: { flex: 1, backgroundColor: '#f3f4f6' },
+  header: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
   },
-  teamBox: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  teamName: {
-    color: '#94a3b8',
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  scoreText: {
-    color: '#ffffff',
-    fontSize: 32,
-    fontWeight: 'bold',
-  },
-  timerCenterBox: {
-    alignItems: 'center',
-    flex: 1.2,
-  },
-  halfText: {
-    color: '#38bdf8',
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  timerText: {
-    color: '#ffffff',
-    fontSize: 26,
-    fontWeight: 'bold',
-    fontFamily: 'monospace',
-    marginVertical: 2,
-  },
-  timerControls: {
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
+  headerSubtitle: { fontSize: 12, color: '#6b7280', marginTop: 2 },
+  timerBox: {
     flexDirection: 'row',
-    marginTop: 4,
-  },
-  timerBtn: {
-    backgroundColor: '#2563eb',
-    paddingHorizontal: 12,
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 6,
-    marginHorizontal: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
   },
-  resetBtn: {
-    backgroundColor: '#475569',
-  },
-  actionButtonsRow: {
+  timerText: { fontSize: 16, fontWeight: 'bold', color: '#1d4ed8', marginRight: 8 },
+  timerBtn: { backgroundColor: '#2563eb', padding: 6, borderRadius: 6 },
+  content: { flex: 1, padding: 16 },
+  sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 16,
+    alignItems: 'center',
+    marginBottom: 8,
   },
-  actionBtn: {
+  sectionTitle: { fontSize: 15, fontWeight: 'bold', color: '#1f2937' },
+  actionAddBtn: {
+    backgroundColor: '#2563eb',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 8,
-    borderRadius: 8,
-    flex: 1,
-    justifyContent: 'center',
-    marginHorizontal: 2,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
-  actionBtnText: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontWeight: 'bold',
-    marginLeft: 4,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#0f172a',
-    marginLeft: 8,
-  },
+  actionAddBtnText: { color: '#fff', fontSize: 11, fontWeight: 'bold', marginLeft: 4 },
   pitchCard: {
-    backgroundColor: '#15803d',
+    backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 12,
-    borderWidth: 2,
-    borderColor: '#ffffff',
+    padding: 10,
+    marginBottom: 14,
+    elevation: 2,
   },
-  pitchGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-around',
-  },
-  playerOnPitch: {
-    alignItems: 'center',
-    width: '30%',
-    marginVertical: 8,
-  },
-  numberBadge: {
-    backgroundColor: '#ffffff',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#2563eb',
-  },
-  numberBadgeText: {
-    color: '#0f172a',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  playerNameOnPitch: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  benchScroll: {
-    marginBottom: 8,
-  },
-  benchPlayerChip: {
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-  },
-  benchPlayerText: {
-    fontSize: 13,
-    color: '#334155',
-  },
-  eventsCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  emptyEventsText: {
-    fontSize: 13,
-    color: '#94a3b8',
-    fontStyle: 'italic',
-    textAlign: 'center',
-    paddingVertical: 12,
-  },
-  eventRow: {
+  emptyPitchText: { textAlign: 'center', color: '#9ca3af', padding: 12, fontSize: 13 },
+  playerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: '#f9fafb',
   },
-  eventMinute: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#2563eb',
-    width: 35,
-  },
-  eventDetails: {
-    flex: 1,
-  },
-  eventText: {
-    fontSize: 13,
-    color: '#1e293b',
-  },
-  boldText: {
-    fontWeight: 'bold',
-  },
-  subOutText: {
-    color: '#ef4444',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+  playerNumberBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#dbeafe',
+    borderWidth: 1,
+    borderColor: '#3b82f6',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalContent: {
-    backgroundColor: '#ffffff',
-    width: '90%',
-    maxHeight: '80%',
-    borderRadius: 16,
-    padding: 20,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#0f172a',
-    marginBottom: 12,
-  },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#475569',
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  modalPlayerList: {
-    maxHeight: 100,
-    marginBottom: 8,
-  },
-  modalPlayerOption: {
-    padding: 8,
-    backgroundColor: '#f8fafc',
-    borderRadius: 6,
-    marginBottom: 4,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  modalPlayerOptionActive: {
-    backgroundColor: '#dbeafe',
-    borderColor: '#2563eb',
-  },
-  modalPlayerOptionText: {
-    fontSize: 13,
-    color: '#334155',
-  },
-  modalPlayerOptionTextActive: {
-    color: '#1d4ed8',
-    fontWeight: 'bold',
-  },
-  cardTypeToggle: {
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  cardTypeBtn: {
+  playerNumberText: { fontSize: 11, fontWeight: 'bold', color: '#1d4ed8' },
+  playerName: { fontSize: 14, fontWeight: 'bold', color: '#1f2937' },
+  playerMeta: { fontSize: 11, color: '#6b7280' },
+  removeBtn: { padding: 6 },
+  modalOverlay: {
     flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 6,
-    marginHorizontal: 4,
-    backgroundColor: '#94a3b8',
-  },
-  cardTypeBtnText: {
-    color: '#ffffff',
-    fontWeight: 'bold',
-  },
-  modalButtons: {
-    flexDirection: 'row',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
-    marginTop: 16,
   },
-  cancelBtn: {
-    backgroundColor: '#e2e8f0',
-    paddingHorizontal: 16,
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  modalTitle: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
+  modalPlayerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 10,
-    borderRadius: 8,
-    marginRight: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
   },
-  cancelBtnText: {
-    color: '#475569',
-    fontWeight: '600',
+  avatarMini: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#e5e7eb',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  saveBtn: {
-    backgroundColor: '#2563eb',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  saveBtnText: {
-    color: '#ffffff',
-    fontWeight: '600',
-  },
+  avatarMiniText: { fontSize: 12, fontWeight: 'bold', color: '#374151' },
 });

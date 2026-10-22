@@ -7,462 +7,674 @@ import {
   ScrollView,
   Modal,
   TextInput,
+  Linking,
   Alert,
   Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { useTeamStore } from './store/useTeamStore';
+
+type EventType = 'mecz' | 'trening' | 'sparing' | 'inne';
+type RSVPStatus = 'present' | 'absent' | 'late' | 'none';
+type CalendarViewMode = 'month' | 'week' | 'list';
 
 interface EventItem {
   id: string;
   title: string;
-  date: string; // YYYY-MM-DD
-  time: string; // HH:MM
-  type: 'TRENING' | 'MECZ LIGOWY' | 'SPARING' | 'INNE';
-  location?: string;
-  callups: string[]; // Identyfikatory powołanych zawodników
-  attendance: { [playerId: string]: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' };
+  type: EventType;
+  date: string; // Format YYYY-MM-DD
+  startTime: string; // HH:mm
+  endTime: string; // HH:mm
+  meetTime?: string; // HH:mm (Zbiórka)
+  meetLocation?: string; // Miejsce zbiórki
+  location: string; // Miejsce meczu/treningu
+  locationAddress?: string; // Adres do Google Maps
+  team: string;
+  equipment?: string; // np. Stroje czerwone, ochraniacze
+  description?: string;
+  userRsvp?: RSVPStatus;
 }
 
 export default function KalendarzScreen() {
-  const router = useRouter();
-  const { players } = useTeamStore();
-
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [filter, setFilter] = useState<string>('WSZYSTKIE');
-  const [viewMode, setViewMode] = useState<'month' | 'list'>('month');
-
-  // Przykładowe/początkowe wydarzenia
+  const [viewMode, setViewMode] = useState<CalendarViewMode>('month');
+  const [selectedDate, setSelectedDate] = useState<string>('2026-10-22');
+  
+  // Przykładowe wydarzenia
   const [events, setEvents] = useState<EventItem[]>([
     {
       id: '1',
-      title: 'Mecz Wyjazdowy z Orłami',
-      date: '2026-10-20',
-      time: '13:00',
-      type: 'MECZ LIGOWY',
-      location: 'Stadion Miejski',
-      callups: [],
-      attendance: {},
+      title: 'Mecz Ligowy vs Warta Sieradz',
+      type: 'mecz',
+      date: '2026-10-24',
+      startTime: '11:00',
+      endTime: '13:00',
+      meetTime: '09:30',
+      meetLocation: 'Parking klubowy (Wyjazd busem)',
+      location: 'Stadion Miejski w Sieradzu',
+      locationAddress: 'Sportowa 1, Sieradz',
+      team: 'Młodzik A1',
+      equipment: 'Komplet czerwony, ochraniacze, legitymacja',
+      description: 'Zbiórka punktualnie. Jedziemy wspólnie busem klubowym.',
+      userRsvp: 'present',
+    },
+    {
+      id: '2',
+      title: 'Trening Taktyczny',
+      type: 'trening',
+      date: '2026-10-22',
+      startTime: '17:00',
+      endTime: '18:30',
+      meetTime: '16:45',
+      meetLocation: 'Szatnia nr 4',
+      location: 'Boisko Sztuczne Orlik',
+      locationAddress: 'Polna 12, Wieluń',
+      team: 'Młodzik A1',
+      equipment: 'Obuwie na sztuczną trawę, roler',
+      description: 'Skupienie na stałych fragmentach gry.',
+      userRsvp: 'none',
+    },
+    {
+      id: '3',
+      title: 'Sparing Wewnętrzny',
+      type: 'sparing',
+      date: '2026-10-28',
+      startTime: '16:30',
+      endTime: '18:00',
+      meetTime: '16:15',
+      meetLocation: 'Boisko główne',
+      location: 'Stadion Główny',
+      locationAddress: 'Częstochowska 15, Wieluń',
+      team: 'Młodzik A1',
+      equipment: 'Stroje czarne',
+      userRsvp: 'none',
     },
   ]);
 
-  // Stany dla modala dodawania nowego wydarzenia
-  const [addModalVisible, setAddModalVisible] = useState(false);
-  const [eventTitle, setEventTitle] = useState('');
-  const [eventType, setEventType] = useState<'TRENING' | 'MECZ LIGOWY' | 'SPARING' | 'INNE'>('TRENING');
-  const [eventLocation, setEventLocation] = useState('');
+  // Modal dodawania nowego wydarzenia
+  const [modalVisible, setModalVisible] = useState(false);
+  
+  // Formularz nowego wydarzenia
+  const [newTitle, setNewTitle] = useState('');
+  const [newType, setNewType] = useState<EventType>('trening');
+  const [newDate, setNewDate] = useState(selectedDate);
+  const [newStartTime, setNewStartTime] = useState('17:00');
+  const [newEndTime, setNewEndTime] = useState('18:30');
+  const [newMeetTime, setNewMeetTime] = useState('16:45');
+  const [newMeetLocation, setNewMeetLocation] = useState('');
+  const [newLocation, setNewLocation] = useState('');
+  const [newLocationAddress, setNewLocationAddress] = useState('');
+  const [newTeam, setNewTeam] = useState('Młodzik A1');
+  const [newEquipment, setNewEquipment] = useState('');
+  const [newDescription, setNewDescription] = useState('');
 
-  // Stany dla wyboru daty i godziny za pomocą ROLKI (DateTimePicker)
-  const [selectedDateTime, setSelectedDateTime] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  // Nawigacja w Google Maps
+  const openGoogleMaps = (address: string) => {
+    if (!address) {
+      Alert.alert('Brak adresu', 'Lokalizacja nie posiada zapisanego adresu do nawigacji.');
+      return;
+    }
+    const encodedAddress = encodeURIComponent(address);
+    const url = Platform.select({
+      ios: `maps://app?daddr=${encodedAddress}`,
+      android: `google.navigation:q=${encodedAddress}`,
+      default: `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`,
+    });
 
-  // Stany dla modala szczegółów / obecności / powołań
-  const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
-  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
-  const [activeTab, setActiveTab] = useState<'DETAILS' | 'CALLUPS' | 'ATTENDANCE'>('DETAILS');
-
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const today = new Date();
-
-  const monthNames = [
-    'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
-    'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień',
-  ];
-
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDayOfMonth = new Date(year, month, 1).getDay();
-  const startOffset = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
-
-  const changeMonth = (direction: number) => {
-    setCurrentDate(new Date(year, month + direction, 1));
+    Linking.openURL(url as string).catch(() => {
+      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`);
+    });
   };
 
-  const handleAddEvent = () => {
-    if (!eventTitle.trim()) {
-      Alert.alert('Błąd', 'Wpisz tytuł wydarzenia.');
+  // Dodawanie z konkretnego dnia
+  const handleDayPress = (dayStr: string) => {
+    setSelectedDate(dayStr);
+  };
+
+  const handleOpenAddModal = (initialDate?: string) => {
+    setNewDate(initialDate || selectedDate);
+    setNewTitle('');
+    setNewType('trening');
+    setNewStartTime('17:00');
+    setNewEndTime('18:30');
+    setNewMeetTime('16:45');
+    setNewMeetLocation('');
+    setNewLocation('');
+    setNewLocationAddress('');
+    setNewEquipment('');
+    setNewDescription('');
+    setModalVisible(true);
+  };
+
+  const handleSaveEvent = () => {
+    if (!newTitle.trim()) {
+      Alert.alert('Błąd', 'Podaj nazwę wydarzenia.');
       return;
     }
 
-    const formattedDate = selectedDateTime.toISOString().split('T')[0];
-    const formattedTime = selectedDateTime.toTimeString().substring(0, 5);
-
-    const newEv: EventItem = {
+    const createdEvent: EventItem = {
       id: Date.now().toString(),
-      title: eventTitle,
-      date: formattedDate,
-      time: formattedTime,
-      type: eventType,
-      location: eventLocation,
-      callups: [],
-      attendance: {},
+      title: newTitle.trim(),
+      type: newType,
+      date: newDate,
+      startTime: newStartTime,
+      endTime: newEndTime,
+      meetTime: newMeetTime || undefined,
+      meetLocation: newMeetLocation || undefined,
+      location: newLocation || 'Boisko klubowe',
+      locationAddress: newLocationAddress || newLocation,
+      team: newTeam,
+      equipment: newEquipment || undefined,
+      description: newDescription || undefined,
+      userRsvp: 'none',
     };
 
-    setEvents([...events, newEv]);
-    setAddModalVisible(false);
-    setEventTitle('');
-    setEventLocation('');
+    setEvents([createdEvent, ...events]);
+    setModalVisible(false);
   };
 
-  const toggleCallup = (playerId: string) => {
-    if (!selectedEvent) return;
-    const isCallup = selectedEvent.callups.includes(playerId);
-    const updatedCallups = isCallup
-      ? selectedEvent.callups.filter((id) => id !== playerId)
-      : [...selectedEvent.callups, playerId];
-
-    const updatedEvent = { ...selectedEvent, callups: updatedCallups };
-    setSelectedEvent(updatedEvent);
-    setEvents(events.map((ev) => (ev.id === updatedEvent.id ? updatedEvent : ev)));
+  const handleRsvp = (eventId: string, status: RSVPStatus) => {
+    setEvents(
+      events.map((ev) => (ev.id === eventId ? { ...ev, userRsvp: status } : ev))
+    );
   };
 
-  const setPlayerAttendance = (playerId: string, status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED') => {
-    if (!selectedEvent) return;
-    const updatedAttendance = { ...selectedEvent.attendance, [playerId]: status };
-    const updatedEvent = { ...selectedEvent, attendance: updatedAttendance };
-    setSelectedEvent(updatedEvent);
-    setEvents(events.map((ev) => (ev.id === updatedEvent.id ? updatedEvent : ev)));
-  };
-
-  const filteredEvents = events.filter((ev) => {
-    if (filter === 'WSZYSTKIE') return true;
-    return ev.type === filter;
-  });
-
-  const renderDays = () => {
-    const days = [];
-    for (let i = 0; i < startOffset; i++) {
-      days.push(<View key={`empty-${i}`} style={styles.emptyDayCell} />);
+  const getTypeColor = (type: EventType) => {
+    switch (type) {
+      case 'mecz':
+        return '#ef4444';
+      case 'trening':
+        return '#2563eb';
+      case 'sparing':
+        return '#f59e0b';
+      case 'inne':
+        return '#10b981';
     }
-
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dayDateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      
-      const isToday =
-        day === today.getDate() &&
-        month === today.getMonth() &&
-        year === today.getFullYear();
-
-      const dayEvents = filteredEvents.filter((e) => e.date === dayDateString);
-
-      days.push(
-        <TouchableOpacity
-          key={day}
-          style={[styles.dayCell, isToday && styles.todayCell]}
-          onPress={() => {
-            if (dayEvents.length > 0) {
-              setSelectedEvent(dayEvents[0]);
-              setActiveTab('DETAILS');
-              setDetailsModalVisible(true);
-            }
-          }}
-        >
-          <Text style={[styles.dayNumber, isToday && styles.todayNumber]}>
-            {day}
-          </Text>
-          {dayEvents.map((ev) => (
-            <View key={ev.id} style={styles.eventBadge}>
-              <Text style={styles.eventBadgeText} numberOfLines={1}>
-                {ev.title}
-              </Text>
-            </View>
-          ))}
-        </TouchableOpacity>
-      );
-    }
-
-    return days;
   };
+
+  const getTypeLabel = (type: EventType) => {
+    switch (type) {
+      case 'mecz':
+        return 'Mecz Ligowy';
+      case 'trening':
+        return 'Trening';
+      case 'sparing':
+        return 'Sparing';
+      case 'inne':
+        return 'Wydarzenie';
+    }
+  };
+
+  // Filtrowanie wydarzeń dla wybranego dnia
+  const selectedDayEvents = events.filter((e) => e.date === selectedDate);
 
   return (
     <View style={styles.container}>
-      {/* Nagłówek Górny */}
+      {/* NAGŁÓWEK ORAZ PRZEŁĄCZNIK WIDOKÓW */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.push('/')}>
-          <Ionicons name="arrow-back" size={18} color="#2f81f7" />
-          <Text style={styles.backBtnText}>Strona główna</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.addBtn} onPress={() => setAddModalVisible(true)}>
-          <Ionicons name="add" size={20} color="#fff" />
-          <Text style={styles.addBtnText}>Wydarzenie</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Nawigacja Miesiąca */}
-      <View style={styles.monthHeader}>
-        <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.navBtn}>
-          <Ionicons name="chevron-back" size={22} color="#8b949e" />
-        </TouchableOpacity>
-        <Text style={styles.monthTitle}>
-          {monthNames[month]} {year}
-        </Text>
-        <TouchableOpacity onPress={() => changeMonth(1)} style={styles.navBtn}>
-          <Ionicons name="chevron-forward" size={22} color="#8b949e" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Filtry Typów Wydarzeń */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterBar}>
-        {['WSZYSTKIE', 'TRENING', 'MECZ LIGOWY', 'SPARING'].map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.filterChip, filter === f && styles.activeFilterChip]}
-            onPress={() => setFilter(f)}
-          >
-            <Text style={[styles.filterChipText, filter === f && styles.activeFilterChipText]}>
-              {f}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      {/* Przełącznik Widoku (Miesiąc / Lista) */}
-      <View style={styles.viewToggleRow}>
+        <Text style={styles.headerTitle}>Kalendarz Drużyny</Text>
         <TouchableOpacity
-          style={[styles.toggleBtn, viewMode === 'month' && styles.activeToggleBtn]}
+          style={styles.addBtnHeader}
+          onPress={() => handleOpenAddModal(selectedDate)}
+        >
+          <Ionicons name="add-circle" size={28} color="#2563eb" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.viewModeToggle}>
+        <TouchableOpacity
+          style={[
+            styles.toggleBtn,
+            viewMode === 'month' && styles.toggleBtnActive,
+          ]}
           onPress={() => setViewMode('month')}
         >
-          <Ionicons name="calendar-outline" size={16} color={viewMode === 'month' ? '#fff' : '#8b949e'} />
-          <Text style={[styles.toggleBtnText, viewMode === 'month' && styles.activeToggleBtnText]}>Miesiąc</Text>
+          <Text
+            style={[
+              styles.toggleBtnText,
+              viewMode === 'month' && styles.toggleBtnTextActive,
+            ]}
+          >
+            Miesiąc
+          </Text>
         </TouchableOpacity>
+
         <TouchableOpacity
-          style={[styles.toggleBtn, viewMode === 'list' && styles.activeToggleBtn]}
+          style={[
+            styles.toggleBtn,
+            viewMode === 'week' && styles.toggleBtnActive,
+          ]}
+          onPress={() => setViewMode('week')}
+        >
+          <Text
+            style={[
+              styles.toggleBtnText,
+              viewMode === 'week' && styles.toggleBtnTextActive,
+            ]}
+          >
+            Tydzień
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.toggleBtn,
+            viewMode === 'list' && styles.toggleBtnActive,
+          ]}
           onPress={() => setViewMode('list')}
         >
-          <Ionicons name="list-outline" size={16} color={viewMode === 'list' ? '#fff' : '#8b949e'} />
-          <Text style={[styles.toggleBtnText, viewMode === 'list' && styles.activeToggleBtnText]}>Lista</Text>
+          <Text
+            style={[
+              styles.toggleBtnText,
+              viewMode === 'list' && styles.toggleBtnTextActive,
+            ]}
+          >
+            Lista
+          </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Główna Zawartość: Kalendarz lub Lista */}
-      {viewMode === 'month' ? (
-        <View style={{ flex: 1 }}>
-          <View style={styles.weekDaysRow}>
-            {['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sob', 'Nd'].map((d, index) => (
-              <Text key={index} style={styles.weekDayText}>{d}</Text>
-            ))}
-          </View>
-          <ScrollView contentContainerStyle={styles.calendarGrid}>
-            {renderDays()}
-          </ScrollView>
-        </View>
-      ) : (
-        <ScrollView style={{ flex: 1, marginTop: 10 }}>
-          {filteredEvents.map((ev) => (
-            <TouchableOpacity
-              key={ev.id}
-              style={styles.listItemCard}
-              onPress={() => {
-                setSelectedEvent(ev);
-                setActiveTab('DETAILS');
-                setDetailsModalVisible(true);
-              }}
-            >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                <Text style={styles.listItemTitle}>{ev.title}</Text>
-                <Text style={styles.listItemBadge}>{ev.type}</Text>
-              </View>
-              <Text style={styles.listItemSub}>📅 {ev.date} o godz. {ev.time}</Text>
-              {ev.location ? <Text style={styles.listItemSub}>📍 {ev.location}</Text> : null}
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-
-      {/* MODAL: DODAWANIE WYDARZENIA (Z ROLKĄ) */}
-      <Modal visible={addModalVisible} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Nowe Wydarzenie</Text>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Nazwa wydarzenia"
-              placeholderTextColor="#8b949e"
-              value={eventTitle}
-              onChangeText={setEventTitle}
-            />
-
-            {/* Przycisk otwierający Rolkę Daty */}
-            <TouchableOpacity
-              style={styles.pickerButton}
-              onPress={() => setShowDatePicker(true)}
-            >
-              <Ionicons name="calendar-outline" size={20} color="#2f81f7" />
-              <Text style={styles.pickerButtonText}>
-                Data: {selectedDateTime.toISOString().split('T')[0]}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Przycisk otwierający Rolkę Godziny */}
-            <TouchableOpacity
-              style={styles.pickerButton}
-              onPress={() => setShowTimePicker(true)}
-            >
-              <Ionicons name="time-outline" size={20} color="#2f81f7" />
-              <Text style={styles.pickerButtonText}>
-                Godzina: {selectedDateTime.toTimeString().substring(0, 5)}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Natywne Rolki DateTimePicker */}
-            {showDatePicker && (
-              <DateTimePicker
-                value={selectedDateTime}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={(event, date) => {
-                  setShowDatePicker(false);
-                  if (date) setSelectedDateTime(date);
-                }}
-              />
-            )}
-
-            {showTimePicker && (
-              <DateTimePicker
-                value={selectedDateTime}
-                mode="time"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={(event, date) => {
-                  setShowTimePicker(false);
-                  if (date) setSelectedDateTime(date);
-                }}
-              />
-            )}
-
-            <TextInput
-              style={styles.input}
-              placeholder="Lokalizacja (opcjonalnie)"
-              placeholderTextColor="#8b949e"
-              value={eventLocation}
-              onChangeText={setEventLocation}
-            />
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.cancelBtn]}
-                onPress={() => setAddModalVisible(false)}
-              >
-                <Text style={styles.cancelBtnText}>Anuluj</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.saveBtn]}
-                onPress={handleAddEvent}
-              >
-                <Text style={styles.saveBtnText}>Zapisz</Text>
-              </TouchableOpacity>
+      <ScrollView style={styles.content}>
+        {/* WIDOK MIESIĄCA */}
+        {viewMode === 'month' && (
+          <View style={styles.card}>
+            <View style={styles.monthHeader}>
+              <Text style={styles.monthTitle}>Październik 2026</Text>
             </View>
+            <View style={styles.daysGrid}>
+              {['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'].map((d, i) => (
+                <Text key={i} style={styles.dayName}>
+                  {d}
+                </Text>
+              ))}
+              {/* Dni miesiąca (przykładowa siatka) */}
+              {Array.from({ length: 31 }, (_, i) => {
+                const dayNum = i + 1;
+                const dayStr = `2026-10-${dayNum < 10 ? '0' + dayNum : dayNum}`;
+                const isSelected = selectedDate === dayStr;
+                const hasEvent = events.some((e) => e.date === dayStr);
+
+                return (
+                  <TouchableOpacity
+                    key={dayNum}
+                    style={[
+                      styles.dayCell,
+                      isSelected && styles.dayCellSelected,
+                    ]}
+                    onPress={() => handleDayPress(dayStr)}
+                  >
+                    <Text
+                      style={[
+                        styles.dayText,
+                        isSelected && styles.dayTextSelected,
+                      ]}
+                    >
+                      {dayNum}
+                    </Text>
+                    {hasEvent && <View style={styles.eventDot} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <TouchableOpacity
+              style={styles.addDirectBtn}
+              onPress={() => handleOpenAddModal(selectedDate)}
+            >
+              <Ionicons name="calendar-outline" size={18} color="#fff" />
+              <Text style={styles.addDirectBtnText}>
+                Dodaj wydarzenie na {selectedDate}
+              </Text>
+            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        )}
 
-      {/* MODAL: SZCZEGÓŁY / POWOŁANIA / OBECNOŚĆ */}
-      <Modal visible={detailsModalVisible} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: '85%' }]}>
-            {selectedEvent && (
-              <>
-                <Text style={styles.modalTitle}>{selectedEvent.title}</Text>
+        {/* WIDOK TYGODNIA */}
+        {viewMode === 'week' && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Bieżący Tydzień</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.weekRow}>
+                {['2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23', '2026-10-24', '2026-10-25'].map((dayStr) => {
+                  const dayEvents = events.filter((e) => e.date === dayStr);
+                  const isSelected = selectedDate === dayStr;
+                  return (
+                    <TouchableOpacity
+                      key={dayStr}
+                      style={[styles.weekDayCard, isSelected && styles.weekDayCardSelected]}
+                      onPress={() => handleDayPress(dayStr)}
+                    >
+                      <Text style={[styles.weekDayText, isSelected && styles.weekDayTextSelected]}>
+                        {dayStr.slice(8)} Oct
+                      </Text>
+                      <Text style={styles.weekDayCount}>{dayEvents.length} wyd.</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </View>
+        )}
 
-                {/* Zakładki Modala */}
-                <View style={styles.modalTabsRow}>
-                  <TouchableOpacity
-                    style={[styles.modalTab, activeTab === 'DETAILS' && styles.activeModalTab]}
-                    onPress={() => setActiveTab('DETAILS')}
-                  >
-                    <Text style={styles.modalTabText}>Szczegóły</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalTab, activeTab === 'CALLUPS' && styles.activeModalTab]}
-                    onPress={() => setActiveTab('CALLUPS')}
-                  >
-                    <Text style={styles.modalTabText}>Powołania ({selectedEvent.callups.length})</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalTab, activeTab === 'ATTENDANCE' && styles.activeModalTab]}
-                    onPress={() => setActiveTab('ATTENDANCE')}
-                  >
-                    <Text style={styles.modalTabText}>Obecność</Text>
-                  </TouchableOpacity>
+        {/* LISTA WYDARZEŃ DLA WYBRANEGO DNIA LUB WSZYSTKICH */}
+        <Text style={styles.sectionTitle}>
+          {viewMode === 'list'
+            ? 'Wszystkie nadchodzące wydarzenia'
+            : `Wydarzenia w dniu: ${selectedDate}`}
+        </Text>
+
+        {(viewMode === 'list' ? events : selectedDayEvents).length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Ionicons name="calendar-clear-outline" size={40} color="#9ca3af" />
+            <Text style={styles.emptyText}>Brak zaplanowanych wydarzeń</Text>
+          </View>
+        ) : (
+          (viewMode === 'list' ? events : selectedDayEvents).map((item) => (
+            <View key={item.id} style={styles.eventCard}>
+              {/* Pasek kategorii */}
+              <View
+                style={[
+                  styles.eventTypeBar,
+                  { backgroundColor: getTypeColor(item.type) },
+                ]}
+              />
+
+              <View style={styles.eventContent}>
+                <View style={styles.eventHeaderRow}>
+                  <View style={styles.typeBadge}>
+                    <Text
+                      style={[
+                        styles.typeBadgeText,
+                        { color: getTypeColor(item.type) },
+                      ]}
+                    >
+                      {getTypeLabel(item.type)}
+                    </Text>
+                  </View>
+                  <Text style={styles.eventDateText}>
+                    {item.date} | {item.startTime} - {item.endTime}
+                  </Text>
                 </View>
 
-                {/* Zakładka: Szczegóły */}
-                {activeTab === 'DETAILS' && (
-                  <View style={{ paddingVertical: 10 }}>
-                    <Text style={styles.detailText}>📅 Data: {selectedEvent.date}</Text>
-                    <Text style={styles.detailText}>⏰ Godzina: {selectedEvent.time}</Text>
-                    <Text style={styles.detailText}>🏷️ Typ: {selectedEvent.type}</Text>
-                    {selectedEvent.location ? (
-                      <Text style={styles.detailText}>📍 Miejsce: {selectedEvent.location}</Text>
-                    ) : null}
+                <Text style={styles.eventTitle}>{item.title}</Text>
+
+                {/* SEKCJA ZBIÓRKI (Jeśli podana) */}
+                {(item.meetTime || item.meetLocation) && (
+                  <View style={styles.meetBox}>
+                    <View style={styles.rowItem}>
+                      <Ionicons name="alarm-outline" size={18} color="#d97706" />
+                      <Text style={styles.meetTitle}>ZBIÓRKA: </Text>
+                      <Text style={styles.meetTimeText}>
+                        godz. {item.meetTime || 'Do ustalenia'}
+                      </Text>
+                    </View>
+                    {item.meetLocation && (
+                      <View style={[styles.rowItem, { marginTop: 4 }]}>
+                        <Ionicons name="business-outline" size={16} color="#4b5563" />
+                        <Text style={styles.meetLocationText}>
+                          {item.meetLocation}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 )}
 
-                {/* Zakładka: Powołania na Mecz / Trening */}
-                {activeTab === 'CALLUPS' && (
-                  <ScrollView style={{ maxHeight: 300, marginVertical: 10 }}>
-                    {players.map((p: any) => {
-                      const isCalled = selectedEvent.callups.includes(p.id);
-                      return (
-                        <TouchableOpacity
-                          key={p.id}
-                          style={[styles.playerRow, isCalled && styles.playerRowSelected]}
-                          onPress={() => toggleCallup(p.id)}
-                        >
-                          <Text style={styles.playerRowName}>
-                            #{p.number || '-'} {p.name} ({p.position})
-                          </Text>
-                          <Ionicons
-                            name={isCalled ? 'checkbox' : 'square-outline'}
-                            size={22}
-                            color={isCalled ? '#238636' : '#8b949e'}
-                          />
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
+                {/* SEKCJA LOKALIZACJI + GOOGLE MAPS */}
+                <View style={styles.locationContainer}>
+                  <View style={styles.rowItemFlex}>
+                    <Ionicons name="location" size={18} color="#ef4444" />
+                    <Text style={styles.locationText}>{item.location}</Text>
+                  </View>
+                  {item.locationAddress && (
+                    <TouchableOpacity
+                      style={styles.navBtn}
+                      onPress={() => openGoogleMaps(item.locationAddress!)}
+                    >
+                      <Ionicons name="navigate" size={14} color="#fff" />
+                      <Text style={styles.navBtnText}>Nawiguj</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* SPRZĘT / STROJE */}
+                {item.equipment && (
+                  <View style={styles.rowItem}>
+                    <Ionicons name="shirt-outline" size={16} color="#6b7280" />
+                    <Text style={styles.detailText}>
+                      Sprzęt: {item.equipment}
+                    </Text>
+                  </View>
                 )}
 
-                {/* Zakładka: Lista Obecności */}
-                {activeTab === 'ATTENDANCE' && (
-                  <ScrollView style={{ maxHeight: 300, marginVertical: 10 }}>
-                    {players.map((p: any) => {
-                      const status = selectedEvent.attendance[p.id] || 'ABSENT';
-                      return (
-                        <View key={p.id} style={styles.attendanceRow}>
-                          <Text style={styles.playerRowName}>#{p.number || '-'} {p.name}</Text>
-                          <View style={{ flexDirection: 'row' }}>
-                            <TouchableOpacity
-                              style={[styles.attBtn, status === 'PRESENT' && styles.attBtnPresent]}
-                              onPress={() => setPlayerAttendance(p.id, 'PRESENT')}
-                            >
-                              <Text style={styles.attBtnText}>Obecny</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={[styles.attBtn, status === 'ABSENT' && styles.attBtnAbsent]}
-                              onPress={() => setPlayerAttendance(p.id, 'ABSENT')}
-                            >
-                              <Text style={styles.attBtnText}>Nieobecny</Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </ScrollView>
+                {/* OPIS */}
+                {item.description && (
+                  <Text style={styles.descriptionText}>{item.description}</Text>
                 )}
 
-                <TouchableOpacity
-                  style={[styles.modalBtn, styles.cancelBtn, { marginTop: 15, alignSelf: 'flex-end' }]}
-                  onPress={() => setDetailsModalVisible(false)}
-                >
-                  <Text style={styles.cancelBtnText}>Zamknij</Text>
+                {/* POTWIERDZENIE OBECNOŚCI (RSVP) */}
+                <View style={styles.rsvpSection}>
+                  <Text style={styles.rsvpLabel}>Obecność:</Text>
+                  <View style={styles.rsvpButtons}>
+                    <TouchableOpacity
+                      style={[
+                        styles.rsvpBtn,
+                        item.userRsvp === 'present' && styles.rsvpBtnPresent,
+                      ]}
+                      onPress={() => handleRsvp(item.id, 'present')}
+                    >
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={16}
+                        color={item.userRsvp === 'present' ? '#fff' : '#10b981'}
+                      />
+                      <Text
+                        style={[
+                          styles.rsvpBtnText,
+                          item.userRsvp === 'present' && styles.rsvpBtnTextActive,
+                        ]}
+                      >
+                        Będę
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.rsvpBtn,
+                        item.userRsvp === 'late' && styles.rsvpBtnLate,
+                      ]}
+                      onPress={() => handleRsvp(item.id, 'late')}
+                    >
+                      <Ionicons
+                        name="time"
+                        size={16}
+                        color={item.userRsvp === 'late' ? '#fff' : '#f59e0b'}
+                      />
+                      <Text
+                        style={[
+                          styles.rsvpBtnText,
+                          item.userRsvp === 'late' && styles.rsvpBtnTextActive,
+                        ]}
+                      >
+                        Spóźnię się
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.rsvpBtn,
+                        item.userRsvp === 'absent' && styles.rsvpBtnAbsent,
+                      ]}
+                      onPress={() => handleRsvp(item.id, 'absent')}
+                    >
+                      <Ionicons
+                        name="close-circle"
+                        size={16}
+                        color={item.userRsvp === 'absent' ? '#fff' : '#ef4444'}
+                      />
+                      <Text
+                        style={[
+                          styles.rsvpBtnText,
+                          item.userRsvp === 'absent' && styles.rsvpBtnTextActive,
+                        ]}
+                      >
+                        Nie będę
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </View>
+          ))
+        )}
+      </ScrollView>
+
+      {/* MODAL DODAWANIA NOWEGO WYDARZENIA */}
+      <Modal visible={modalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Nowe Wydarzenie</Text>
+                <TouchableOpacity onPress={() => setModalVisible(false)}>
+                  <Ionicons name="close" size={24} color="#374151" />
                 </TouchableOpacity>
-              </>
-            )}
+              </View>
+
+              <Text style={styles.inputLabel}>Nazwa wydarzenia *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="np. Mecz Ligowy vs Raków"
+                value={newTitle}
+                onChangeText={setNewTitle}
+              />
+
+              <Text style={styles.inputLabel}>Typ wydarzenia</Text>
+              <View style={styles.typeSelector}>
+                {(['trening', 'mecz', 'sparing', 'inne'] as EventType[]).map(
+                  (t) => (
+                    <TouchableOpacity
+                      key={t}
+                      style={[
+                        styles.typeSelectBtn,
+                        newType === t && {
+                          backgroundColor: getTypeColor(t),
+                        },
+                      ]}
+                      onPress={() => setNewType(t)}
+                    >
+                      <Text
+                        style={[
+                          styles.typeSelectText,
+                          newType === t && styles.typeSelectTextActive,
+                        ]}
+                      >
+                        {getTypeLabel(t)}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                )}
+              </View>
+
+              <View style={styles.rowInputs}>
+                <View style={{ flex: 1, marginRight: 6 }}>
+                  <Text style={styles.inputLabel}>Data (YYYY-MM-DD)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={newDate}
+                    onChangeText={setNewDate}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: 6 }}>
+                  <Text style={styles.inputLabel}>Drużyna</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={newTeam}
+                    onChangeText={setNewTeam}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.rowInputs}>
+                <View style={{ flex: 1, marginRight: 6 }}>
+                  <Text style={styles.inputLabel}>Godz. rozpoczęcia</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={newStartTime}
+                    onChangeText={setNewStartTime}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: 6 }}>
+                  <Text style={styles.inputLabel}>Godz. zakończenia</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={newEndTime}
+                    onChangeText={setNewEndTime}
+                  />
+                </View>
+              </View>
+
+              {/* SEKCJA ZBIÓRKI W MODALU */}
+              <View style={styles.modalSectionBox}>
+                <Text style={styles.modalSectionTitle}>📍 Zbiórka</Text>
+                <View style={styles.rowInputs}>
+                  <View style={{ flex: 1, marginRight: 6 }}>
+                    <Text style={styles.inputLabel}>Godzina zbiórki</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="np. 16:15"
+                      value={newMeetTime}
+                      onChangeText={setNewMeetTime}
+                    />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 6 }}>
+                    <Text style={styles.inputLabel}>Miejsce zbiórki</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="np. Szatnia nr 2"
+                      value={newMeetLocation}
+                      onChangeText={setNewMeetLocation}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <Text style={styles.inputLabel}>Miejsce wydarzenia / Boisko</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="np. Stadion Główny"
+                value={newLocation}
+                onChangeText={setNewLocation}
+              />
+
+              <Text style={styles.inputLabel}>Adres do Google Maps</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="np. Sportowa 1, Wieluń"
+                value={newLocationAddress}
+                onChangeText={setNewLocationAddress}
+              />
+
+              <Text style={styles.inputLabel}>Wymagany sprzęt / Stroje</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="np. Czerwone koszulki, ochraniacze"
+                value={newEquipment}
+                onChangeText={setNewEquipment}
+              />
+
+              <Text style={styles.inputLabel}>Dodatkowe uwagi</Text>
+              <TextInput
+                style={[styles.input, { height: 60 }]}
+                placeholder="Uwagi dla rodziców i zawodników..."
+                multiline
+                value={newDescription}
+                onChangeText={setNewDescription}
+              />
+
+              <TouchableOpacity
+                style={styles.saveBtn}
+                onPress={handleSaveEvent}
+              >
+                <Text style={styles.saveBtnText}>Zapisz Wydarzenie</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -473,329 +685,420 @@ export default function KalendarzScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0d1117',
-    paddingTop: 45,
-    paddingHorizontal: 12,
+    backgroundColor: '#f3f4f6',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  backBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#161b22',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#30363d',
-  },
-  backBtnText: {
-    color: '#2f81f7',
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#238636',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  addBtnText: {
-    color: '#fff',
-    fontWeight: '600',
-    marginLeft: 4,
-  },
-  monthHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#161b22',
-    paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#30363d',
-    marginBottom: 8,
+    paddingTop: 16,
+    paddingBottom: 8,
+    backgroundColor: '#fff',
   },
-  monthTitle: {
-    color: '#c9d1d9',
-    fontSize: 16,
-    fontWeight: '700',
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#1f2937',
   },
-  navBtn: {
+  addBtnHeader: {
     padding: 4,
   },
-  filterBar: {
-    maxHeight: 40,
-    marginBottom: 10,
-  },
-  filterChip: {
-    backgroundColor: '#161b22',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#30363d',
-    marginRight: 8,
-  },
-  activeFilterChip: {
-    backgroundColor: '#1f6beb',
-    borderColor: '#388bfd',
-  },
-  filterChipText: {
-    color: '#8b949e',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  activeFilterChipText: {
-    color: '#fff',
-  },
-  viewToggleRow: {
+  viewModeToggle: {
     flexDirection: 'row',
-    backgroundColor: '#161b22',
-    borderRadius: 8,
-    padding: 3,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#30363d',
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
   },
   toggleBtn: {
     flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
+    paddingVertical: 8,
     alignItems: 'center',
-    paddingVertical: 6,
-    borderRadius: 6,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    marginHorizontal: 3,
   },
-  activeToggleBtn: {
-    backgroundColor: '#21262d',
+  toggleBtnActive: {
+    backgroundColor: '#2563eb',
   },
   toggleBtnText: {
-    color: '#8b949e',
-    fontSize: 12,
-    marginLeft: 6,
+    fontSize: 13,
     fontWeight: '600',
+    color: '#4b5563',
   },
-  activeToggleBtnText: {
+  toggleBtnTextActive: {
     color: '#fff',
   },
-  weekDaysRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-    paddingHorizontal: 4,
+  content: {
+    flex: 1,
+    padding: 16,
   },
-  weekDayText: {
-    color: '#8b949e',
-    width: '13%',
-    textAlign: 'center',
-    fontWeight: '600',
-    fontSize: 12,
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
   },
-  calendarGrid: {
+  monthHeader: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  monthTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  daysGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
-  dayCell: {
-    width: '14%',
-    height: 75,
-    backgroundColor: '#161b22',
-    borderWidth: 1,
-    borderColor: '#21262d',
-    padding: 2,
-  },
-  emptyDayCell: {
-    width: '14%',
-    height: 75,
-    backgroundColor: '#0d1117',
-  },
-  todayCell: {
-    borderColor: '#2f81f7',
-    borderWidth: 2,
-    backgroundColor: '#1c2128',
-  },
-  dayNumber: {
-    color: '#c9d1d9',
+  dayName: {
+    width: '14.28%',
+    textAlign: 'center',
+    fontWeight: 'bold',
+    color: '#6b7280',
+    marginBottom: 8,
     fontSize: 12,
-    fontWeight: '600',
-    margin: 2,
   },
-  todayNumber: {
-    color: '#58a6ff',
-    fontWeight: '700',
+  dayCell: {
+    width: '14.28%',
+    height: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 6,
+    marginVertical: 2,
   },
-  eventBadge: {
-    backgroundColor: '#1f6beb',
-    borderRadius: 3,
-    paddingHorizontal: 2,
-    paddingVertical: 1,
+  dayCellSelected: {
+    backgroundColor: '#2563eb',
+  },
+  dayText: {
+    fontSize: 13,
+    color: '#1f2937',
+  },
+  dayTextSelected: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  eventDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#ef4444',
     marginTop: 2,
   },
-  eventBadgeText: {
-    color: '#fff',
-    fontSize: 9,
-  },
-  listItemCard: {
-    backgroundColor: '#161b22',
+  addDirectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#10b981',
+    paddingVertical: 10,
     borderRadius: 8,
+    marginTop: 12,
+  },
+  addDirectBtnText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    marginLeft: 6,
+    fontSize: 13,
+  },
+  weekRow: {
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  weekDayCard: {
+    backgroundColor: '#f3f4f6',
     padding: 12,
+    borderRadius: 8,
+    marginRight: 8,
+    alignItems: 'center',
+    width: 80,
+  },
+  weekDayCardSelected: {
+    backgroundColor: '#2563eb',
+  },
+  weekDayText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#374151',
+  },
+  weekDayTextSelected: {
+    color: '#fff',
+  },
+  weekDayCount: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 12,
+  },
+  emptyCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: '#9ca3af',
+    marginTop: 8,
+  },
+  eventCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 14,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    elevation: 2,
+  },
+  eventTypeBar: {
+    width: 6,
+  },
+  eventContent: {
+    flex: 1,
+    padding: 12,
+  },
+  eventHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  typeBadge: {
+    backgroundColor: '#f3f4f6',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  typeBadgeText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  eventDateText: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  eventTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginVertical: 6,
+  },
+  meetBox: {
+    backgroundColor: '#fffbeb',
+    padding: 8,
+    borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#30363d',
-    marginBottom: 10,
+    borderColor: '#fef3c7',
+    marginVertical: 6,
   },
-  listItemTitle: {
-    color: '#c9d1d9',
-    fontSize: 15,
-    fontWeight: '700',
+  rowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  listItemBadge: {
-    color: '#58a6ff',
+  meetTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#d97706',
+    marginLeft: 4,
+  },
+  meetTimeText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#b45309',
+  },
+  meetLocationText: {
+    fontSize: 12,
+    color: '#4b5563',
+    marginLeft: 6,
+  },
+  locationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: 6,
+  },
+  rowItemFlex: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  locationText: {
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  navBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2563eb',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  navBtnText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginLeft: 4,
+  },
+  detailText: {
+    fontSize: 12,
+    color: '#4b5563',
+    marginLeft: 6,
+  },
+  descriptionText: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontStyle: 'italic',
+    marginTop: 6,
+  },
+  rsvpSection: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+  },
+  rsvpLabel: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#374151',
+    marginBottom: 6,
+  },
+  rsvpButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  rsvpBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    flex: 1,
+    marginHorizontal: 2,
+  },
+  rsvpBtnPresent: {
+    backgroundColor: '#10b981',
+    borderColor: '#10b981',
+  },
+  rsvpBtnLate: {
+    backgroundColor: '#f59e0b',
+    borderColor: '#f59e0b',
+  },
+  rsvpBtnAbsent: {
+    backgroundColor: '#ef4444',
+    borderColor: '#ef4444',
+  },
+  rsvpBtnText: {
     fontSize: 11,
     fontWeight: '600',
+    color: '#4b5563',
+    marginLeft: 4,
   },
-  listItemSub: {
-    color: '#8b949e',
-    fontSize: 12,
-    marginTop: 4,
+  rsvpBtnTextActive: {
+    color: '#fff',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#161b22',
-    borderRadius: 12,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#30363d',
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   modalTitle: {
-    color: '#c9d1d9',
     fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 15,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#374151',
+    marginTop: 8,
+    marginBottom: 4,
   },
   input: {
-    backgroundColor: '#0d1117',
-    color: '#c9d1d9',
+    backgroundColor: '#f9fafb',
     borderWidth: 1,
-    borderColor: '#30363d',
+    borderColor: '#d1d5db',
     borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-  },
-  pickerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0d1117',
-    borderWidth: 1,
-    borderColor: '#30363d',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-  },
-  pickerButtonText: {
-    color: '#c9d1d9',
-    marginLeft: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     fontSize: 14,
   },
-  modalActions: {
+  typeSelector: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 10,
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
-  modalBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+  typeSelectBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 6,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    marginHorizontal: 2,
+  },
+  typeSelectText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#4b5563',
+  },
+  typeSelectTextActive: {
+    color: '#fff',
+  },
+  rowInputs: {
+    flexDirection: 'row',
+  },
+  modalSectionBox: {
+    backgroundColor: '#fefce8',
+    padding: 10,
     borderRadius: 8,
-    marginLeft: 10,
+    borderWidth: 1,
+    borderColor: '#fef08a',
+    marginVertical: 8,
   },
-  cancelBtn: {
-    backgroundColor: '#21262d',
-  },
-  cancelBtnText: {
-    color: '#c9d1d9',
+  modalSectionTitle: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#854d0e',
+    marginBottom: 4,
   },
   saveBtn: {
-    backgroundColor: '#238636',
+    backgroundColor: '#2563eb',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 24,
   },
   saveBtnText: {
     color: '#fff',
-    fontWeight: '600',
-  },
-  modalTabsRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#30363d',
-    marginBottom: 10,
-  },
-  modalTab: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  activeModalTab: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#2f81f7',
-  },
-  modalTabText: {
-    color: '#c9d1d9',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  detailText: {
-    color: '#c9d1d9',
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  playerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#0d1117',
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: '#21262d',
-  },
-  playerRowSelected: {
-    borderColor: '#238636',
-  },
-  playerRowName: {
-    color: '#c9d1d9',
-    fontSize: 13,
-  },
-  attendanceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#21262d',
-  },
-  attBtn: {
-    backgroundColor: '#21262d',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    marginLeft: 6,
-  },
-  attBtnPresent: {
-    backgroundColor: '#238636',
-  },
-  attBtnAbsent: {
-    backgroundColor: '#da3633',
-  },
-  attBtnText: {
-    color: '#fff',
-    fontSize: 11,
+    fontWeight: 'bold',
+    fontSize: 15,
   },
 });
