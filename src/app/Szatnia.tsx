@@ -12,153 +12,108 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { MOCK_100_PLAYERS } from './data/mockPlayers';
 
-type ActiveTab = 'motoryka' | 'zdrowie' | 'notatki';
+type SubTab = 'motoryka' | 'zdrowie' | 'notatki';
 type PositionFilter = 'WSZYSTKIE' | 'Bramkarz' | 'Obrońca' | 'Pomocnik' | 'Napastnik';
 type YearFilter = 'WSZYSTKIE' | '2012' | '2013' | '2014';
 
-interface InjuryRecord {
-  playerId: string;
-  injuryName: string;
-  dateFrom: string;
-  expectedReturn: string;
-  rtpStage: string; // Return To Play
-}
-
-interface MotoricRecord {
-  playerId: string;
-  sprint30m: string; // w sekundach
-  jumpRange: string; // w cm
-  beepTest: string; // poziom
-}
-
 export default function SzatniaScreen() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('motoryka');
-
-  // Filtry
+  const [activeSubTab, setActiveSubTab] = useState<SubTab>('motoryka');
   const [selectedYear, setSelectedYear] = useState<YearFilter>('WSZYSTKIE');
   const [selectedPosition, setSelectedPosition] = useState<PositionFilter>('WSZYSTKIE');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Stany modali
-  const [addInjuryModalVisible, setAddInjuryModalVisible] = useState<boolean>(false);
-  const [addTestModalVisible, setAddTestModalVisible] = useState<boolean>(false);
-  const [selectedPlayerForNote, setSelectedPlayerForNote] = useState<any>(null);
+  // Modale
+  const [testModalVisible, setTestModalVisible] = useState<boolean>(false);
+  const [addPlayerModalVisible, setAddPlayerModalVisible] = useState<boolean>(false);
 
-  // Dane testów motorycznych (przykładowe wpisy)
-  const [motoricData, setMotoricData] = useState<{ [playerId: string]: MotoricRecord }>({
-    '1': { playerId: '1', sprint30m: '4.2s', jumpRange: '210cm', beepTest: 'Poziom 11.2' },
-    '2': { playerId: '2', sprint30m: '4.5s', jumpRange: '195cm', beepTest: 'Poziom 9.8' },
-    '3': { playerId: '3', sprint30m: '4.1s', jumpRange: '225cm', beepTest: 'Poziom 12.1' },
+  // Stan dla testu motorycznego
+  const [selectedPlayerForTest, setSelectedPlayerForTest] = useState<any>(null);
+  const [sprintTime, setSprintTime] = useState<string>('4.5');
+  const [jumpDist, setJumpDist] = useState<string>('210');
+  const [beepLevel, setBeepLevel] = useState<string>('8.5');
+
+  // Stan dla nowego zawodnika
+  const [newFirstName, setNewFirstName] = useState<string>('');
+  const [newLastName, setNewLastName] = useState<string>('');
+  const [newYear, setNewYear] = useState<string>('2012');
+  const [newPosition, setNewPosition] = useState<string>('Pomocnik');
+
+  // Stan bazy zawodników
+  const [playersData, setPlayersData] = useState(() => {
+    return MOCK_100_PLAYERS.slice(0, 25).map((p: any, idx: number) => ({
+      ...p,
+      year: p.year || (idx % 2 === 0 ? '2012' : '2013'),
+      position: p.position || (idx % 4 === 0 ? 'Bramkarz' : idx % 3 === 0 ? 'Obrońca' : idx % 2 === 0 ? 'Pomocnik' : 'Napastnik'),
+      sprint30m: (4.2 + (idx * 0.05) % 0.8).toFixed(2),
+      jumpCm: 190 + (idx * 4) % 40,
+      beepTest: `7.${(idx * 3) % 9}`,
+      injuryStatus: idx === 2 ? 'Naciągnięcie mięśnia dwugłowego (RTP: 2 tyg.)' : idx === 5 ? 'Stłuczenie stawu skokowego (RTP: 3 dni)' : 'Zdrowy',
+      coachNote: idx === 1 ? 'Bardzo dobra determinacja w pojedynkach 1v1.' : idx === 3 ? 'Musi poprawić grę słabszą nogą.' : '',
+    }));
   });
 
-  // Dane kontuzji
-  const [injuries, setInjuries] = useState<InjuryRecord[]>([
-    {
-      playerId: '2',
-      injuryName: 'Skręcenie stawu skokowego',
-      dateFrom: '2026-10-10',
-      expectedReturn: '2026-11-01',
-      rtpStage: 'Etap 2: Bieganie proste',
-    },
-    {
-      playerId: '5',
-      injuryName: 'Naciągnięcie mięśnia dwugłowego',
-      dateFrom: '2026-10-18',
-      expectedReturn: '2026-10-28',
-      rtpStage: 'Etap 3: Trening indywidualny z piłką',
-    },
-  ]);
-
-  // Notatki trenerskie
-  const [notes, setNotes] = useState<{ [playerId: string]: string }>({
-    '1': 'Świetny lider na boisku. Popracować nad prawą nogą przy dośrodkowaniach.',
-    '3': 'Wysoka motoryka, duża powtarzalność w sprintach. Dobre nastawienie.',
-  });
-
-  // Formularze
-  const [newInjuryName, setNewInjuryName] = useState('');
-  const [newInjuryReturn, setNewInjuryReturn] = useState('');
-  const [selectedPlayerId, setSelectedPlayerId] = useState('1');
-
-  const [newSprint, setNewSprint] = useState('');
-  const [newJump, setNewJump] = useState('');
-  const [newBeep, setNewBeep] = useState('');
-
-  const [tempNoteText, setTempNoteText] = useState('');
-
-  // Pomocnicza funkcja nazwy
-  const getPlayerName = (player: any) => {
-    if (player.name) return player.name;
-    if (player.firstName || player.lastName) {
-      return `${player.firstName || ''} ${player.lastName || ''}`.trim();
-    }
-    return 'Zawodnik';
-  };
-
-  // Filtrowana lista zawodników
+  // Filtrowanie zawodników
   const filteredPlayers = useMemo(() => {
-    return MOCK_100_PLAYERS.slice(0, 25).filter((p: any) => {
-      const pName = getPlayerName(p).toLowerCase();
+    return playersData.filter((p: any) => {
+      const pName = (p.name || `${p.firstName || ''} ${p.lastName || ''}`).toLowerCase();
       const matchesSearch = pName.includes(searchQuery.toLowerCase());
-
-      // Rocznik (symulowany na podstawie ID/rocznika w danych)
-      const playerYear = p.year || (parseInt(p.id) % 2 === 0 ? '2012' : '2013');
-      const matchesYear = selectedYear === 'WSZYSTKIE' || playerYear === selectedYear;
-
-      // Pozycja
-      const playerPos = p.position || 'Pomocnik';
-      const matchesPos = selectedPosition === 'WSZYSTKIE' || playerPos === selectedPosition;
+      const matchesYear = selectedYear === 'WSZYSTKIE' || p.year === selectedYear;
+      const matchesPos = selectedPosition === 'WSZYSTKIE' || p.position === selectedPosition;
 
       return matchesSearch && matchesYear && matchesPos;
     });
-  }, [searchQuery, selectedYear, selectedPosition]);
+  }, [playersData, searchQuery, selectedYear, selectedPosition]);
 
-  const handleAddInjury = () => {
-    if (!newInjuryName.trim()) {
-      Alert.alert('Błąd', 'Podaj nazwę urazu.');
+  const injuredCount = useMemo(() => {
+    return playersData.filter((p: any) => p.injuryStatus !== 'Zdrowy').length;
+  }, [playersData]);
+
+  // Zapis pomiaru testu
+  const handleSaveTest = () => {
+    if (!selectedPlayerForTest) return;
+    setPlayersData((prev) =>
+      prev.map((p) =>
+        p.id === selectedPlayerForTest.id
+          ? { ...p, sprint30m: sprintTime, jumpCm: parseInt(jumpDist) || p.jumpCm, beepTest: beepLevel }
+          : p
+      )
+    );
+    setTestModalVisible(false);
+    Alert.alert('Sukces 📊', 'Wyniki testów motorycznych zostały zaktualizowane.');
+  };
+
+  // Dodanie nowego zawodnika
+  const handleAddNewPlayer = () => {
+    if (!newFirstName.trim() || !newLastName.trim()) {
+      Alert.alert('Błąd', 'Podaj imię i nazwisko nowego zawodnika.');
       return;
     }
-    const newRecord: InjuryRecord = {
-      playerId: selectedPlayerId,
-      injuryName: newInjuryName,
-      dateFrom: new Date().toISOString().split('T')[0],
-      expectedReturn: newInjuryReturn || 'Nieokreślono',
-      rtpStage: 'Etap 1: Fizjoterapia',
+
+    const createdPlayer = {
+      id: Date.now().toString(),
+      firstName: newFirstName,
+      lastName: newLastName,
+      name: `${newFirstName} ${newLastName}`,
+      number: Math.floor(Math.random() * 80) + 10,
+      year: newYear,
+      position: newPosition,
+      sprint30m: '4.50',
+      jumpCm: 200,
+      beepTest: '7.0',
+      injuryStatus: 'Zdrowy',
+      coachNote: 'Nowo dodany zawodnik do kadry.',
     };
-    setInjuries([...injuries, newRecord]);
-    setNewInjuryName('');
-    setNewInjuryReturn('');
-    setAddInjuryModalVisible(false);
-    Alert.alert('Zapisano 🏥', 'Dodano nowy wpis w Dzienniku Urazów.');
-  };
 
-  const handleSaveMotoricTest = () => {
-    setMotoricData((prev) => ({
-      ...prev,
-      [selectedPlayerId]: {
-        playerId: selectedPlayerId,
-        sprint30m: newSprint ? `${newSprint}s` : 'Brak',
-        jumpRange: newJump ? `${newJump}cm` : 'Brak',
-        beepTest: newBeep ? `Poziom ${newBeep}` : 'Brak',
-      },
-    }));
-    setAddTestModalVisible(false);
-    Alert.alert('Zapisano ⏱️', 'Zaktualizowano wyniki testów motorycznych.');
-  };
-
-  const handleSaveNote = () => {
-    if (!selectedPlayerForNote) return;
-    setNotes((prev) => ({
-      ...prev,
-      [selectedPlayerForNote.id]: tempNoteText,
-    }));
-    setSelectedPlayerForNote(null);
-    Alert.alert('Zapisano 📝', 'Notatka trenerska została zaktualizowana.');
+    setPlayersData([createdPlayer, ...playersData]);
+    setNewFirstName('');
+    setNewLastName('');
+    setAddPlayerModalVisible(false);
+    Alert.alert('Sukces ⚽', 'Nowy zawodnik został dodany do Szatni!');
   };
 
   return (
     <View style={styles.container}>
-      {/* NAGŁÓWEK */}
+      {/* NAGŁÓWEK Z DWOMA PRZYCISKAMI AKCJI */}
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Szatnia & Centrum Motoryki</Text>
@@ -166,66 +121,83 @@ export default function SzatniaScreen() {
             Testy fizyczne, kartoteka zdrowotna i notatki
           </Text>
         </View>
-        <TouchableOpacity
-          style={styles.addTopBtn}
-          onPress={() => {
-            if (activeTab === 'zdrowie') setAddInjuryModalVisible(true);
-            else setAddTestModalVisible(true);
-          }}
-        >
-          <Ionicons name="add" size={18} color="#fff" />
-          <Text style={styles.addTopBtnText}>Nowy Wpis</Text>
-        </TouchableOpacity>
+
+        <View style={{ flexDirection: 'row' }}>
+          <TouchableOpacity
+            style={styles.addPlayerTopBtn}
+            onPress={() => setAddPlayerModalVisible(true)}
+          >
+            <Ionicons name="person-add-outline" size={14} color="#2563eb" />
+            <Text style={styles.addPlayerTopBtnText}>+ Gracza</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.newEntryBtn}
+            onPress={() => {
+              if (filteredPlayers.length > 0) {
+                setSelectedPlayerForTest(filteredPlayers[0]);
+                setTestModalVisible(true);
+              } else {
+                Alert.alert('Uwaga', 'Brak zawodników w wybranej grupie.');
+              }
+            }}
+          >
+            <Ionicons name="speedometer-outline" size={14} color="#fff" />
+            <Text style={styles.newEntryBtnText}>+ Pomiar</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* ZAKŁADKI MODULE (Motoryka / Zdrowie / Notatki) */}
-      <View style={styles.tabsRow}>
+      {/* PODZAKŁADKI (MOTORYKA / ZDROWIE / NOTATKI) */}
+      <View style={styles.subTabsRow}>
         <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'motoryka' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('motoryka')}
+          style={[styles.subTabBtn, activeSubTab === 'motoryka' && styles.subTabBtnActive]}
+          onPress={() => setActiveSubTab('motoryka')}
         >
           <Ionicons
-            name="stopwatch-outline"
-            size={15}
-            color={activeTab === 'motoryka' ? '#2563eb' : '#64748b'}
+            name="speedometer-outline"
+            size={14}
+            color={activeSubTab === 'motoryka' ? '#2563eb' : '#64748b'}
+            style={{ marginRight: 4 }}
           />
-          <Text style={[styles.tabText, activeTab === 'motoryka' && styles.tabTextActive]}>
+          <Text style={[styles.subTabText, activeSubTab === 'motoryka' && styles.subTabTextActive]}>
             Motoryka
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'zdrowie' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('zdrowie')}
+          style={[styles.subTabBtn, activeSubTab === 'zdrowie' && styles.subTabBtnActive]}
+          onPress={() => setActiveSubTab('zdrowie')}
         >
           <Ionicons
             name="medkit-outline"
-            size={15}
-            color={activeTab === 'zdrowie' ? '#2563eb' : '#64748b'}
+            size={14}
+            color={activeSubTab === 'zdrowie' ? '#dc2626' : '#64748b'}
+            style={{ marginRight: 4 }}
           />
-          <Text style={[styles.tabText, activeTab === 'zdrowie' && styles.tabTextActive]}>
-            Zdrowie ({injuries.length})
+          <Text style={[styles.subTabText, activeSubTab === 'zdrowie' && styles.subTabTextActive]}>
+            Zdrowie ({injuredCount})
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'notatki' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('notatki')}
+          style={[styles.subTabBtn, activeSubTab === 'notatki' && styles.subTabBtnActive]}
+          onPress={() => setActiveSubTab('notatki')}
         >
           <Ionicons
             name="create-outline"
-            size={15}
-            color={activeTab === 'notatki' ? '#2563eb' : '#64748b'}
+            size={14}
+            color={activeSubTab === 'notatki' ? '#2563eb' : '#64748b'}
+            style={{ marginRight: 4 }}
           />
-          <Text style={[styles.tabText, activeTab === 'notatki' && styles.tabTextActive]}>
+          <Text style={[styles.subTabText, activeSubTab === 'notatki' && styles.subTabTextActive]}>
             Notatki
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* SEKCJA FILTRÓW (ROCZNIK & POZYCJA) */}
+      {/* WYSZUKIWARKA I FILTRY */}
       <View style={styles.filtersSection}>
-        {/* Wyszukiwarka */}
         <View style={styles.searchBar}>
           <Ionicons name="search-outline" size={16} color="#94a3b8" style={{ marginRight: 6 }} />
           <TextInput
@@ -237,16 +209,12 @@ export default function SzatniaScreen() {
           />
         </View>
 
-        {/* Paski wyboru Rocznika i Pozycji */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
           <Text style={styles.filterGroupLabel}>Rocznik:</Text>
           {(['WSZYSTKIE', '2012', '2013', '2014'] as YearFilter[]).map((yr) => (
             <TouchableOpacity
               key={yr}
-              style={[
-                styles.chipFilter,
-                selectedYear === yr && styles.chipFilterActive,
-              ]}
+              style={[styles.chipFilter, selectedYear === yr && styles.chipFilterActive]}
               onPress={() => setSelectedYear(yr)}
             >
               <Text style={[styles.chipText, selectedYear === yr && styles.chipTextActive]}>
@@ -261,10 +229,7 @@ export default function SzatniaScreen() {
           {(['WSZYSTKIE', 'Bramkarz', 'Obrońca', 'Pomocnik', 'Napastnik'] as PositionFilter[]).map((pos) => (
             <TouchableOpacity
               key={pos}
-              style={[
-                styles.chipFilter,
-                selectedPosition === pos && styles.chipFilterActive,
-              ]}
+              style={[styles.chipFilter, selectedPosition === pos && styles.chipFilterActive]}
               onPress={() => setSelectedPosition(pos)}
             >
               <Text style={[styles.chipText, selectedPosition === pos && styles.chipTextActive]}>
@@ -275,103 +240,87 @@ export default function SzatniaScreen() {
         </ScrollView>
       </View>
 
-      {/* LISTA ZAWODNIKÓW Z DANYMI ZAKŁADKI */}
+      {/* LISTA ZAWODNIKÓW */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionTitle}>
           Zawodnicy ({filteredPlayers.length})
         </Text>
 
         {filteredPlayers.map((player: any) => {
-          const pName = getPlayerName(player);
-          const pPos = player.position || 'Pomocnik';
-          const pYear = player.year || (parseInt(player.id) % 2 === 0 ? '2012' : '2013');
-          const pMotor = motoricData[player.id];
-          const pInjury = injuries.find((i) => i.playerId === player.id);
-          const pNote = notes[player.id];
+          const pName = player.name || `${player.firstName || ''} ${player.lastName || ''}`;
 
           return (
             <View key={player.id} style={styles.card}>
-              <View style={styles.cardHeader}>
+              <View style={styles.cardMainRow}>
                 <View style={styles.avatarCircle}>
-                  <Text style={styles.avatarText}>
-                    {player.number || Math.floor(Math.random() * 80) + 1}
-                  </Text>
+                  <Text style={styles.avatarText}>#{player.number || player.id}</Text>
                 </View>
 
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={styles.playerName}>{pName}</Text>
                   <Text style={styles.playerMeta}>
-                    {pPos} • Rocznik {pYear}
+                    {player.position} • Rocznik {player.year}
                   </Text>
                 </View>
 
-                {pInjury && (
-                  <View style={styles.injuryBadge}>
-                    <Ionicons name="warning" size={12} color="#dc2626" />
-                    <Text style={styles.injuryBadgeText}>Kontuzja</Text>
-                  </View>
+                {activeSubTab === 'motoryka' && (
+                  <TouchableOpacity
+                    style={styles.editTestBtn}
+                    onPress={() => {
+                      setSelectedPlayerForTest(player);
+                      setSprintTime(String(player.sprint30m));
+                      setJumpDist(String(player.jumpCm));
+                      setBeepLevel(String(player.beepTest));
+                      setTestModalVisible(true);
+                    }}
+                  >
+                    <Ionicons name="create-outline" size={14} color="#2563eb" />
+                    <Text style={styles.editTestBtnText}>Edytuj</Text>
+                  </TouchableOpacity>
                 )}
               </View>
 
-              {/* ZAWARTOŚĆ W ZALEŻNOŚCI OD ZAKŁADKI */}
-              {activeTab === 'motoryka' && (
-                <View style={styles.tabContentBox}>
-                  {pMotor ? (
-                    <View style={styles.motorGrid}>
-                      <View style={styles.motorItem}>
-                        <Text style={styles.motorLabel}>Sprint 30m</Text>
-                        <Text style={styles.motorValue}>{pMotor.sprint30m}</Text>
-                      </View>
-                      <View style={styles.motorItem}>
-                        <Text style={styles.motorLabel}>Skok w dal</Text>
-                        <Text style={styles.motorValue}>{pMotor.jumpRange}</Text>
-                      </View>
-                      <View style={styles.motorItem}>
-                        <Text style={styles.motorLabel}>Beep Test</Text>
-                        <Text style={styles.motorValue}>{pMotor.beepTest}</Text>
-                      </View>
-                    </View>
-                  ) : (
-                    <Text style={styles.emptyText}>Brak zarejestrowanych testów motorycznych.</Text>
-                  )}
+              {/* SEKCJALNE WSKAŹNIKI */}
+              {activeSubTab === 'motoryka' && (
+                <View style={styles.metricsRow}>
+                  <View style={styles.metricBox}>
+                    <Text style={styles.metricLabel}>Sprint 30m</Text>
+                    <Text style={styles.metricVal}>{player.sprint30m} s</Text>
+                  </View>
+                  <View style={styles.metricBox}>
+                    <Text style={styles.metricLabel}>Skok w dal</Text>
+                    <Text style={styles.metricVal}>{player.jumpCm} cm</Text>
+                  </View>
+                  <View style={styles.metricBox}>
+                    <Text style={styles.metricLabel}>Beep Test</Text>
+                    <Text style={styles.metricVal}>{player.beepTest}</Text>
+                  </View>
                 </View>
               )}
 
-              {activeTab === 'zdrowie' && (
-                <View style={styles.tabContentBox}>
-                  {pInjury ? (
-                    <View style={styles.injuryInfoBox}>
-                      <Text style={styles.injuryTitle}> Uraz: {pInjury.injuryName}</Text>
-                      <Text style={styles.injurySub}>
-                        Od: {pInjury.dateFrom} • Powrót: {pInjury.expectedReturn}
-                      </Text>
-                      <View style={styles.rtpTag}>
-                        <Text style={styles.rtpTagText}>{pInjury.rtpStage}</Text>
-                      </View>
-                    </View>
-                  ) : (
-                    <Text style={styles.healthyText}> W 100% zdrów i gotowy do gry</Text>
-                  )}
-                </View>
-              )}
-
-              {activeTab === 'notatki' && (
-                <View style={styles.tabContentBox}>
-                  {pNote ? (
-                    <Text style={styles.noteText}>"{pNote}"</Text>
-                  ) : (
-                    <Text style={styles.emptyText}>Brak uwag trenerskich.</Text>
-                  )}
-                  <TouchableOpacity
-                    style={styles.editNoteBtn}
-                    onPress={() => {
-                      setSelectedPlayerForNote(player);
-                      setTempNoteText(pNote || '');
-                    }}
+              {activeSubTab === 'zdrowie' && (
+                <View style={styles.healthRow}>
+                  <Ionicons
+                    name={player.injuryStatus === 'Zdrowy' ? 'checkmark-circle' : 'alert-circle'}
+                    size={16}
+                    color={player.injuryStatus === 'Zdrowy' ? '#16a34a' : '#dc2626'}
+                  />
+                  <Text
+                    style={[
+                      styles.healthText,
+                      { color: player.injuryStatus === 'Zdrowy' ? '#16a34a' : '#dc2626' },
+                    ]}
                   >
-                    <Ionicons name="pencil" size={12} color="#2563eb" />
-                    <Text style={styles.editNoteBtnText}>Edytuj Notatkę</Text>
-                  </TouchableOpacity>
+                    Status: {player.injuryStatus}
+                  </Text>
+                </View>
+              )}
+
+              {activeSubTab === 'notatki' && (
+                <View style={styles.noteBox}>
+                  <Text style={styles.noteText}>
+                    {player.coachNote ? player.coachNote : 'Brak notatek trenerskich dla tego zawodnika.'}
+                  </Text>
                 </View>
               )}
             </View>
@@ -381,184 +330,115 @@ export default function SzatniaScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* MODAL 1: DODAWANIE KONTUZJI */}
-      <Modal animationType="slide" transparent={true} visible={addInjuryModalVisible}>
+      {/* MODAL 1: DODAWANIE NOWEGO ZAWODNIKA */}
+      <Modal animationType="slide" transparent={true} visible={addPlayerModalVisible}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Zgłoś Uraz / Kontuzję 🏥</Text>
-              <TouchableOpacity onPress={() => setAddInjuryModalVisible(false)}>
+              <Text style={styles.modalTitle}>Dodaj Zawodnika do Szatni ⚽</Text>
+              <TouchableOpacity onPress={() => setAddPlayerModalVisible(false)}>
                 <Ionicons name="close" size={22} color="#64748b" />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.inputLabel}>Wybierz zawodnika</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-              {MOCK_100_PLAYERS.slice(0, 10).map((p: any) => (
-                <TouchableOpacity
-                  key={p.id}
-                  style={[
-                    styles.playerPickChip,
-                    selectedPlayerId === p.id && styles.playerPickChipSelected,
-                  ]}
-                  onPress={() => setSelectedPlayerId(p.id)}
-                >
-                  <Text
-                    style={[
-                      styles.playerPickChipText,
-                      selectedPlayerId === p.id && { color: '#fff' },
-                    ]}
-                  >
-                    {getPlayerName(p)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <Text style={styles.inputLabel}>Nazwa urazu / Diagnoza</Text>
+            <Text style={styles.inputLabel}>Imię zawodnika</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="np. Skręcenie kostki"
-              value={newInjuryName}
-              onChangeText={setNewInjuryName}
-              placeholderTextColor="#94a3b8"
+              placeholder="np. Adam"
+              value={newFirstName}
+              onChangeText={setNewFirstName}
             />
 
-            <Text style={styles.inputLabel}>Przewidywana data powrotu</Text>
+            <Text style={styles.inputLabel}>Nazwisko zawodnika</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="np. 2026-11-10"
-              value={newInjuryReturn}
-              onChangeText={setNewInjuryReturn}
-              placeholderTextColor="#94a3b8"
+              placeholder="np. Wiśniewski"
+              value={newLastName}
+              onChangeText={setNewLastName}
             />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1, marginRight: 6 }}>
+                <Text style={styles.inputLabel}>Rocznik</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={newYear}
+                  onChangeText={setNewYear}
+                />
+              </View>
+              <View style={{ flex: 1, marginLeft: 6 }}>
+                <Text style={styles.inputLabel}>Pozycja</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={newPosition}
+                  onChangeText={setNewPosition}
+                />
+              </View>
+            </View>
 
             <View style={styles.modalButtonsRow}>
               <TouchableOpacity
                 style={styles.cancelBtn}
-                onPress={() => setAddInjuryModalVisible(false)}
+                onPress={() => setAddPlayerModalVisible(false)}
               >
                 <Text style={styles.cancelBtnText}>Anuluj</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleAddInjury}>
-                <Text style={styles.saveBtnText}>Zapisz w Dzienniku</Text>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleAddNewPlayer}>
+                <Text style={styles.saveBtnText}>Zapisz Zawodnika</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* MODAL 2: DODAWANIE TESTU MOTORYCZNEGO */}
-      <Modal animationType="slide" transparent={true} visible={addTestModalVisible}>
+      {/* MODAL 2: WPISYWANIE WYNIKÓW TESTU */}
+      <Modal animationType="slide" transparent={true} visible={testModalVisible}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Wprowadź Wyniki Testów ⏱️</Text>
-              <TouchableOpacity onPress={() => setAddTestModalVisible(false)}>
+              <Text style={styles.modalTitle}>Wprowadź Pomiary Motoryki ⏱️</Text>
+              <TouchableOpacity onPress={() => setTestModalVisible(false)}>
                 <Ionicons name="close" size={22} color="#64748b" />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.inputLabel}>Wybierz zawodnika</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-              {MOCK_100_PLAYERS.slice(0, 10).map((p: any) => (
-                <TouchableOpacity
-                  key={p.id}
-                  style={[
-                    styles.playerPickChip,
-                    selectedPlayerId === p.id && styles.playerPickChipSelected,
-                  ]}
-                  onPress={() => setSelectedPlayerId(p.id)}
-                >
-                  <Text
-                    style={[
-                      styles.playerPickChipText,
-                      selectedPlayerId === p.id && { color: '#fff' },
-                    ]}
-                  >
-                    {getPlayerName(p)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <Text style={styles.inputLabel}>Wybrany zawodnik</Text>
+            <Text style={styles.selectedPlayerNameText}>
+              {selectedPlayerForTest ? (selectedPlayerForTest.name || `${selectedPlayerForTest.firstName} ${selectedPlayerForTest.lastName}`) : ''} (Rocznik {selectedPlayerForTest?.year})
+            </Text>
 
             <Text style={styles.inputLabel}>Sprint 30m (sekundy)</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="np. 4.2"
               keyboardType="numeric"
-              value={newSprint}
-              onChangeText={setNewSprint}
-              placeholderTextColor="#94a3b8"
+              value={sprintTime}
+              onChangeText={setSprintTime}
             />
 
             <Text style={styles.inputLabel}>Skok w dal z miejsca (cm)</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="np. 210"
               keyboardType="numeric"
-              value={newJump}
-              onChangeText={setNewJump}
-              placeholderTextColor="#94a3b8"
+              value={jumpDist}
+              onChangeText={setJumpDist}
             />
 
             <Text style={styles.inputLabel}>Beep Test (poziom)</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="np. 11.2"
-              value={newBeep}
-              onChangeText={setNewBeep}
-              placeholderTextColor="#94a3b8"
+              value={beepLevel}
+              onChangeText={setBeepLevel}
             />
 
             <View style={styles.modalButtonsRow}>
               <TouchableOpacity
                 style={styles.cancelBtn}
-                onPress={() => setAddTestModalVisible(false)}
+                onPress={() => setTestModalVisible(false)}
               >
                 <Text style={styles.cancelBtnText}>Anuluj</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveMotoricTest}>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveTest}>
                 <Text style={styles.saveBtnText}>Zapisz Pomiary</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* MODAL 3: EDYCJA NOTATKI TRENERSKIEJ */}
-      <Modal animationType="slide" transparent={true} visible={!!selectedPlayerForNote}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Notatka Trenerska 📝</Text>
-              <TouchableOpacity onPress={() => setSelectedPlayerForNote(null)}>
-                <Ionicons name="close" size={22} color="#64748b" />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#0f172a', marginBottom: 10 }}>
-              Zawodnik: {selectedPlayerForNote ? getPlayerName(selectedPlayerForNote) : ''}
-            </Text>
-
-            <TextInput
-              style={[styles.modalInput, { height: 90 }]}
-              multiline
-              placeholder="Wpisz uwagi dotyczące zachowania, zaangażowania lub taktyki..."
-              value={tempNoteText}
-              onChangeText={setTempNoteText}
-              placeholderTextColor="#94a3b8"
-            />
-
-            <View style={styles.modalButtonsRow}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setSelectedPlayerForNote(null)}
-              >
-                <Text style={styles.cancelBtnText}>Anuluj</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveNote}>
-                <Text style={styles.saveBtnText}>Zapisz Notatkę</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -579,42 +459,56 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#0f172a' },
   headerSubtitle: { fontSize: 12, color: '#64748b', marginTop: 2 },
-  addTopBtn: {
+
+  addPlayerTopBtn: {
+    backgroundColor: '#eff6ff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  addPlayerTopBtnText: { color: '#2563eb', fontSize: 11, fontWeight: 'bold', marginLeft: 4 },
+
+  newEntryBtn: {
     backgroundColor: '#2563eb',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     borderRadius: 8,
   },
-  addTopBtnText: { color: '#fff', fontSize: 12, fontWeight: 'bold', marginLeft: 4 },
+  newEntryBtnText: { color: '#fff', fontSize: 11, fontWeight: 'bold', marginLeft: 4 },
 
-  tabsRow: {
+  subTabsRow: {
     flexDirection: 'row',
     backgroundColor: '#fff',
     paddingHorizontal: 16,
-    paddingBottom: 10,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
   },
-  tabBtn: {
+  subTabBtn: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderRadius: 6,
     backgroundColor: '#f1f5f9',
     marginRight: 6,
   },
-  tabBtnActive: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#2563eb' },
-  tabText: { fontSize: 11, fontWeight: '600', color: '#64748b', marginLeft: 4 },
-  tabTextActive: { color: '#2563eb', fontWeight: 'bold' },
+  subTabBtnActive: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe' },
+  subTabText: { fontSize: 11, fontWeight: '600', color: '#64748b' },
+  subTabTextActive: { color: '#2563eb', fontWeight: 'bold' },
 
   filtersSection: {
     backgroundColor: '#fff',
@@ -651,72 +545,76 @@ const styles = StyleSheet.create({
 
   card: {
     backgroundColor: '#fff',
-    borderRadius: 10,
+    borderRadius: 12,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
     borderColor: '#e2e8f0',
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center' },
+  cardMainRow: { flexDirection: 'row', alignItems: 'center' },
   avatarCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: '#eff6ff',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#bfdbfe',
   },
-  avatarText: { fontSize: 12, fontWeight: 'bold', color: '#2563eb' },
+  avatarText: { fontSize: 11, fontWeight: 'bold', color: '#2563eb' },
   playerName: { fontSize: 13, fontWeight: 'bold', color: '#0f172a' },
   playerMeta: { fontSize: 11, color: '#64748b', marginTop: 1 },
 
-  injuryBadge: {
+  editTestBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fef2f2',
+    backgroundColor: '#eff6ff',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#fecaca',
+    borderColor: '#bfdbfe',
   },
-  injuryBadgeText: { fontSize: 10, fontWeight: 'bold', color: '#dc2626', marginLeft: 4 },
+  editTestBtnText: { fontSize: 10, fontWeight: 'bold', color: '#2563eb', marginLeft: 2 },
 
-  tabContentBox: { marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
+  metricsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  metricBox: { flex: 1, alignItems: 'center', backgroundColor: '#f8fafc', padding: 6, borderRadius: 6, marginRight: 4, borderWidth: 1, borderColor: '#e2e8f0' },
+  metricLabel: { fontSize: 9, color: '#64748b' },
+  metricVal: { fontSize: 11, fontWeight: 'bold', color: '#0f172a', marginTop: 2 },
 
-  motorGrid: { flexDirection: 'row', justifyContent: 'space-between' },
-  motorItem: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-    padding: 6,
-    borderRadius: 6,
+  healthRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 4,
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
   },
-  motorLabel: { fontSize: 10, color: '#64748b' },
-  motorValue: { fontSize: 11, fontWeight: 'bold', color: '#0f172a', marginTop: 2 },
+  healthText: { fontSize: 12, fontWeight: '600', marginLeft: 6 },
 
-  emptyText: { fontSize: 11, color: '#94a3b8', fontStyle: 'italic' },
-  healthyText: { fontSize: 11, color: '#16a34a', fontWeight: 'bold' },
+  noteBox: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  noteText: { fontSize: 12, color: '#334155', fontStyle: 'italic' },
 
-  injuryInfoBox: { backgroundColor: '#fef2f2', padding: 8, borderRadius: 6 },
-  injuryTitle: { fontSize: 12, fontWeight: 'bold', color: '#991b1b' },
-  injurySub: { fontSize: 10, color: '#b91c1c', marginTop: 2 },
-  rtpTag: { backgroundColor: '#fff', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 4 },
-  rtpTagText: { fontSize: 9, fontWeight: 'bold', color: '#dc2626' },
-
-  noteText: { fontSize: 11, color: '#334155', fontStyle: 'italic', lineHeight: 16 },
-  editNoteBtn: { flexDirection: 'row', alignItems: 'center', marginTop: 6, alignSelf: 'flex-end' },
-  editNoteBtnText: { fontSize: 10, fontWeight: 'bold', color: '#2563eb', marginLeft: 2 },
-
-  /* MODALE */
+  /* MODAL */
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.5)', justifyContent: 'center', padding: 16 },
   modalContainer: { backgroundColor: '#fff', borderRadius: 16, padding: 20, elevation: 5 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   modalTitle: { fontSize: 15, fontWeight: 'bold', color: '#0f172a' },
   inputLabel: { fontSize: 11, fontWeight: '600', color: '#475569', marginTop: 8, marginBottom: 4 },
+  selectedPlayerNameText: { fontSize: 12, fontWeight: 'bold', color: '#2563eb', marginBottom: 4 },
   modalInput: {
     backgroundColor: '#f8fafc',
     borderWidth: 1,
@@ -727,20 +625,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#0f172a',
   },
-
-  playerPickChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#f1f5f9',
-    marginRight: 6,
-  },
-  playerPickChipSelected: { backgroundColor: '#2563eb' },
-  playerPickChipText: { fontSize: 11, fontWeight: '600', color: '#475569' },
-
   modalButtonsRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16 },
   cancelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, marginRight: 6 },
   cancelBtnText: { fontSize: 12, color: '#64748b', fontWeight: '600' },
-  saveBtn: { backgroundColor: '#2563eb', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  saveBtn: { backgroundColor: '#2563eb', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
 });
