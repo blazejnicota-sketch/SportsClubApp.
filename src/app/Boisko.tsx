@@ -1,176 +1,459 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Modal,
   Alert,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { MOCK_100_PLAYERS } from './data/mockPlayers';
+
+type ViewTab = 'taktyka' | 'protokol';
+type FormationType = '4-3-3' | '4-2-3-1' | '3-5-2' | '3-2-2';
+type YearFilter = 'WSZYSTKIE' | '2012' | '2013' | '2014';
+
+interface MatchEvent {
+  id: string;
+  minute: number;
+  team: 'home' | 'away'; // home = nasza drużyna (lewa), away = przeciwnik (prawa)
+  type: 'goal' | 'yellow_card' | 'red_card';
+  scorerName?: string;
+  assistantName?: string;
+}
 
 export default function BoiskoScreen() {
-  const [activeTab, setActiveTab] = useState<'tactic' | 'protocol'>('tactic');
-  const [selectedFormation, setSelectedFormation] = useState('1-4-3-3');
+  const [activeTab, setActiveTab] = useState<ViewTab>('taktyka');
+  const [formation, setFormation] = useState<FormationType>('4-3-3');
+  const [selectedYear, setSelectedYear] = useState<YearFilter>('WSZYSTKIE');
 
-  const [matchScore, setMatchScore] = useState({ home: 1, away: 0 });
-  const [matchEvents, setMatchEvents] = useState([
-    { id: '1', minute: 24, type: 'goal', player: 'Jan Kowalski (Asysta: Adam Nowak)', team: 'home' },
-    { id: '2', minute: 38, type: 'yellow', player: 'Piotr Wiśniewski', team: 'home' },
-  ]);
+  // Stan meczu w Protokole
+  const [homeScore, setHomeScore] = useState<number>(0);
+  const [awayScore, setAwayScore] = useState<number>(0);
+  const [matchEvents, setMatchEvents] = useState<MatchEvent[]>([]);
+  const [currentMinute, setCurrentMinute] = useState<string>('15');
 
-  const handleAddGoal = () => {
-    setMatchScore((prev) => ({ ...prev, home: prev.home + 1 }));
-    setMatchEvents([
-      { id: Date.now().toString(), minute: Math.floor(Math.random() * 80) + 1, type: 'goal', player: 'Zawodnik z kadry', team: 'home' },
-      ...matchEvents,
-    ]);
+  // Stany modali
+  const [goalModalVisible, setGoalModalVisible] = useState<boolean>(false);
+  const [selectedScorerId, setSelectedScorerId] = useState<string>('1');
+  const [selectedAssistantId, setSelectedAssistantId] = useState<string>('none');
+
+  // Pomocnicze pobieranie nazwy zawodnika
+  const getPlayerName = (player: any) => {
+    if (player.name) return player.name;
+    if (player.firstName || player.lastName) {
+      return `${player.firstName || ''} ${player.lastName || ''}`.trim();
+    }
+    return 'Zawodnik';
+  };
+
+  // Filtrowani zawodnicy do składu / strzelców
+  const availablePlayers = useMemo(() => {
+    return MOCK_100_PLAYERS.slice(0, 20).filter((p: any) => {
+      const pYear = p.year || (parseInt(p.id) % 2 === 0 ? '2012' : '2013');
+      return selectedYear === 'WSZYSTKIE' || pYear === selectedYear;
+    });
+  }, [selectedYear]);
+
+  // DODAWANIE GOLA DLA NASZEJ DRUŻYNY (LEWA STRONA) - Z WYBOREM STRZELCA
+  const handleAddHomeGoal = () => {
+    const scorer = availablePlayers.find((p: any) => p.id === selectedScorerId);
+    const assistant = availablePlayers.find((p: any) => p.id === selectedAssistantId);
+
+    const scorerName = scorer ? getPlayerName(scorer) : 'Zawodnik Nasz';
+    const assistantName = assistant ? getPlayerName(assistant) : undefined;
+
+    const newEvent: MatchEvent = {
+      id: Date.now().toString(),
+      minute: parseInt(currentMinute) || 1,
+      team: 'home',
+      type: 'goal',
+      scorerName,
+      assistantName,
+    };
+
+    setMatchEvents([newEvent, ...matchEvents]);
+    setHomeScore((prev) => prev + 1);
+    setGoalModalVisible(false);
+  };
+
+  // DODAWANIE GOLA DLA PRZECIWNIKA (PRAWA STRONA) - BEZ PYTANIA O STRZELCA
+  const handleAddAwayGoal = () => {
+    const newEvent: MatchEvent = {
+      id: Date.now().toString(),
+      minute: parseInt(currentMinute) || 1,
+      team: 'away',
+      type: 'goal',
+      scorerName: 'Przeciwnik',
+    };
+
+    setMatchEvents([newEvent, ...matchEvents]);
+    setAwayScore((prev) => prev + 1);
+  };
+
+  // Reset protokołu meczowego
+  const handleResetMatch = () => {
+    Alert.alert(
+      'Reset Protokołu 🔄',
+      'Czy na pewno chcesz zresetować wynik i wyczyścić statystyki meczu?',
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        {
+          text: 'Resetuj',
+          style: 'destructive',
+          onPress: () => {
+            setHomeScore(0);
+            setAwayScore(0);
+            setMatchEvents([]);
+          },
+        },
+      ]
+    );
   };
 
   return (
     <View style={styles.container}>
       {/* NAGŁÓWEK */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Centrum Boiska i Taktyki</Text>
-        <Text style={styles.headerSubtitle}>Zarządzanie ustawieniem oraz protokół meczowy</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>Boisko i Protokół Meczowy</Text>
+          <Text style={styles.headerSubtitle}>Taktyka, formacje i rejestrator zdarzeń live</Text>
+        </View>
       </View>
 
-      {/* PRZEŁĄCZNIK ZAKŁADEK */}
+      {/* PRZEŁĄCZNIK ZAKŁADEK (Taktyka / Protokół) */}
       <View style={styles.tabsRow}>
         <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'tactic' && styles.activeTabBtn]}
-          onPress={() => setActiveTab('tactic')}
+          style={[styles.tabBtn, activeTab === 'taktyka' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('taktyka')}
         >
-          <Ionicons name="football-outline" size={16} color={activeTab === 'tactic' ? '#2563eb' : '#64748b'} />
-          <Text style={[styles.tabText, activeTab === 'tactic' && styles.activeTabText]}>Tablica Taktyczna</Text>
+          <Ionicons
+            name="easel-outline"
+            size={15}
+            color={activeTab === 'taktyka' ? '#2563eb' : '#64748b'}
+          />
+          <Text style={[styles.tabText, activeTab === 'taktyka' && styles.tabTextActive]}>
+            Tablica Taktyczna
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'protocol' && styles.activeTabBtn]}
-          onPress={() => setActiveTab('protocol')}
+          style={[styles.tabBtn, activeTab === 'protokol' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('protokol')}
         >
-          <Ionicons name="document-text-outline" size={16} color={activeTab === 'protocol' ? '#2563eb' : '#64748b'} />
-          <Text style={[styles.tabText, activeTab === 'protocol' && styles.activeTabText]}>Protokół Meczowy</Text>
+          <Ionicons
+            name="trophy-outline"
+            size={15}
+            color={activeTab === 'protokol' ? '#2563eb' : '#64748b'}
+          />
+          <Text style={[styles.tabText, activeTab === 'protokol' && styles.tabTextActive]}>
+            Protokół LIVE ({homeScore}:{awayScore})
+          </Text>
         </TouchableOpacity>
       </View>
 
-      {/* ZAWARTOŚĆ */}
-      {activeTab === 'tactic' ? (
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* WYBÓR FORMACJI */}
-          <View style={styles.formationBar}>
-            <Text style={styles.label}>Formacja:</Text>
-            {['1-4-3-3', '1-4-4-2', '1-3-5-2'].map((form) => (
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* ================= ZAKŁADKA 1: TABLICA TAKTYCZNA ================= */}
+        {activeTab === 'taktyka' && (
+          <View>
+            {/* Wybór Formacji i Rocznika */}
+            <View style={styles.controlsCard}>
+              <Text style={styles.controlLabel}>Wybór Formacji:</Text>
+              <View style={styles.chipsRow}>
+                {(['4-3-3', '4-2-3-1', '3-5-2', '3-2-2'] as FormationType[]).map((f) => (
+                  <TouchableOpacity
+                    key={f}
+                    style={[styles.chip, formation === f && styles.chipActive]}
+                    onPress={() => setFormation(f)}
+                  >
+                    <Text style={[styles.chipText, formation === f && styles.chipTextActive]}>
+                      {f}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.controlLabel, { marginTop: 10 }]}>Filtruj Rocznik:</Text>
+              <View style={styles.chipsRow}>
+                {(['WSZYSTKIE', '2012', '2013', '2014'] as YearFilter[]).map((yr) => (
+                  <TouchableOpacity
+                    key={yr}
+                    style={[styles.chip, selectedYear === yr && styles.chipActive]}
+                    onPress={() => setSelectedYear(yr)}
+                  >
+                    <Text style={[styles.chipText, selectedYear === yr && styles.chipTextActive]}>
+                      {yr}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* MAKETA BOISKA */}
+            <View style={styles.pitchContainer}>
+              <View style={styles.pitchLines}>
+                <View style={styles.pitchCenterCircle} />
+                <View style={styles.pitchCenterLine} />
+                <View style={styles.pitchPenaltyAreaTop} />
+                <View style={styles.pitchPenaltyAreaBottom} />
+              </View>
+
+              {/* Zawodnicy na boisku */}
+              <View style={styles.pitchPlayersOverlay}>
+                {/* Bramkarz */}
+                <View style={[styles.playerNode, { top: '85%', left: '44%' }]}>
+                  <View style={[styles.playerShirt, { backgroundColor: '#eab308' }]}>
+                    <Text style={styles.playerShirtNum}>1</Text>
+                  </View>
+                  <Text style={styles.playerNodeName}>BR</Text>
+                </View>
+
+                {/* Obrona */}
+                <View style={[styles.playerNode, { top: '68%', left: '12%' }]}>
+                  <View style={styles.playerShirt}><Text style={styles.playerShirtNum}>2</Text></View>
+                  <Text style={styles.playerNodeName}>LO</Text>
+                </View>
+                <View style={[styles.playerNode, { top: '70%', left: '35%' }]}>
+                  <View style={styles.playerShirt}><Text style={styles.playerShirtNum}>4</Text></View>
+                  <Text style={styles.playerNodeName}>ŚO</Text>
+                </View>
+                <View style={[styles.playerNode, { top: '70%', left: '55%' }]}>
+                  <View style={styles.playerShirt}><Text style={styles.playerShirtNum}>5</Text></View>
+                  <Text style={styles.playerNodeName}>ŚO</Text>
+                </View>
+                <View style={[styles.playerNode, { top: '68%', left: '78%' }]}>
+                  <View style={styles.playerShirt}><Text style={styles.playerShirtNum}>3</Text></View>
+                  <Text style={styles.playerNodeName}>PO</Text>
+                </View>
+
+                {/* Pomoc */}
+                <View style={[styles.playerNode, { top: '45%', left: '25%' }]}>
+                  <View style={styles.playerShirt}><Text style={styles.playerShirtNum}>6</Text></View>
+                  <Text style={styles.playerNodeName}>ŚPOM</Text>
+                </View>
+                <View style={[styles.playerNode, { top: '42%', left: '45%' }]}>
+                  <View style={styles.playerShirt}><Text style={styles.playerShirtNum}>8</Text></View>
+                  <Text style={styles.playerNodeName}>ŚPOM</Text>
+                </View>
+                <View style={[styles.playerNode, { top: '45%', left: '65%' }]}>
+                  <View style={styles.playerShirt}><Text style={styles.playerShirtNum}>10</Text></View>
+                  <Text style={styles.playerNodeName}>ŚPOM</Text>
+                </View>
+
+                {/* Atak */}
+                <View style={[styles.playerNode, { top: '20%', left: '15%' }]}>
+                  <View style={styles.playerShirt}><Text style={styles.playerShirtNum}>7</Text></View>
+                  <Text style={styles.playerNodeName}>LW</Text>
+                </View>
+                <View style={[styles.playerNode, { top: '15%', left: '45%' }]}>
+                  <View style={styles.playerShirt}><Text style={styles.playerShirtNum}>9</Text></View>
+                  <Text style={styles.playerNodeName}>N</Text>
+                </View>
+                <View style={[styles.playerNode, { top: '20%', left: '75%' }]}>
+                  <View style={styles.playerShirt}><Text style={styles.playerShirtNum}>11</Text></View>
+                  <Text style={styles.playerNodeName}>PW</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* ================= ZAKŁADKA 2: PROTOKÓŁ MECZOWY LIVE ================= */}
+        {activeTab === 'protokol' && (
+          <View>
+            {/* TABLICA WYNIKÓW */}
+            <View style={styles.scoreboardCard}>
+              <View style={styles.teamScoreBox}>
+                <Text style={styles.teamNameLabel}>NASZ KLUB</Text>
+                <Text style={styles.scoreNumber}>{homeScore}</Text>
+              </View>
+
+              <View style={styles.scoreDividerBox}>
+                <Text style={styles.scoreVsText}>VS</Text>
+                <View style={styles.minuteInputBox}>
+                  <Text style={styles.minuteLabel}>Minuta:</Text>
+                  <TextInput
+                    style={styles.minuteInput}
+                    value={currentMinute}
+                    onChangeText={setCurrentMinute}
+                    keyboardType="numeric"
+                  />
+                  <Text style={styles.minuteLabel}>'</Text>
+                </View>
+              </View>
+
+              <View style={styles.teamScoreBox}>
+                <Text style={styles.teamNameLabel}>PRZECIWNIK</Text>
+                <Text style={styles.scoreNumber}>{awayScore}</Text>
+              </View>
+            </View>
+
+            {/* PRZYCISKI REJESTRACJI GOLI */}
+            <View style={styles.goalButtonsRow}>
+              {/* LEWA STRONA: DODAJ BRAMKĘ + KTO STRZELIŁ */}
               <TouchableOpacity
-                key={form}
-                style={[styles.formChip, selectedFormation === form && styles.activeFormChip]}
-                onPress={() => setSelectedFormation(form)}
+                style={styles.homeGoalBtn}
+                onPress={() => setGoalModalVisible(true)}
               >
-                <Text style={[styles.formChipText, selectedFormation === form && styles.activeFormChipText]}>
-                  {form}
-                </Text>
+                <Ionicons name="football" size={18} color="#fff" />
+                <Text style={styles.goalBtnText}>+ Gol dla Nas (Wybierz strzelca)</Text>
               </TouchableOpacity>
-            ))}
-          </View>
 
-          {/* WIZUALIZACJA BOISKA */}
-          <View style={styles.pitchContainer}>
-            <View style={styles.pitchCenterLine} />
-            <View style={styles.pitchCenterCircle} />
-            <View style={styles.pitchGoalTop} />
-            <View style={styles.pitchGoalBottom} />
-
-            <Text style={styles.pitchWatermark}>BOISKO TRENINGOWE ({selectedFormation})</Text>
-
-            {/* Zawodnicy */}
-            <View style={[styles.playerToken, { top: '12%', left: '45%' }]}>
-              <Text style={styles.tokenText}>GK</Text>
-              <Text style={styles.tokenName}>Kowal</Text>
-            </View>
-
-            <View style={[styles.playerToken, { top: '32%', left: '10%' }]}>
-              <Text style={styles.tokenText}>OB</Text>
-              <Text style={styles.tokenName}>Nowak</Text>
-            </View>
-            <View style={[styles.playerToken, { top: '32%', left: '35%' }]}>
-              <Text style={styles.tokenText}>OB</Text>
-              <Text style={styles.tokenName}>Wójcik</Text>
-            </View>
-            <View style={[styles.playerToken, { top: '32%', left: '60%' }]}>
-              <Text style={styles.tokenText}>OB</Text>
-              <Text style={styles.tokenName}>Zieliński</Text>
-            </View>
-            <View style={[styles.playerToken, { top: '32%', left: '82%' }]}>
-              <Text style={styles.tokenText}>OB</Text>
-              <Text style={styles.tokenName}>Kamiński</Text>
-            </View>
-
-            <View style={[styles.playerToken, { top: '55%', left: '25%' }]}>
-              <Text style={styles.tokenText}>POM</Text>
-              <Text style={styles.tokenName}>Mazur</Text>
-            </View>
-            <View style={[styles.playerToken, { top: '55%', left: '70%' }]}>
-              <Text style={styles.tokenText}>POM</Text>
-              <Text style={styles.tokenName}>Krawczyk</Text>
-            </View>
-
-            <View style={[styles.playerToken, { top: '75%', left: '47%' }]}>
-              <Text style={styles.tokenText}>NAP</Text>
-              <Text style={styles.tokenName}>Lewy</Text>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={styles.fullScreenTacticBtn}
-            onPress={() => Alert.alert('Tablica', 'Przeciąganie zawodników i edycja pozycji')}
-          >
-            <Ionicons name="options-outline" size={18} color="#fff" />
-            <Text style={styles.fullScreenTacticText}>Edytuj pozycje w formacji</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      ) : (
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* WYNIK MECZU */}
-          <View style={styles.scoreCard}>
-            <Text style={styles.scoreSubtitle}>Mecz Ligowy • 68 minuta</Text>
-            <View style={styles.scoreRow}>
-              <Text style={styles.teamNameText}>UKS Sparta</Text>
-              <Text style={styles.scoreText}>
-                {matchScore.home} : {matchScore.away}
-              </Text>
-              <Text style={styles.teamNameText}>MKS Orzeł</Text>
-            </View>
-            <View style={styles.matchLiveActions}>
-              <TouchableOpacity style={styles.liveActionBtn} onPress={handleAddGoal}>
-                <Ionicons name="football" size={16} color="#fff" />
-                <Text style={styles.liveActionText}>+ Zapisz Bramkę</Text>
+              {/* PRAWA STRONA: DODAJ BRAMKĘ PRZECIWNIKA (BEZ IMION) */}
+              <TouchableOpacity
+                style={styles.awayGoalBtn}
+                onPress={handleAddAwayGoal}
+              >
+                <Ionicons name="add-circle-outline" size={18} color="#fff" />
+                <Text style={styles.goalBtnText}>+ Gol Przeciwnika</Text>
               </TouchableOpacity>
             </View>
-          </View>
 
-          {/* TIMELINE */}
-          <Text style={styles.sectionTitle}>Przebieg Spotkania (Timeline)</Text>
-          {matchEvents.map((event) => (
-            <View key={event.id} style={styles.eventRow}>
-              <View style={styles.eventMinuteBadge}>
-                <Text style={styles.eventMinuteText}>{event.minute}'</Text>
+            {/* OŚ CZASU MECZU (DZIENNIK ZDARZEŃ) */}
+            <View style={styles.timelineCard}>
+              <View style={styles.timelineHeader}>
+                <Text style={styles.timelineTitle}>Przebieg Meczu LIVE</Text>
+                <TouchableOpacity onPress={handleResetMatch}>
+                  <Text style={styles.resetBtnText}>Resetuj mecz</Text>
+                </TouchableOpacity>
               </View>
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={styles.eventPlayer}>{event.player}</Text>
-                <Text style={styles.eventTypeDesc}>
-                  {event.type === 'goal' ? '⚽ Gol dla drużyny!' : '🟨 Żółta kartka'}
+
+              {matchEvents.length === 0 ? (
+                <Text style={styles.emptyTimelineText}>
+                  Brak zarejestrowanych goli. Użyj przycisków powyżej, aby dodać bramkę.
                 </Text>
-              </View>
+              ) : (
+                matchEvents.map((ev) => (
+                  <View
+                    key={ev.id}
+                    style={[
+                      styles.timelineEventRow,
+                      ev.team === 'home' ? styles.homeEventRow : styles.awayEventRow,
+                    ]}
+                  >
+                    <View style={styles.eventMinBadge}>
+                      <Text style={styles.eventMinText}>{ev.minute}'</Text>
+                    </View>
+
+                    <View style={styles.eventDetailContent}>
+                      <Text style={styles.eventTitleText}>
+                        ⚽ Gol! ({ev.team === 'home' ? 'Nasz Klub' : 'Przeciwnik'})
+                      </Text>
+                      {ev.team === 'home' && (
+                        <Text style={styles.eventSubText}>
+                          Strzelec: <Text style={{ fontWeight: 'bold' }}>{ev.scorerName}</Text>
+                          {ev.assistantName ? ` • Asysta: ${ev.assistantName}` : ''}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                ))
+              )}
             </View>
-          ))}
-        </ScrollView>
-      )}
+          </View>
+        )}
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+
+      {/* ================= MODAL: WYBÓR STRZELCA DLA NASZEJ DRUŻYNY ================= */}
+      <Modal animationType="slide" transparent={true} visible={goalModalVisible}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Kto strzelił bramkę? ⚽</Text>
+              <TouchableOpacity onPress={() => setGoalModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.inputLabel}>Strzelec bramki:</Text>
+            <ScrollView style={{ maxHeight: 150, marginBottom: 10 }}>
+              {availablePlayers.map((p: any) => (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[
+                    styles.pickerItem,
+                    selectedScorerId === p.id && styles.pickerItemSelected,
+                  ]}
+                  onPress={() => setSelectedScorerId(p.id)}
+                >
+                  <Text
+                    style={[
+                      styles.pickerItemText,
+                      selectedScorerId === p.id && styles.pickerItemTextSelected,
+                    ]}
+                  >
+                    #{p.number || p.id} {getPlayerName(p)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <Text style={styles.inputLabel}>Asystent (opcjonalnie):</Text>
+            <ScrollView style={{ maxHeight: 120, marginBottom: 10 }}>
+              <TouchableOpacity
+                style={[
+                  styles.pickerItem,
+                  selectedAssistantId === 'none' && styles.pickerItemSelected,
+                ]}
+                onPress={() => setSelectedAssistantId('none')}
+              >
+                <Text
+                  style={[
+                    styles.pickerItemText,
+                    selectedAssistantId === 'none' && styles.pickerItemTextSelected,
+                  ]}
+                >
+                  Brak asysty (Akcja indywidualna)
+                </Text>
+              </TouchableOpacity>
+
+              {availablePlayers.map((p: any) => (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[
+                    styles.pickerItem,
+                    selectedAssistantId === p.id && styles.pickerItemSelected,
+                  ]}
+                  onPress={() => setSelectedAssistantId(p.id)}
+                >
+                  <Text
+                    style={[
+                      styles.pickerItemText,
+                      selectedAssistantId === p.id && styles.pickerItemTextSelected,
+                    ]}
+                  >
+                    #{p.number || p.id} {getPlayerName(p)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setGoalModalVisible(false)}
+              >
+                <Text style={styles.cancelBtnText}>Anuluj</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleAddHomeGoal}>
+                <Text style={styles.saveBtnText}>Zatwierdź Gol!</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
+
   header: {
     backgroundColor: '#fff',
     paddingHorizontal: 16,
@@ -181,146 +464,220 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#0f172a' },
   headerSubtitle: { fontSize: 12, color: '#64748b', marginTop: 2 },
+
   tabsRow: {
     flexDirection: 'row',
     backgroundColor: '#fff',
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
   },
   tabBtn: {
     flex: 1,
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 8,
     borderRadius: 8,
     backgroundColor: '#f1f5f9',
-    marginRight: 8,
+    marginRight: 6,
   },
-  activeTabBtn: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#2563eb' },
-  tabText: { fontSize: 12, fontWeight: '600', color: '#64748b', marginLeft: 6 },
-  activeTabText: { color: '#2563eb' },
+  tabBtnActive: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#2563eb' },
+  tabText: { fontSize: 11, fontWeight: '600', color: '#64748b', marginLeft: 4 },
+  tabTextActive: { color: '#2563eb', fontWeight: 'bold' },
 
   content: { padding: 16 },
 
-  formationBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
+  /* TABLICA TAKTYCZNA */
+  controlsCard: {
     backgroundColor: '#fff',
-    padding: 10,
-    borderRadius: 8,
+    padding: 12,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#e2e8f0',
+    marginBottom: 12,
   },
-  label: { fontSize: 12, fontWeight: 'bold', color: '#334155', marginRight: 10 },
-  formChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: '#f1f5f9', marginRight: 6 },
-  activeFormChip: { backgroundColor: '#2563eb' },
-  formChipText: { fontSize: 11, fontWeight: 'bold', color: '#64748b' },
-  activeFormChipText: { color: '#fff' },
+  controlLabel: { fontSize: 11, fontWeight: 'bold', color: '#475569', marginBottom: 6 },
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap' },
+  chip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    backgroundColor: '#f1f5f9',
+    marginRight: 6,
+    marginBottom: 4,
+  },
+  chipActive: { backgroundColor: '#2563eb' },
+  chipText: { fontSize: 11, color: '#64748b', fontWeight: '600' },
+  chipTextActive: { color: '#fff', fontWeight: 'bold' },
 
   pitchContainer: {
     height: 380,
     backgroundColor: '#15803d',
     borderRadius: 12,
+    borderWidth: 3,
+    borderColor: '#ffffff',
     position: 'relative',
     overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 2,
-    borderWidth: 2,
-    borderColor: '#166534',
   },
-  pitchCenterLine: { position: 'absolute', width: '100%', height: 2, backgroundColor: 'rgba(255,255,255,0.4)', top: '50%' },
+  pitchLines: { ...StyleSheet.absoluteFillObject },
+  pitchCenterLine: {
+    position: 'absolute',
+    top: '50%',
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+  },
   pitchCenterCircle: {
     position: 'absolute',
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    top: '38%',
+    left: '32%',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.4)',
-    top: '50%',
-    left: '50%',
-    marginTop: -35,
-    marginLeft: -35,
+    borderColor: 'rgba(255,255,255,0.6)',
   },
-  pitchGoalTop: {
+  pitchPenaltyAreaTop: {
     position: 'absolute',
-    width: 100,
-    height: 30,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.4)',
     top: 0,
-    left: '50%',
-    marginLeft: -50,
+    left: '25%',
+    width: '50%',
+    height: 60,
+    borderBottomWidth: 2,
+    borderLeftWidth: 2,
+    borderRightWidth: 2,
+    borderColor: 'rgba(255,255,255,0.6)',
   },
-  pitchGoalBottom: {
+  pitchPenaltyAreaBottom: {
     position: 'absolute',
-    width: 100,
-    height: 30,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.4)',
     bottom: 0,
-    left: '50%',
-    marginLeft: -50,
+    left: '25%',
+    width: '50%',
+    height: 60,
+    borderTopWidth: 2,
+    borderLeftWidth: 2,
+    borderRightWidth: 2,
+    borderColor: 'rgba(255,255,255,0.6)',
   },
-  pitchWatermark: { position: 'absolute', bottom: 8, color: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' },
 
-  playerToken: {
-    position: 'absolute',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 3,
-  },
-  tokenText: { fontSize: 10, fontWeight: 'bold', color: '#15803d' },
-  tokenName: { fontSize: 8, fontWeight: '600', color: '#0f172a', position: 'absolute', bottom: -14, width: 60, textAlign: 'center' },
-
-  fullScreenTacticBtn: {
-    flexDirection: 'row',
+  pitchPlayersOverlay: { ...StyleSheet.absoluteFillObject },
+  playerNode: { position: 'absolute', alignItems: 'center' },
+  playerShirt: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: '#2563eb',
-    padding: 12,
-    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 16,
+    borderWidth: 1.5,
+    borderColor: '#fff',
   },
-  fullScreenTacticText: { color: '#fff', fontWeight: 'bold', fontSize: 13, marginLeft: 6 },
+  playerShirtNum: { fontSize: 10, fontWeight: 'bold', color: '#fff' },
+  playerNodeName: { fontSize: 9, fontWeight: 'bold', color: '#fff', marginTop: 1, backgroundColor: 'rgba(0,0,0,0.4)', paddingHorizontal: 3, borderRadius: 3 },
 
-  scoreCard: {
-    backgroundColor: '#1e293b',
+  /* PROTOKÓŁ MECZOWY LIVE */
+  scoreboardCard: {
+    backgroundColor: '#0f172a',
     borderRadius: 12,
-    padding: 20,
-    alignItems: 'center',
-    marginBottom: 20,
-    elevation: 2,
-  },
-  scoreSubtitle: { fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: 10 },
-  scoreRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 16 },
-  teamNameText: { fontSize: 14, fontWeight: 'bold', color: '#fff', flex: 1, textAlign: 'center' },
-  scoreText: { fontSize: 32, fontWeight: 'bold', color: '#f59e0b', paddingHorizontal: 16 },
-  matchLiveActions: { width: '100%' },
-  liveActionBtn: { backgroundColor: '#16a34a', padding: 10, borderRadius: 8, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
-  liveActionText: { color: '#fff', fontWeight: 'bold', fontSize: 12, marginLeft: 6 },
-
-  sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#334155', marginBottom: 12 },
-  eventRow: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  teamScoreBox: { flex: 1, alignItems: 'center' },
+  teamNameLabel: { fontSize: 11, fontWeight: 'bold', color: '#94a3b8' },
+  scoreNumber: { fontSize: 36, fontWeight: 'bold', color: '#fff', marginTop: 4 },
+  scoreDividerBox: { alignItems: 'center', paddingHorizontal: 10 },
+  scoreVsText: { fontSize: 14, fontWeight: 'bold', color: '#64748b' },
+  minuteInputBox: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  minuteLabel: { fontSize: 11, color: '#94a3b8' },
+  minuteInput: {
+    backgroundColor: '#1e293b',
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginHorizontal: 4,
+    width: 32,
+    textAlign: 'center',
+  },
+
+  goalButtonsRow: { marginBottom: 12 },
+  homeGoalBtn: {
+    backgroundColor: '#16a34a',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  awayGoalBtn: {
+    backgroundColor: '#dc2626',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  goalBtnText: { color: '#fff', fontSize: 12, fontWeight: 'bold', marginLeft: 6 },
+
+  timelineCard: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#e2e8f0',
   },
-  eventMinuteBadge: { backgroundColor: '#eff6ff', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  eventMinuteText: { fontSize: 12, fontWeight: 'bold', color: '#2563eb' },
-  eventPlayer: { fontSize: 13, fontWeight: 'bold', color: '#0f172a' },
-  eventTypeDesc: { fontSize: 11, color: '#64748b', marginTop: 2 },
+  timelineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  timelineTitle: { fontSize: 13, fontWeight: 'bold', color: '#0f172a' },
+  resetBtnText: { fontSize: 11, color: '#dc2626', fontWeight: 'bold' },
+  emptyTimelineText: { fontSize: 11, color: '#94a3b8', fontStyle: 'italic', textAlign: 'center', marginVertical: 10 },
+
+  timelineEventRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  homeEventRow: { borderLeftWidth: 3, borderLeftColor: '#16a34a', paddingLeft: 8 },
+  awayEventRow: { borderLeftWidth: 3, borderLeftColor: '#dc2626', paddingLeft: 8 },
+  eventMinBadge: { backgroundColor: '#f1f5f9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 8 },
+  eventMinText: { fontSize: 10, fontWeight: 'bold', color: '#334155' },
+  eventDetailContent: { flex: 1 },
+  eventTitleText: { fontSize: 12, fontWeight: 'bold', color: '#0f172a' },
+  eventSubText: { fontSize: 10, color: '#64748b', marginTop: 1 },
+
+  /* MODAL */
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.5)', justifyContent: 'center', padding: 16 },
+  modalContainer: { backgroundColor: '#fff', borderRadius: 16, padding: 20, elevation: 5 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  modalTitle: { fontSize: 15, fontWeight: 'bold', color: '#0f172a' },
+  inputLabel: { fontSize: 11, fontWeight: '600', color: '#475569', marginTop: 8, marginBottom: 4 },
+
+  pickerItem: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    backgroundColor: '#f8fafc',
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  pickerItemSelected: { backgroundColor: '#eff6ff', borderColor: '#2563eb' },
+  pickerItemText: { fontSize: 12, color: '#334155' },
+  pickerItemTextSelected: { color: '#2563eb', fontWeight: 'bold' },
+
+  modalButtonsRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16 },
+  cancelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, marginRight: 6 },
+  cancelBtnText: { fontSize: 12, color: '#64748b', fontWeight: '600' },
+  saveBtn: { backgroundColor: '#2563eb', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  saveBtnText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
 });

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Platform, StatusBar } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -8,12 +8,13 @@ import ZawodnikPanelScreen from './ZawodnikPanel';
 import RodzicPanelScreen from './RodzicPanel';
 
 export default function AppLayout() {
-  // Stan wybranej roli: 'trener' | 'zawodnik' | 'rodzic'
   const [currentRole, setCurrentRole] = useState<'trener' | 'zawodnik' | 'rodzic'>('trener');
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      {/* PASEK PRZEŁĄCZANIA RÓL (SYMULATOR) */}
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
+      
+      {/* PASEK PRZEŁĄCZANIA RÓL (POPRAWIONA KALIBRACJA) */}
       <View style={styles.roleBar}>
         <Text style={styles.roleBarLabel}>Rola:</Text>
         <TouchableOpacity
@@ -65,7 +66,6 @@ export default function AppLayout() {
       ) : currentRole === 'rodzic' ? (
         <RodzicPanelScreen />
       ) : (
-        /* PEŁNY EKOSYSTEM TRENERA (5 ZAKŁADEK) */
         <Tabs
           screenOptions={{
             headerShown: false,
@@ -127,7 +127,6 @@ export default function AppLayout() {
             }}
           />
 
-          {/* UKRYTE PODSTRONY */}
           <Tabs.Screen name="Finanse" options={{ href: null }} />
           <Tabs.Screen name="Klub" options={{ href: null }} />
           <Tabs.Screen name="Raporty" options={{ href: null }} />
@@ -141,12 +140,18 @@ export default function AppLayout() {
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+  },
   roleBar: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#0f172a',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
   },
   roleBarLabel: {
     color: '#94a3b8',
@@ -159,7 +164,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#1e293b',
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 6,
     marginRight: 6,
   },
