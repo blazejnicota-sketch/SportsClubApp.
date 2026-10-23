@@ -5,114 +5,158 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { MOCK_100_PLAYERS } from './data/mockPlayers';
 
 export default function FinanseScreen() {
-  const [searchQuery, setSearchQuery] = useState('');
+  // Pomocnicza funkcja pobierania imienia i nazwiska
+  const getPlayerName = (player: any) => {
+    if (player.name) return player.name;
+    if (player.firstName || player.lastName) {
+      return `${player.firstName || ''} ${player.lastName || ''}`.trim();
+    }
+    if (player.first_name || player.last_name) {
+      return `${player.first_name || ''} ${player.last_name || ''}`.trim();
+    }
+    return 'Zawodnik';
+  };
 
-  const filteredPlayers = MOCK_100_PLAYERS.filter((p) =>
-    `${p.firstName} ${p.lastName}`.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const samplePlayers = MOCK_100_PLAYERS.slice(0, 10);
+  const [paidStatus, setPaidStatus] = useState<{ [key: string]: boolean }>({
+    [samplePlayers[0]?.id]: true,
+    [samplePlayers[1]?.id]: true,
+    [samplePlayers[2]?.id]: false,
+  });
+
+  const togglePaid = (id: string) => {
+    setPaidStatus((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      {/* NAGŁÓWEK */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Zarządzanie Finansami</Text>
-        <Text style={styles.headerSubtitle}>Składki członkowskie i wpłaty zawodników</Text>
+        <Text style={styles.headerTitle}>Finanse i Składki Klubowe</Text>
+        <Text style={styles.headerSubtitle}>
+          Kontrola wpłat miesięcznych, salda drużyny i rozliczenia
+        </Text>
       </View>
 
-      <View style={styles.summaryCard}>
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryValue}>12,400 zł</Text>
-          <Text style={styles.summaryLabel}>Zebrane składki</Text>
+      <View style={styles.content}>
+        {/* PODSUMOWANIE FINANSOWE */}
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryValue}>2 400 zł</Text>
+            <Text style={styles.summaryLabel}>Zebrane w tym mies.</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={[styles.summaryValue, { color: '#dc2626' }]}>350 zł</Text>
+            <Text style={styles.summaryLabel}>Zaległości</Text>
+          </View>
         </View>
-        <View style={styles.divider} />
-        <View style={styles.summaryItem}>
-          <Text style={[styles.summaryValue, { color: '#ef4444' }]}>800 zł</Text>
-          <Text style={styles.summaryLabel}>Zaległości</Text>
+
+        {/* NAGŁÓWEK SEKCJI */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Status Składek (Październik 2026)</Text>
+          <TouchableOpacity
+            onPress={() => Alert.alert('Przypomnienie', 'Wysłano powiadomienia o składkach do rodziców')}
+          >
+            <Text style={styles.addBtnText}>📢 Wyślij przypomnienie</Text>
+          </TouchableOpacity>
         </View>
-      </View>
 
-      <View style={styles.searchBox}>
-        <Ionicons name="search" size={18} color="#6b7280" />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Szukaj po nazwisku..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-      </View>
-
-      <ScrollView style={styles.content}>
-        {filteredPlayers.map((player, idx) => {
-          const isPaid = idx % 5 !== 0; // Przykładowy status opłacenia
+        {/* LISTA ZAWODNIKÓW I SKŁADEK */}
+        {samplePlayers.map((player: any) => {
+          const isPaid = paidStatus[player.id] || false;
           return (
-            <View key={player.id} style={styles.row}>
+            <View key={player.id} style={styles.playerRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{player.firstName} {player.lastName}</Text>
-                <Text style={styles.sub}>Składka miesięczna: 150 zł</Text>
+                <Text style={styles.playerName}>{getPlayerName(player)}</Text>
+                <Text style={styles.playerSub}>Składka członkowska: 120 zł</Text>
               </View>
 
-              <View style={[styles.badge, isPaid ? styles.badgePaid : styles.badgeUnpaid]}>
-                <Text style={[styles.badgeText, isPaid ? styles.textPaid : styles.textUnpaid]}>
-                  {isPaid ? 'Opłacone' : 'Zaległość'}
+              <TouchableOpacity
+                style={[styles.statusChip, isPaid ? styles.chipPaid : styles.chipUnpaid]}
+                onPress={() => togglePaid(player.id)}
+              >
+                <Ionicons
+                  name={isPaid ? 'checkmark-circle' : 'alert-circle'}
+                  size={14}
+                  color={isPaid ? '#16a34a' : '#dc2626'}
+                  style={{ marginRight: 4 }}
+                />
+                <Text style={[styles.chipText, { color: isPaid ? '#16a34a' : '#dc2626' }]}>
+                  {isPaid ? 'Opłacone' : 'Nieopłacone'}
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
           );
         })}
-      </ScrollView>
-    </View>
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f3f4f6' },
-  header: { backgroundColor: '#fff', padding: 16, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
-  headerSubtitle: { fontSize: 12, color: '#6b7280', marginTop: 2 },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
+  header: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#0f172a' },
+  headerSubtitle: { fontSize: 12, color: '#64748b', marginTop: 2 },
+  content: { padding: 16 },
+
   summaryCard: {
     backgroundColor: '#fff',
-    margin: 16,
     borderRadius: 12,
     padding: 16,
     flexDirection: 'row',
+    justifyContent: 'space-around',
     alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
     elevation: 1,
   },
-  summaryItem: { flex: 1, alignItems: 'center' },
-  summaryValue: { fontSize: 18, fontWeight: 'bold', color: '#10b981' },
-  summaryLabel: { fontSize: 11, color: '#6b7280', marginTop: 2 },
-  divider: { width: 1, height: 30, backgroundColor: '#e5e7eb' },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  summaryItem: { alignItems: 'center' },
+  summaryValue: { fontSize: 20, fontWeight: 'bold', color: '#2563eb' },
+  summaryLabel: { fontSize: 11, color: '#64748b', marginTop: 2 },
+  summaryDivider: { width: 1, height: 30, backgroundColor: '#e2e8f0' },
+
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#334155' },
+  addBtnText: { fontSize: 12, fontWeight: 'bold', color: '#2563eb' },
+
+  playerRow: {
     backgroundColor: '#fff',
-    marginHorizontal: 16,
-    paddingHorizontal: 12,
     borderRadius: 8,
-    height: 38,
-    marginBottom: 10,
-  },
-  searchInput: { flex: 1, marginLeft: 8, fontSize: 14 },
-  content: { flex: 1, paddingHorizontal: 16 },
-  row: {
-    backgroundColor: '#fff',
     padding: 12,
-    borderRadius: 8,
     marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  name: { fontSize: 14, fontWeight: 'bold', color: '#1f2937' },
-  sub: { fontSize: 11, color: '#6b7280', marginTop: 2 },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  badgePaid: { backgroundColor: '#d1fae5' },
-  badgeUnpaid: { backgroundColor: '#fee2e2' },
-  badgeText: { fontSize: 11, fontWeight: 'bold' },
-  textPaid: { color: '#047857' },
-  textUnpaid: { color: '#b91c1c' },
+  playerName: { fontSize: 13, fontWeight: 'bold', color: '#0f172a' },
+  playerSub: { fontSize: 11, color: '#64748b', marginTop: 2 },
+
+  statusChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  chipPaid: { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' },
+  chipUnpaid: { backgroundColor: '#fef2f2', borderColor: '#fecaca' },
+  chipText: { fontSize: 11, fontWeight: 'bold' },
 });

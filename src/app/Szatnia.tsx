@@ -6,298 +6,308 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Modal,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { MOCK_100_PLAYERS, Player } from './data/mockPlayers';
+import { MOCK_100_PLAYERS } from './data/mockPlayers';
 
 export default function SzatniaScreen() {
-  const [players] = useState<Player[]>(MOCK_100_PLAYERS);
+  const [activeTab, setActiveTab] = useState<'tests' | 'health' | 'notes'>('tests');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
-  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
 
-  const filteredPlayers = players.filter((p) =>
-    `${p.firstName} ${p.lastName}`.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Pomocnicza funkcja pobierająca pełne imię i nazwisko
+  const getPlayerName = (player: any) => {
+    if (player.name) return player.name;
+    if (player.firstName || player.lastName) {
+      return `${player.firstName || ''} ${player.lastName || ''}`.trim();
+    }
+    if (player.first_name || player.last_name) {
+      return `${player.first_name || ''} ${player.last_name || ''}`.trim();
+    }
+    return 'Zawodnik';
+  };
+
+  // Filtrowanie zawodników
+  const filteredPlayers = MOCK_100_PLAYERS.filter((player: any) => {
+    const fullName = getPlayerName(player).toLowerCase();
+    return fullName.includes(searchQuery.toLowerCase());
+  }).slice(0, 10);
 
   return (
     <View style={styles.container}>
       {/* NAGŁÓWEK */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Szatnia Zawodników</Text>
+        <Text style={styles.headerTitle}>Szatnia i Centrum Analityki</Text>
         <Text style={styles.headerSubtitle}>
-          Karty zawodników, frekwencja, zdrowie i rozwój
+          Testy motoryczne, profilaktyka zdrowotna i notatki trenerskie
         </Text>
       </View>
 
-      {/* WYSZUKIWARKA */}
-      <View style={styles.searchSection}>
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={18} color="#6b7280" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Wyszukaj zawodnika..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
+      {/* PRZEŁĄCZNIK ZAKŁADEK */}
+      <View style={styles.tabsRow}>
+        <TouchableOpacity
+          style={[styles.tabBtn, activeTab === 'tests' && styles.activeTabBtn]}
+          onPress={() => setActiveTab('tests')}
+        >
+          <Ionicons
+            name="fitness-outline"
+            size={15}
+            color={activeTab === 'tests' ? '#2563eb' : '#64748b'}
           />
-        </View>
+          <Text style={[styles.tabText, activeTab === 'tests' && styles.activeTabText]}>
+            Testy Motoryczne
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabBtn, activeTab === 'health' && styles.activeTabBtn]}
+          onPress={() => setActiveTab('health')}
+        >
+          <Ionicons
+            name="medkit-outline"
+            size={15}
+            color={activeTab === 'health' ? '#2563eb' : '#64748b'}
+          />
+          <Text style={[styles.tabText, activeTab === 'health' && styles.activeTabText]}>
+            Zdrowie & Urazy
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabBtn, activeTab === 'notes' && styles.activeTabBtn]}
+          onPress={() => setActiveTab('notes')}
+        >
+          <Ionicons
+            name="create-outline"
+            size={15}
+            color={activeTab === 'notes' ? '#2563eb' : '#64748b'}
+          />
+          <Text style={[styles.tabText, activeTab === 'notes' && styles.activeTabText]}>
+            Notatki
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {/* LISTA ZAWODNIKÓW */}
-      <ScrollView style={styles.content}>
-        {filteredPlayers.map((player) => (
-          <TouchableOpacity
-            key={player.id}
-            style={styles.playerCard}
-            onPress={() => {
-              setSelectedPlayer(player);
-              setDetailsModalVisible(true);
-            }}
-          >
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {player.firstName[0]}
-                {player.lastName[0]}
-              </Text>
+      {/* PASEK WYSZUKIWANIA */}
+      <View style={styles.searchBarContainer}>
+        <Ionicons name="search-outline" size={18} color="#94a3b8" style={{ marginRight: 8 }} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Szukaj zawodnika z kadry..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholderTextColor="#94a3b8"
+        />
+      </View>
+
+      {/* ZAWARTOŚĆ */}
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {activeTab === 'tests' && (
+          <View>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Ostatnie Wyniki Testów</Text>
+              <TouchableOpacity onPress={() => Alert.alert('Testy', 'Wprowadź nowe wyniki testu')}>
+                <Text style={styles.addBtnText}>+ Wprowadź wyniki</Text>
+              </TouchableOpacity>
             </View>
 
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.playerName}>
-                {player.firstName} {player.lastName}
-              </Text>
-              <Text style={styles.playerMeta}>
-                Rocznik {player.birthYear} • {player.position}
-              </Text>
-            </View>
-
-            <View style={styles.statusBadge}>
-              <Ionicons name="medical" size={12} color="#10b981" />
-              <Text style={styles.statusBadgeText}>Zdrowy</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      {/* MODAL KARTY SPORTOWEJ ZAWODNIKA */}
-      <Modal visible={detailsModalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {selectedPlayer && (
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Karta Sportowa</Text>
-                  <TouchableOpacity onPress={() => setDetailsModalVisible(false)}>
-                    <Ionicons name="close" size={24} color="#374151" />
-                  </TouchableOpacity>
+            {filteredPlayers.map((player: any) => (
+              <View key={player.id} style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.playerName}>{getPlayerName(player)}</Text>
+                  <Text style={styles.playerPosition}>{player.position || 'Zawodnik'}</Text>
                 </View>
 
-                {/* NAGŁÓWEK PROFILU */}
-                <View style={styles.profileHeader}>
-                  <View style={[styles.avatar, { width: 56, height: 56, borderRadius: 28 }]}>
-                    <Text style={[styles.avatarText, { fontSize: 20 }]}>
-                      {selectedPlayer.firstName[0]}
-                      {selectedPlayer.lastName[0]}
-                    </Text>
+                <View style={styles.statsGrid}>
+                  <View style={styles.statBox}>
+                    <Text style={styles.statLabel}>Sprint 30m</Text>
+                    <Text style={styles.statValue}>4.21 s</Text>
                   </View>
-                  <Text style={styles.profileName}>
-                    {selectedPlayer.firstName} {selectedPlayer.lastName}
-                  </Text>
-                  <Text style={styles.profileMeta}>
-                    {selectedPlayer.position} • Kat. {selectedPlayer.category} (Rocznik {selectedPlayer.birthYear})
-                  </Text>
-                </View>
-
-                {/* SEKCJA 1: FREKWENCJA I OBECNOŚCI */}
-                <View style={styles.sectionCard}>
-                  <View style={styles.sectionTitleRow}>
-                    <Ionicons name="calendar-outline" size={18} color="#2563eb" />
-                    <Text style={styles.sectionTitle}>Frekwencja (Treningi i Mecze)</Text>
+                  <View style={styles.statBox}>
+                    <Text style={styles.statLabel}>BEEP Test</Text>
+                    <Text style={styles.statValue}>Poziom 11.4</Text>
                   </View>
-                  <View style={styles.statGrid}>
-                    <View style={styles.statItem}>
-                      <Text style={styles.statValue}>88%</Text>
-                      <Text style={styles.statLabel}>Treningi</Text>
-                    </View>
-                    <View style={styles.statItem}>
-                      <Text style={styles.statValue}>95%</Text>
-                      <Text style={styles.statLabel}>Mecze</Text>
-                    </View>
-                    <View style={styles.statItem}>
-                      <Text style={styles.statValue}>22/25</Text>
-                      <Text style={styles.statLabel}>Obecności</Text>
-                    </View>
+                  <View style={styles.statBox}>
+                    <Text style={styles.statLabel}>Skok w dal</Text>
+                    <Text style={styles.statValue}>2.15 m</Text>
                   </View>
                 </View>
-
-                {/* SEKCJA 2: ZDROWIE I KONTUZJE */}
-                <View style={styles.sectionCard}>
-                  <View style={styles.sectionTitleRow}>
-                    <Ionicons name="fitness-outline" size={18} color="#10b981" />
-                    <Text style={styles.sectionTitle}>Status Zdrowotny</Text>
-                  </View>
-                  <View style={styles.healthRow}>
-                    <Text style={styles.healthLabel}>Aktualny stan:</Text>
-                    <Text style={styles.healthStatusActive}>Gotowy do gry (100%)</Text>
-                  </View>
-                  <Text style={styles.healthNote}>Brak zgłoszonych urazów w ostatnim miesiącu.</Text>
-                </View>
-
-                {/* SEKCJA 3: OSTATNIE TESTY MOTORYCZNE */}
-                <View style={styles.sectionCard}>
-                  <View style={styles.sectionTitleRow}>
-                    <Ionicons name="stats-chart-outline" size={18} color="#8b5cf6" />
-                    <Text style={styles.sectionTitle}>Testy Motoryczne</Text>
-                  </View>
-                  <View style={styles.testRow}>
-                    <Text style={styles.testName}>Sprint 30m:</Text>
-                    <Text style={styles.testResult}>4.25 s</Text>
-                  </View>
-                  <View style={styles.testRow}>
-                    <Text style={styles.testName}>BEEP Test:</Text>
-                    <Text style={styles.testResult}>Poziom 10.2</Text>
-                  </View>
-                  <View style={styles.testRow}>
-                    <Text style={styles.testName}>Skok w dal z miejsca:</Text>
-                    <Text style={styles.testResult}>215 cm</Text>
-                  </View>
-                </View>
-
-                {/* SEKCJA 4: UWAGI TRENERSKIE */}
-                <View style={styles.sectionCard}>
-                  <View style={styles.sectionTitleRow}>
-                    <Ionicons name="create-outline" size={18} color="#f59e0b" />
-                    <Text style={styles.sectionTitle}>Notatki Trenerskie</Text>
-                  </View>
-                  <Text style={styles.trainerNote}>
-                    Praca nad wykończeniem lewą nogą. Świetne zaangażowanie na treningach taktycznych.
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.closeBtn}
-                  onPress={() => setDetailsModalVisible(false)}
-                >
-                  <Text style={styles.closeBtnText}>Zamknij kartę</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            )}
+              </View>
+            ))}
           </View>
-        </View>
-      </Modal>
+        )}
+
+        {activeTab === 'health' && (
+          <View>
+            <Text style={styles.sectionTitle}>Status Zdrowotny Zespołu</Text>
+
+            <View style={styles.healthSummaryCard}>
+              <View style={styles.healthStatItem}>
+                <Text style={[styles.healthStatNumber, { color: '#16a34a' }]}>16</Text>
+                <Text style={styles.healthStatLabel}>W pełni gotowi</Text>
+              </View>
+              <View style={styles.healthDivider} />
+              <View style={styles.healthStatItem}>
+                <Text style={[styles.healthStatNumber, { color: '#d97706' }]}>2</Text>
+                <Text style={styles.healthStatLabel}>Drobny uraz</Text>
+              </View>
+              <View style={styles.healthDivider} />
+              <View style={styles.healthStatItem}>
+                <Text style={[styles.healthStatNumber, { color: '#dc2626' }]}>1</Text>
+                <Text style={styles.healthStatLabel}>Kontuzja</Text>
+              </View>
+            </View>
+
+            <Text style={styles.subSectionTitle}>Lista Zawodników z Urazami</Text>
+
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.playerName}>Michał Kowalczyk</Text>
+                <View style={styles.badgeDanger}>
+                  <Text style={styles.badgeDangerText}>Wykluczony z gry</Text>
+                </View>
+              </View>
+              <Text style={styles.injuryDesc}>Skręcenie stawu skokowego (Trening 18.10)</Text>
+              <Text style={styles.injuryReturn}>Przewidywany powrót: za 12 dni</Text>
+            </View>
+
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.playerName}>Piotr Adamski</Text>
+                <View style={styles.badgeWarning}>
+                  <Text style={styles.badgeWarningText}>Trening indywidualny</Text>
+                </View>
+              </View>
+              <Text style={styles.injuryDesc}>Przeciążenie mięśnia czworogłowego</Text>
+              <Text style={styles.injuryReturn}>Przewidywany powrót: za 3 dni</Text>
+            </View>
+          </View>
+        )}
+
+        {activeTab === 'notes' && (
+          <View>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Prywatny Dziennik Trenera</Text>
+              <TouchableOpacity onPress={() => Alert.alert('Notatka', 'Dodaj nową notatkę')}>
+                <Text style={styles.addBtnText}>+ Nowa notatka</Text>
+              </TouchableOpacity>
+            </View>
+
+            {filteredPlayers.slice(0, 5).map((player: any) => (
+              <View key={player.id} style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.playerName}>{getPlayerName(player)}</Text>
+                  <Text style={styles.noteDate}>Ostatni wpis: 2 dni temu</Text>
+                </View>
+                <Text style={styles.noteText}>
+                  Świetna postawa w grze 1v1 w defensywie. Pracujemy nad celnością podań otwierających na lewą stronę.
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f3f4f6' },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
   header: {
     backgroundColor: '#fff',
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    borderBottomColor: '#e2e8f0',
   },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
-  headerSubtitle: { fontSize: 12, color: '#6b7280', marginTop: 2 },
-  searchSection: {
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#0f172a' },
+  headerSubtitle: { fontSize: 12, color: '#64748b', marginTop: 2 },
+
+  tabsRow: {
+    flexDirection: 'row',
     backgroundColor: '#fff',
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    borderBottomColor: '#e2e8f0',
   },
-  searchBox: {
+  tabBtn: {
+    flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f3f4f6',
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    height: 38,
-  },
-  searchInput: { flex: 1, marginLeft: 8, fontSize: 14 },
-  content: { flex: 1, padding: 16 },
-  playerCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    elevation: 1,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#eff6ff',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    marginRight: 6,
   },
-  avatarText: { color: '#1d4ed8', fontWeight: 'bold', fontSize: 14 },
-  playerName: { fontSize: 14, fontWeight: 'bold', color: '#1f2937' },
-  playerMeta: { fontSize: 11, color: '#6b7280', marginTop: 2 },
-  statusBadge: {
+  activeTabBtn: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#2563eb' },
+  tabText: { fontSize: 11, fontWeight: '600', color: '#64748b', marginLeft: 4 },
+  activeTabText: { color: '#2563eb' },
+
+  searchBarContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ecfdf5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusBadgeText: { fontSize: 10, color: '#059669', fontWeight: 'bold', marginLeft: 4 },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 20,
-    maxHeight: '85%',
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  modalTitle: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
-  profileHeader: { alignItems: 'center', marginBottom: 16 },
-  profileName: { fontSize: 18, fontWeight: 'bold', color: '#1f2937', marginTop: 8 },
-  profileMeta: { fontSize: 12, color: '#6b7280', marginTop: 2 },
-  sectionCard: {
-    backgroundColor: '#f9fafb',
+  searchInput: { flex: 1, fontSize: 13, color: '#0f172a', padding: 0 },
+
+  content: { padding: 16 },
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#334155', marginBottom: 12 },
+  subSectionTitle: { fontSize: 13, fontWeight: 'bold', color: '#475569', marginTop: 12, marginBottom: 8 },
+  addBtnText: { fontSize: 12, fontWeight: 'bold', color: '#2563eb' },
+
+  card: {
+    backgroundColor: '#fff',
     borderRadius: 10,
     padding: 12,
-    marginBottom: 12,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#f3f4f6',
+    borderColor: '#e2e8f0',
+    elevation: 1,
   },
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  sectionTitle: { fontSize: 13, fontWeight: 'bold', color: '#374151', marginLeft: 6 },
-  statGrid: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 6 },
-  statItem: { alignItems: 'center' },
-  statValue: { fontSize: 16, fontWeight: 'bold', color: '#2563eb' },
-  statLabel: { fontSize: 11, color: '#6b7280', marginTop: 2 },
-  healthRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  healthLabel: { fontSize: 12, color: '#6b7280' },
-  healthStatusActive: { fontSize: 12, fontWeight: 'bold', color: '#10b981' },
-  healthNote: { fontSize: 11, color: '#9ca3af', marginTop: 4 },
-  testRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
-  testName: { fontSize: 12, color: '#4b5563' },
-  testResult: { fontSize: 12, fontWeight: 'bold', color: '#1f2937' },
-  trainerNote: { fontSize: 12, color: '#4b5563', fontStyle: 'italic' },
-  closeBtn: {
-    backgroundColor: '#e5e7eb',
-    padding: 12,
-    borderRadius: 8,
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  playerName: { fontSize: 14, fontWeight: 'bold', color: '#0f172a' },
+  playerPosition: { fontSize: 11, color: '#64748b', fontWeight: '600' },
+
+  statsGrid: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
+  statBox: { backgroundColor: '#f8fafc', borderRadius: 6, padding: 8, width: '31%', alignItems: 'center' },
+  statLabel: { fontSize: 10, color: '#64748b' },
+  statValue: { fontSize: 12, fontWeight: 'bold', color: '#2563eb', marginTop: 2 },
+
+  healthSummaryCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
     alignItems: 'center',
-    marginTop: 8,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  closeBtnText: { color: '#374151', fontWeight: 'bold', fontSize: 14 },
+  healthStatItem: { alignItems: 'center' },
+  healthStatNumber: { fontSize: 22, fontWeight: 'bold' },
+  healthStatLabel: { fontSize: 11, color: '#64748b', marginTop: 2 },
+  healthDivider: { width: 1, height: 30, backgroundColor: '#e2e8f0' },
+
+  badgeDanger: { backgroundColor: '#fef2f2', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  badgeDangerText: { fontSize: 10, fontWeight: 'bold', color: '#dc2626' },
+  badgeWarning: { backgroundColor: '#fffbeb', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  badgeWarningText: { fontSize: 10, fontWeight: 'bold', color: '#d97706' },
+
+  injuryDesc: { fontSize: 12, color: '#334155', marginBottom: 4 },
+  injuryReturn: { fontSize: 11, color: '#64748b' },
+
+  noteDate: { fontSize: 10, color: '#94a3b8' },
+  noteText: { fontSize: 12, color: '#334155', lineHeight: 18 },
 });
