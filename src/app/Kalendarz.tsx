@@ -35,7 +35,7 @@ export default function KalendarzScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('miesiac');
   const [selectedDate, setSelectedDate] = useState<string>('2026-10-24');
 
-  // Przygotowanie bazy zawodników
+  // Baza zawodników
   const availablePlayers = MOCK_100_PLAYERS.slice(0, 24).map((p: any, idx: number) => ({
     ...p,
     firstName: p.firstName || p.name?.split(' ')[0] || 'Zawodnik',
@@ -48,8 +48,8 @@ export default function KalendarzScreen() {
   const [events, setEvents] = useState<EventItem[]>([
     {
       id: '1',
-      title: 'Mecz Wyjazdowy vs AP Warszawa',
-      date: '2026-10-24',
+      title: 'Mecz Godynice Szkoła Podstawowa',
+      date: '2026-10-25',
       meetingTime: '07:05',
       eventTime: '08:30',
       location: 'Stadion Miejski, ul. Sportowa 1',
@@ -59,7 +59,7 @@ export default function KalendarzScreen() {
     },
     {
       id: '2',
-      title: 'Trening Taktyczny',
+      title: 'Trening Domowy / Taktyczny',
       date: '2026-10-26',
       meetingTime: '17:15',
       eventTime: '17:30',
@@ -79,9 +79,9 @@ export default function KalendarzScreen() {
   const [eventTitle, setEventTitle] = useState<string>('');
   
   // Daty i Godziny
-  const [eventDateObj, setEventDateObj] = useState<Date>(new Date(2026, 9, 24));
-  const [meetingTimeObj, setMeetingTimeObj] = useState<Date>(new Date(2026, 9, 24, 7, 5));
-  const [eventTimeObj, setEventTimeObj] = useState<Date>(new Date(2026, 9, 24, 8, 30));
+  const [eventDateObj, setEventDateObj] = useState<Date>(new Date(2026, 9, 25));
+  const [meetingTimeObj, setMeetingTimeObj] = useState<Date>(new Date(2026, 9, 25, 7, 5));
+  const [eventTimeObj, setEventTimeObj] = useState<Date>(new Date(2026, 9, 25, 8, 30));
 
   const [eventLocation, setEventLocation] = useState<string>('');
   const [eventType, setEventType] = useState<'Mecz' | 'Trening' | 'Inne'>('Mecz');
@@ -102,16 +102,16 @@ export default function KalendarzScreen() {
     eventTimeObj.getMinutes()
   ).padStart(2, '0')}`;
 
-  // Stosowanie Szablonów
+  // Szablony
   const applyTemplate = (templateType: 'mecz' | 'trening' | 'turniej') => {
     if (templateType === 'mecz') {
-      setEventTitle('Mecz Ligowy Wyjazdowy');
+      setEventTitle('Mecz Godynice Szkoła Podstawowa');
       setEventType('Mecz');
       setEventLocation('Stadion Miejski, ul. Sportowa 1');
       setMeetingTimeObj(new Date(eventDateObj.setHours(7, 5)));
       setEventTimeObj(new Date(eventDateObj.setHours(8, 30)));
     } else if (templateType === 'trening') {
-      setEventTitle('Trening Taktyczny');
+      setEventTitle('Trening Domowy / Taktyczny');
       setEventType('Trening');
       setEventLocation('Orlik Klubowy, ul. Szkolna 5');
       setMeetingTimeObj(new Date(eventDateObj.setHours(17, 15)));
@@ -139,7 +139,7 @@ export default function KalendarzScreen() {
     setEventDateObj(new Date(yr, mo - 1, dy));
     setMeetingTimeObj(new Date(yr, mo - 1, dy, 7, 5));
     setEventTimeObj(new Date(yr, mo - 1, dy, 8, 30));
-    setEventLocation('Klub / Boisko główne');
+    setEventLocation('Stadion Miejski, ul. Sportowa 1');
     setEventType('Mecz');
 
     const initialSquad = availablePlayers.slice(0, 8).map((p) => String(p.id));
@@ -253,32 +253,32 @@ export default function KalendarzScreen() {
     setSquadAttendance((prev) => ({ ...prev, [id]: status }));
   };
 
-  // ZAZNACZ CAŁY ROCZNIK (NOWA SUGESTIA)
   const selectEntireYear = () => {
     const yearPlayers = filteredSquadPlayers.map((p) => String(p.id));
     const newSquad = Array.from(new Set([...selectedSquad, ...yearPlayers]));
     setSelectedSquad(newSquad);
   };
 
-  // KRÓTKA I CZYTELNA TREŚĆ POWOŁANIA (BEZ ZBĘDNYCH SZCZEGÓŁÓW)
+  // FORMOWANIE WIADOMOŚCI - BEZ ROCZNIKA, Z PROŚBĄ O POTWIERDZENIE NA KOŃCU
   const handleCopySquadToClipboard = async () => {
     const nominatedNames = availablePlayers
       .filter((p) => selectedSquad.includes(String(p.id)))
       .map((p) => `• ${p.firstName} ${p.lastName}`)
       .join('\n');
 
-    const message = `📌 ${eventTitle}\n📅 Data: ${formattedDate}\n⏰ Zbiórka: ${formattedMeetingTime} | Początek: ${formattedEventTime}\n📍 Miejsce: ${eventLocation}\n\nKADRA (${selectedSquad.length}):\n${nominatedNames}`;
+    const message = `📌 ${eventTitle}\n📅 Data: ${formattedDate}\n⏰ Zbiórka: ${formattedMeetingTime} | Początek: ${formattedEventTime}\n📍 Miejsce: ${eventLocation}\n\nKADRA (${selectedSquad.length}):\n${nominatedNames}\n\nProśba o potwierdzenie obecności! 👍`;
 
     await Clipboard.setStringAsync(message);
-    Alert.alert('Skopiowano! 📋', 'Zwięzłe powołanie trafiło do schowka.');
+    Alert.alert('Skopiowano! 📋', 'Treść powołania została skopiowana z prośbą o potwierdzenie obecności.');
   };
 
   const openMapLocation = (loc: string) => {
-    if (!loc.trim()) {
+    const targetLoc = loc.trim() || eventLocation.trim() || eventTitle.trim();
+    if (!targetLoc) {
       Alert.alert('Brak adresu', 'Wpisz lokalizację wydarzenia.');
       return;
     }
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}`;
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(targetLoc)}`;
     Linking.openURL(url).catch(() => Alert.alert('Błąd', 'Nie można otworzyć mapy Google.'));
   };
 
@@ -390,7 +390,7 @@ export default function KalendarzScreen() {
                         <View key={ev.id} style={styles.eventSubCard}>
                           <Text style={styles.eventSubCardTitle}>{ev.title}</Text>
                           <Text style={styles.eventSubCardMeta}>
-                            ⏰ Zbiórka: {ev.meetingTime} | Mecz/Trening: {ev.eventTime}
+                            ⏰ Zbiórka: {ev.meetingTime} | Start: {ev.eventTime}
                           </Text>
                           <TouchableOpacity
                             onPress={() => openMapLocation(ev.location)}
@@ -495,7 +495,7 @@ export default function KalendarzScreen() {
         </View>
       </Modal>
 
-      {/* MODAL 2: FORMULARZ Z PRZEWIJANIA SZABLONAMI I MAPAMI */}
+      {/* MODAL 2: FORMULARZ ZE ZŁĄCZEM MAPY PRZY NAZWIE I CZYSZCZONYM POWOŁANIEM */}
       <Modal animationType="slide" transparent={true} visible={formModalVisible}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContainer, { maxHeight: '94%' }]}>
@@ -507,7 +507,7 @@ export default function KalendarzScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* PRZEWIJANE POZIOMO SZABLONY WYDARZEŃ */}
+              {/* PRZEWIJANE SZABLONY */}
               <Text style={styles.inputLabel}>Szybki szablon wydarzenia:</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
                 <TouchableOpacity style={styles.templateChip} onPress={() => applyTemplate('mecz')}>
@@ -521,13 +521,22 @@ export default function KalendarzScreen() {
                 </TouchableOpacity>
               </ScrollView>
 
-              <Text style={styles.inputLabel}>Nazwa wydarzenia</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="np. Mecz Ligowy / Zbiórka wyjazdowa"
-                value={eventTitle}
-                onChangeText={setEventTitle}
-              />
+              {/* NAZWA WYDARZENIA Z ŁĄCZEM GOOGLE MAPS */}
+              <Text style={styles.inputLabel}>Nazwa wydarzenia (Kliknij ikonę mapy)</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TextInput
+                  style={[styles.modalInput, { flex: 1 }]}
+                  placeholder="np. Mecz Godynice Szkoła Podstawowa"
+                  value={eventTitle}
+                  onChangeText={setEventTitle}
+                />
+                <TouchableOpacity
+                  style={styles.mapIconButton}
+                  onPress={() => openMapLocation(eventLocation || eventTitle)}
+                >
+                  <Ionicons name="navigate-circle" size={28} color="#2563eb" />
+                </TouchableOpacity>
+              </View>
 
               {/* DATA I GODZINY */}
               <Text style={styles.inputLabel}>Data wydarzenia</Text>
@@ -593,7 +602,7 @@ export default function KalendarzScreen() {
                 />
               )}
 
-              {/* MIEJSCE ZBIÓRKI Z DEDYKOWANYM PRZYCISKIEM GOOGLE MAPS */}
+              {/* MIEJSCE ZBIÓRKI Z PRZYCISKIEM MAPY */}
               <Text style={styles.inputLabel}>Miejsce zbiórki / adres (Kliknij ikonę mapy)</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <TextInput
@@ -618,7 +627,7 @@ export default function KalendarzScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* FILTR ROCZNIKÓW + PRZYCISK ZAZNACZENIA WSZYSTKICH */}
+              {/* FILTR ROCZNIKÓW */}
               <View style={styles.yearFilterRow}>
                 <Text style={styles.yearFilterLabel}>Filtruj rocznik:</Text>
                 {['Wszyscy', '2012', '2013', '2014'].map((yr) => (
@@ -639,7 +648,7 @@ export default function KalendarzScreen() {
                 )}
               </View>
 
-              {/* ZAWODNICY */}
+              {/* LISTA ZAWODNIKÓW */}
               <View style={{ marginTop: 4 }}>
                 {filteredSquadPlayers.map((p: any) => {
                   const isSelected = selectedSquad.includes(String(p.id));
