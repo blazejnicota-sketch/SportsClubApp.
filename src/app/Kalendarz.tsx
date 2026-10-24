@@ -9,9 +9,11 @@ import {
   Modal,
   Alert,
   Linking,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { MOCK_100_PLAYERS } from './data/mockPlayers';
 
 type ViewMode = 'miesiac' | 'tydzien' | 'lista';
@@ -26,13 +28,11 @@ interface EventItem {
   squadIds: string[];
 }
 
-const QUICK_TIMES = ['07:05', '08:00', '10:00', '16:30', '17:00', '17:45', '18:00', '19:30'];
-
 export default function KalendarzScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('miesiac');
   const [selectedDate, setSelectedDate] = useState<string>('2026-10-24');
 
-  // Przygotowanie bazy zawodników z rocznikami
+  // Przygotowanie bazy zawodników
   const availablePlayers = MOCK_100_PLAYERS.slice(0, 20).map((p: any, idx: number) => ({
     ...p,
     firstName: p.firstName || p.name?.split(' ')[0] || 'Zawodnik',
@@ -41,7 +41,7 @@ export default function KalendarzScreen() {
     number: p.number || idx + 1,
   }));
 
-  // Lista wydarzeń
+  // Wydarzenia
   const [events, setEvents] = useState<EventItem[]>([
     {
       id: '1',
@@ -61,62 +61,62 @@ export default function KalendarzScreen() {
       type: 'Trening',
       squadIds: ['1', '2', '3', '4', '5', '6', '7', '8'],
     },
-    {
-      id: '3',
-      title: 'Trening Motoryczny + Szybkość',
-      date: '2026-10-28',
-      time: '17:30',
-      location: 'Hala Sportowa, ul. Polna 12',
-      type: 'Trening',
-      squadIds: ['1', '2', '3', '6', '7'],
-    },
   ]);
 
-  // Stany Modali
+  // Modale
   const [dayModalVisible, setDayModalVisible] = useState<boolean>(false);
   const [formModalVisible, setFormModalVisible] = useState<boolean>(false);
-  
+
+  // Stany Formularza
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [eventTitle, setEventTitle] = useState<string>('');
-  const [eventDate, setEventDate] = useState<string>('2026-10-24');
-  const [eventTime, setEventTime] = useState<string>('07:05');
+  const [eventDateObj, setEventDateObj] = useState<Date>(new Date(2026, 9, 24, 7, 5));
   const [eventLocation, setEventLocation] = useState<string>('');
   const [eventType, setEventType] = useState<'Mecz' | 'Trening' | 'Inne'>('Mecz');
   const [selectedSquad, setSelectedSquad] = useState<string[]>([]);
 
-  // Kliknięcie w dzień w kalendarzu -> Otwiera podsumowanie dnia
+  // Picker
+  const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
+  const [showTimePicker, setShowTimePicker] = useState<boolean>(false);
+
+  // Sformatowana data (YYYY-MM-DD) oraz czas (HH:MM)
+  const formattedDate = eventDateObj.toISOString().split('T')[0];
+  const formattedTime = `${String(eventDateObj.getHours()).padStart(2, '0')}:${String(
+    eventDateObj.getMinutes()
+  ).padStart(2, '0')}`;
+
   const handleDayPress = (dateStr: string) => {
     setSelectedDate(dateStr);
     setDayModalVisible(true);
   };
 
-  // Otwarcie formularza tworzenia wydarzenia dla wybranej daty
   const handleOpenCreateModal = (dateStr: string) => {
     setDayModalVisible(false);
     setEditingEventId(null);
     setEventTitle('');
-    setEventDate(dateStr);
-    setEventTime('07:05');
+    
+    const [yr, mo, dy] = dateStr.split('-').map(Number);
+    setEventDateObj(new Date(yr, mo - 1, dy, 7, 5));
     setEventLocation('Klub / Boisko główne');
     setEventType('Mecz');
     setSelectedSquad(availablePlayers.slice(0, 8).map((p) => String(p.id)));
     setFormModalVisible(true);
   };
 
-  // Otwarcie edycji istniejącego wydarzenia
   const handleOpenEditModal = (event: EventItem) => {
     setDayModalVisible(false);
     setEditingEventId(event.id);
     setEventTitle(event.title);
-    setEventDate(event.date);
-    setEventTime(event.time);
+    
+    const [yr, mo, dy] = event.date.split('-').map(Number);
+    const [hr, mn] = event.time.split(':').map(Number);
+    setEventDateObj(new Date(yr, mo - 1, dy, hr, mn));
     setEventLocation(event.location);
     setEventType(event.type);
     setSelectedSquad(event.squadIds);
     setFormModalVisible(true);
   };
 
-  // Zapisz wydarzenie
   const handleSaveEvent = () => {
     if (!eventTitle.trim()) {
       Alert.alert('Błąd', 'Podaj nazwę wydarzenia.');
@@ -130,8 +130,8 @@ export default function KalendarzScreen() {
             ? {
                 ...ev,
                 title: eventTitle,
-                date: eventDate,
-                time: eventTime,
+                date: formattedDate,
+                time: formattedTime,
                 location: eventLocation,
                 type: eventType,
                 squadIds: selectedSquad,
@@ -139,13 +139,13 @@ export default function KalendarzScreen() {
             : ev
         )
       );
-      Alert.alert('Zaktualizowano 📅', 'Wydarzenie zostało zmienione.');
+      Alert.alert('Zaktualizowano 📅', 'Wydarzenie zostało pomyślnie zmienione.');
     } else {
       const newEv: EventItem = {
         id: Date.now().toString(),
         title: eventTitle,
-        date: eventDate,
-        time: eventTime,
+        date: formattedDate,
+        time: formattedTime,
         location: eventLocation,
         type: eventType,
         squadIds: selectedSquad,
@@ -157,7 +157,6 @@ export default function KalendarzScreen() {
     setFormModalVisible(false);
   };
 
-  // Usuń wydarzenie
   const handleDeleteEvent = () => {
     if (!editingEventId) return;
     Alert.alert('Potwierdzenie', 'Czy na pewno chcesz usunąć to wydarzenie?', [
@@ -173,7 +172,6 @@ export default function KalendarzScreen() {
     ]);
   };
 
-  // Przełączanie zawodnika w kadrze
   const togglePlayerSquad = (id: string) => {
     if (selectedSquad.includes(id)) {
       setSelectedSquad(selectedSquad.filter((pId) => pId !== id));
@@ -182,21 +180,20 @@ export default function KalendarzScreen() {
     }
   };
 
-  // Kopiowanie powołania do faktycznego schowka systemu
   const handleCopySquadToClipboard = async () => {
     const nominatedNames = availablePlayers
       .filter((p) => selectedSquad.includes(String(p.id)))
-      .map((p) => `• ${p.firstName} ${p.lastName} (Roczn. ${p.year}, #${p.number}) - Potwierdzone ✅`)
+      .map((p) => `• ${p.firstName} ${p.lastName} (Roczn. ${p.year}, #${p.number})`)
       .join('\n');
 
-    const message = `📋 POWOŁANIE NA WYDARZENIE\n\n📌 ${eventTitle}\n📅 Data: ${eventDate} o godz. ${eventTime}\n📍 Miejsce: ${eventLocation}\n\nKADRA ZAWODNIKÓW (${selectedSquad.length}):\n${nominatedNames}\n\nProszę o punktualne przybycie! 👍`;
+    const message = `📋 POWOŁANIE NA WYDARZENIE\n\n📌 ${eventTitle}\n📅 Data: ${formattedDate} o godz. ${formattedTime}\n📍 Miejsce: ${eventLocation}\n\nKADRA (${selectedSquad.length}):\n${nominatedNames}\n\nProśba o punktualność! 👍`;
 
     await Clipboard.setStringAsync(message);
-    Alert.alert('Skopiowano do Schowka! 📋', 'Treść powołania została pomyślnie skopiowana. Możesz ją wkleić bezpośrednio na WhatsApp lub Messenger.');
+    Alert.alert('Skopiowano! 📋', 'Treść powołania trafiła do schowka.');
   };
 
-  // Otwarcie mapy Google
   const openMapLocation = (loc: string) => {
+    if (!loc.trim()) return;
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}`;
     Linking.openURL(url).catch(() => Alert.alert('Błąd', 'Nie można otworzyć mapy.'));
   };
@@ -209,14 +206,9 @@ export default function KalendarzScreen() {
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Kalendarz Drużyny</Text>
-          <Text style={styles.headerSubtitle}>
-            Terminarz, zbiórki co do minuty i powołania
-          </Text>
+          <Text style={styles.headerSubtitle}>Terminarz, zbiórki i powołania</Text>
         </View>
-        <TouchableOpacity
-          style={styles.addBtn}
-          onPress={() => handleOpenCreateModal(selectedDate)}
-        >
+        <TouchableOpacity style={styles.addBtn} onPress={() => handleOpenCreateModal(selectedDate)}>
           <Ionicons name="add" size={16} color="#fff" />
           <Text style={styles.addBtnText}>Dodaj</Text>
         </TouchableOpacity>
@@ -229,9 +221,7 @@ export default function KalendarzScreen() {
           onPress={() => setViewMode('miesiac')}
         >
           <Ionicons name="grid-outline" size={14} color={viewMode === 'miesiac' ? '#2563eb' : '#64748b'} />
-          <Text style={[styles.toggleText, viewMode === 'miesiac' && styles.toggleTextActive]}>
-            Miesiąc
-          </Text>
+          <Text style={[styles.toggleText, viewMode === 'miesiac' && styles.toggleTextActive]}>Miesiąc</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -239,9 +229,7 @@ export default function KalendarzScreen() {
           onPress={() => setViewMode('tydzien')}
         >
           <Ionicons name="calendar-outline" size={14} color={viewMode === 'tydzien' ? '#2563eb' : '#64748b'} />
-          <Text style={[styles.toggleText, viewMode === 'tydzien' && styles.toggleTextActive]}>
-            Tydzień
-          </Text>
+          <Text style={[styles.toggleText, viewMode === 'tydzien' && styles.toggleTextActive]}>Tydzień</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -249,9 +237,7 @@ export default function KalendarzScreen() {
           onPress={() => setViewMode('lista')}
         >
           <Ionicons name="list-outline" size={14} color={viewMode === 'lista' ? '#2563eb' : '#64748b'} />
-          <Text style={[styles.toggleText, viewMode === 'lista' && styles.toggleTextActive]}>
-            Lista
-          </Text>
+          <Text style={[styles.toggleText, viewMode === 'lista' && styles.toggleTextActive]}>Lista</Text>
         </TouchableOpacity>
       </View>
 
@@ -260,7 +246,7 @@ export default function KalendarzScreen() {
         {viewMode === 'miesiac' && (
           <View style={styles.cardBox}>
             <Text style={styles.monthTitle}>Październik 2026</Text>
-            <Text style={styles.monthSubText}>Kliknij dzień, aby zobaczyć lub zarządzać wydarzeniami[cite: 12]</Text>
+            <Text style={styles.monthSubText}>Kliknij dzień, aby zobaczyć wydarzenie</Text>
 
             <View style={styles.calendarGrid}>
               {Array.from({ length: 31 }, (_, i) => i + 1).map((dayNum) => {
@@ -271,21 +257,10 @@ export default function KalendarzScreen() {
                 return (
                   <TouchableOpacity
                     key={dayNum}
-                    style={[
-                      styles.dayCell,
-                      isSelected && styles.dayCellSelected,
-                      hasEvent && styles.dayCellHasEvent,
-                    ]}
+                    style={[styles.dayCell, isSelected && styles.dayCellSelected, hasEvent && styles.dayCellHasEvent]}
                     onPress={() => handleDayPress(dayStr)}
                   >
-                    <Text
-                      style={[
-                        styles.dayCellText,
-                        isSelected && styles.dayCellTextSelected,
-                      ]}
-                    >
-                      {dayNum}
-                    </Text>
+                    <Text style={[styles.dayCellText, isSelected && styles.dayCellTextSelected]}>{dayNum}</Text>
                     {hasEvent && <View style={styles.eventDot} />}
                   </TouchableOpacity>
                 );
@@ -307,7 +282,7 @@ export default function KalendarzScreen() {
               { day: 'Czwartek', date: '2026-10-29' },
               { day: 'Piątek', date: '2026-10-30' },
             ].map((dayObj) => {
-              const dayEvents = events.filter((ev) => ev.date === dayObj.date);
+              const dEvents = events.filter((ev) => ev.date === dayObj.date);
 
               return (
                 <TouchableOpacity
@@ -321,17 +296,15 @@ export default function KalendarzScreen() {
                   </View>
 
                   <View style={{ flex: 1, marginLeft: 10 }}>
-                    {dayEvents.length > 0 ? (
-                      dayEvents.map((ev) => (
+                    {dEvents.length > 0 ? (
+                      dEvents.map((ev) => (
                         <View key={ev.id} style={styles.eventSubCard}>
                           <Text style={styles.eventSubCardTitle}>{ev.title}</Text>
-                          <Text style={styles.eventSubCardMeta}>
-                            ⏰ {ev.time} • 📍 {ev.location}
-                          </Text>
+                          <Text style={styles.eventSubCardMeta}>⏰ {ev.time} • 📍 {ev.location}</Text>
                         </View>
                       ))
                     ) : (
-                      <Text style={styles.noEventText}>Brak zajęć • Kliknij, aby zarządzać</Text>
+                      <Text style={styles.noEventText}>Brak zajęć • Kliknij, aby dodać</Text>
                     )}
                   </View>
                 </TouchableOpacity>
@@ -352,18 +325,23 @@ export default function KalendarzScreen() {
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={styles.eventTitleText}>{ev.title}</Text>
                   <Text style={styles.eventMetaText}>
-                    📅 {ev.date} o godz. <Text style={{ fontWeight: 'bold', color: '#dc2626' }}>{ev.time}</Text>
+                    📅 {ev.date} o godz. <Text style={{ fontWeight: 'bold', color: '#2563eb' }}>{ev.time}</Text>
                   </Text>
-                  <TouchableOpacity onPress={() => openMapLocation(ev.location)} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                    <Ionicons name="location-outline" size={12} color="#2563eb" style={{ marginRight: 2 }} />
-                    <Text style={{ fontSize: 11, color: '#2563eb', textDecorationLine: 'underline' }}>{ev.location}</Text>
+
+                  <TouchableOpacity
+                    onPress={() => openMapLocation(ev.location)}
+                    style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}
+                  >
+                    <Ionicons name="map-outline" size={13} color="#2563eb" style={{ marginRight: 4 }} />
+                    <Text style={{ fontSize: 11, color: '#2563eb', fontWeight: '600', textDecorationLine: 'underline' }}>
+                      {ev.location} (Otwórz Mapę)
+                    </Text>
                   </TouchableOpacity>
+
                   <Text style={styles.eventMetaText}>👥 Powołana kadra: {ev.squadIds.length} zawodników</Text>
                 </View>
-                <TouchableOpacity
-                  style={styles.listEditBtn}
-                  onPress={() => handleOpenEditModal(ev)}
-                >
+
+                <TouchableOpacity style={styles.listEditBtn} onPress={() => handleOpenEditModal(ev)}>
                   <Ionicons name="create-outline" size={16} color="#2563eb" />
                 </TouchableOpacity>
               </View>
@@ -374,12 +352,12 @@ export default function KalendarzScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* MODAL 1: PODSUMOWANIE DNIA (WYŚWIETLA ZAPISANE WYDARZENIA LUB OPCJĘ DODANIA) */}
+      {/* MODAL 1: ZARZĄDZANIE DNIEM */}
       <Modal animationType="fade" transparent={true} visible={dayModalVisible}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Zarządzaj dniem: {selectedDate}</Text>
+              <Text style={styles.modalTitle}>Wydarzenia dla: {selectedDate}</Text>
               <TouchableOpacity onPress={() => setDayModalVisible(false)}>
                 <Ionicons name="close" size={22} color="#64748b" />
               </TouchableOpacity>
@@ -393,10 +371,7 @@ export default function KalendarzScreen() {
                       <Text style={styles.dayEventTitle}>{ev.title}</Text>
                       <Text style={styles.dayEventSub}>⏰ {ev.time} • 📍 {ev.location}</Text>
                     </View>
-                    <TouchableOpacity
-                      style={styles.editExistingBtn}
-                      onPress={() => handleOpenEditModal(ev)}
-                    >
+                    <TouchableOpacity style={styles.editExistingBtn} onPress={() => handleOpenEditModal(ev)}>
                       <Text style={styles.editExistingBtnText}>Edytuj</Text>
                     </TouchableOpacity>
                   </View>
@@ -406,10 +381,7 @@ export default function KalendarzScreen() {
               <Text style={styles.noEventsDayText}>Brak zaplanowanych wydarzeń w tym dniu.</Text>
             )}
 
-            <TouchableOpacity
-              style={styles.addNewEventInDayBtn}
-              onPress={() => handleOpenCreateModal(selectedDate)}
-            >
+            <TouchableOpacity style={styles.addNewEventInDayBtn} onPress={() => handleOpenCreateModal(selectedDate)}>
               <Ionicons name="add-circle-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
               <Text style={styles.addNewEventInDayText}>+ Dodaj nowe wydarzenie w tym dniu</Text>
             </TouchableOpacity>
@@ -417,14 +389,12 @@ export default function KalendarzScreen() {
         </View>
       </Modal>
 
-      {/* MODAL 2: FORMULARZ TWORZENIA / EDYCJI WYDARZENIA I POWOŁAŃ */}
+      {/* MODAL 2: FORMULARZ WYDARZENIA (Z NATYWNYM BĘBENEK WIDOKEM CZASU I DATY) */}
       <Modal animationType="slide" transparent={true} visible={formModalVisible}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContainer, { maxHeight: '92%' }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {editingEventId ? 'Edytuj Wydarzenie ✏️' : 'Nowe Wydarzenie 📅'}
-              </Text>
+              <Text style={styles.modalTitle}>{editingEventId ? 'Edytuj Wydarzenie ✏️' : 'Nowe Wydarzenie 📅'}</Text>
               <TouchableOpacity onPress={() => setFormModalVisible(false)}>
                 <Ionicons name="close" size={22} color="#64748b" />
               </TouchableOpacity>
@@ -439,41 +409,58 @@ export default function KalendarzScreen() {
                 onChangeText={setEventTitle}
               />
 
-              <Text style={styles.inputLabel}>Data wydarzenia (YYYY-MM-DD)</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={eventDate}
-                onChangeText={setEventDate}
-              />
-
-              <Text style={styles.inputLabel}>Godzina zbiórki / odjazdu (Dokładna co do minuty)</Text>
-              <TextInput
-                style={[styles.modalInput, { fontSize: 16, fontWeight: 'bold', color: '#2563eb' }]}
-                placeholder="np. 07:05"
-                value={eventTime}
-                onChangeText={setEventTime}
-              />
-
-              <Text style={styles.subInputLabel}>Szybkie sugestie godzin:</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-                {QUICK_TIMES.map((t) => (
-                  <TouchableOpacity
-                    key={t}
-                    style={[styles.timeChip, eventTime === t && styles.timeChipActive]}
-                    onPress={() => setEventTime(t)}
-                  >
-                    <Text style={[styles.timeChipText, eventTime === t && styles.timeChipTextActive]}>
-                      {t}
-                    </Text>
+              {/* SELEKTORY CZASU I DATY - JAK W BUDZIKU */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
+                <View style={{ flex: 1, marginRight: 6 }}>
+                  <Text style={styles.inputLabel}>Data wydarzenia</Text>
+                  <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowDatePicker(true)}>
+                    <Ionicons name="calendar-outline" size={16} color="#2563eb" style={{ marginRight: 6 }} />
+                    <Text style={styles.pickerBoxBtnText}>{formattedDate}</Text>
                   </TouchableOpacity>
-                ))}
-              </ScrollView>
+                </View>
 
-              <Text style={styles.inputLabel}>Miejsce zbiórki / adres (Klikalne w mapy)</Text>
+                <View style={{ flex: 1, marginLeft: 6 }}>
+                  <Text style={styles.inputLabel}>Godzina (Budzik ⏰)</Text>
+                  <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowTimePicker(true)}>
+                    <Ionicons name="time-outline" size={16} color="#2563eb" style={{ marginRight: 6 }} />
+                    <Text style={[styles.pickerBoxBtnText, { fontSize: 15, fontWeight: 'bold' }]}>{formattedTime}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* NATYWNY BĘBENEK WYBORU DATY */}
+              {showDatePicker && (
+                <DateTimePicker
+                  value={eventDateObj}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(evt, d) => {
+                    setShowDatePicker(false);
+                    if (d) setEventDateObj(d);
+                  }}
+                />
+              )}
+
+              {/* NATYWNY BĘBENEK WYBORU GODZINY */}
+              {showTimePicker && (
+                <DateTimePicker
+                  value={eventDateObj}
+                  mode="time"
+                  is24Hour={true}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(evt, d) => {
+                    setShowTimePicker(false);
+                    if (d) setEventDateObj(d);
+                  }}
+                />
+              )}
+
+              {/* MIEJSCE ZBIÓRKI I MAPA GOOGLE */}
+              <Text style={styles.inputLabel}>Miejsce zbiórki / adres (Przycisk nawigacji)</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <TextInput
                   style={[styles.modalInput, { flex: 1 }]}
-                  placeholder="np. Stadion Miejski, ul. Sportowa"
+                  placeholder="np. Stadion Miejski, ul. Sportowa 1"
                   value={eventLocation}
                   onChangeText={setEventLocation}
                 />
@@ -481,14 +468,14 @@ export default function KalendarzScreen() {
                   style={styles.mapIconButton}
                   onPress={() => openMapLocation(eventLocation)}
                 >
-                  <Ionicons name="map-outline" size={18} color="#2563eb" />
+                  <Ionicons name="navigate-circle-outline" size={24} color="#2563eb" />
                 </TouchableOpacity>
               </View>
 
               <View style={styles.squadHeaderRow}>
-                <Text style={styles.inputLabel}>Powołaj Kadrę ({selectedSquad.length}) [z podziałem na roczniki]</Text>
+                <Text style={styles.inputLabel}>Powołaj Kadrę ({selectedSquad.length})</Text>
                 <TouchableOpacity onPress={handleCopySquadToClipboard}>
-                  <Text style={styles.copyWhatsappBtnText}>📋 Kopiuj powołanie do WhatsApp</Text>
+                  <Text style={styles.copyWhatsappBtnText}>📋 Kopiuj powołanie</Text>
                 </TouchableOpacity>
               </View>
 
@@ -640,12 +627,12 @@ const styles = StyleSheet.create({
   eventMetaText: { fontSize: 10, color: '#64748b', marginTop: 2 },
   listEditBtn: { padding: 6, backgroundColor: '#eff6ff', borderRadius: 6, borderWidth: 1, borderColor: '#bfdbfe' },
 
-  /* MODALS */
+  /* MODAL */
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.5)', justifyContent: 'center', padding: 16 },
   modalContainer: { backgroundColor: '#fff', borderRadius: 16, padding: 20, elevation: 5 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   modalTitle: { fontSize: 15, fontWeight: 'bold', color: '#0f172a' },
-  
+
   dayEventItemBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', padding: 10, borderRadius: 8, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0' },
   dayEventTitle: { fontSize: 12, fontWeight: 'bold', color: '#0f172a' },
   dayEventSub: { fontSize: 10, color: '#64748b', marginTop: 2 },
@@ -656,7 +643,6 @@ const styles = StyleSheet.create({
   addNewEventInDayText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
 
   inputLabel: { fontSize: 11, fontWeight: '600', color: '#475569', marginTop: 8, marginBottom: 4 },
-  subInputLabel: { fontSize: 10, color: '#64748b', marginTop: 4, marginBottom: 4 },
   modalInput: {
     backgroundColor: '#f8fafc',
     borderWidth: 1,
@@ -667,12 +653,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#0f172a',
   },
-  mapIconButton: { marginLeft: 6, backgroundColor: '#eff6ff', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#bfdbfe', justifyContent: 'center', alignItems: 'center' },
-
-  timeChip: { backgroundColor: '#f1f5f9', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, marginRight: 6 },
-  timeChipActive: { backgroundColor: '#2563eb' },
-  timeChipText: { fontSize: 11, color: '#475569', fontWeight: '600' },
-  timeChipTextActive: { color: '#fff', fontWeight: 'bold' },
+  pickerBoxBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  pickerBoxBtnText: { fontSize: 13, fontWeight: 'bold', color: '#1e40af' },
+  mapIconButton: { marginLeft: 6, padding: 4 },
 
   squadHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   copyWhatsappBtnText: { fontSize: 11, fontWeight: 'bold', color: '#16a34a' },
