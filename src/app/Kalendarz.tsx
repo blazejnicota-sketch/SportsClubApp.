@@ -26,18 +26,33 @@ interface EventItem {
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
   meetingTime: string; // HH:MM
-  eventTime: string; // HH:MM
+  startTime: string; // HH:MM
+  endTime: string; // HH:MM
   location: string;
   type: 'Mecz' | 'Trening' | 'Inne';
   isRecurring?: boolean;
-  recurringInfo?: string;
+  recurringDayOfWeek?: number; // 0 = Niedziela, 1 = Poniedziałek, itd.
   squadIds: string[];
   attendance: Record<string, AttendanceStatus>;
 }
 
+const MONTH_NAMES = [
+  'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
+  'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
+];
+
+const DAY_NAMES = ['Niedziela', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota'];
+
 export default function KalendarzScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('miesiac');
-  const [selectedDate, setSelectedDate] = useState<string>('2026-10-24');
+  
+  // Stan nawigacji po miesiącach
+  const [currentMonthDate, setCurrentMonthDate] = useState<Date>(new Date(2026, 9, 1)); // Październik 2026
+  const [selectedDate, setSelectedDate] = useState<string>('2026-10-25');
+
+  const curYear = currentMonthDate.getFullYear();
+  const curMonth = currentMonthDate.getMonth();
+  const daysInCurrentMonth = new Date(curYear, curMonth + 1, 0).getDate();
 
   // Baza zawodników
   const availablePlayers = MOCK_100_PLAYERS.slice(0, 24).map((p: any, idx: number) => ({
@@ -56,7 +71,8 @@ export default function KalendarzScreen() {
       startDate: '2026-10-25',
       endDate: '2026-10-25',
       meetingTime: '07:05',
-      eventTime: '08:30',
+      startTime: '08:30',
+      endTime: '10:15',
       location: 'Stadion Miejski, ul. Sportowa 1',
       type: 'Mecz',
       squadIds: ['1', '2', '3', '4', '5'],
@@ -64,15 +80,16 @@ export default function KalendarzScreen() {
     },
     {
       id: '2',
-      title: 'Trening Cykliczny (Pon / Śr / Pt)',
-      startDate: '2026-10-26',
+      title: 'Trening Cykliczny Drużyny',
+      startDate: '2026-10-26', // Poniedziałek
       endDate: '2026-10-26',
       meetingTime: '17:15',
-      eventTime: '17:30',
+      startTime: '17:30',
+      endTime: '19:00',
       location: 'Orlik ul. Szkolna 5',
       type: 'Trening',
       isRecurring: true,
-      recurringInfo: 'Co tydzień (Pon, Śr, Pt)',
+      recurringDayOfWeek: 1, // Poniedziałek
       squadIds: ['1', '2', '3', '4', '5', '6', '7', '8'],
       attendance: { '1': 'present', '2': 'present' },
     },
@@ -90,12 +107,14 @@ export default function KalendarzScreen() {
   const [startDateObj, setStartDateObj] = useState<Date>(new Date(2026, 9, 25));
   const [endDateObj, setEndDateObj] = useState<Date>(new Date(2026, 9, 25));
   const [meetingTimeObj, setMeetingTimeObj] = useState<Date>(new Date(2026, 9, 25, 7, 5));
-  const [eventTimeObj, setEventTimeObj] = useState<Date>(new Date(2026, 9, 25, 8, 30));
+  const [startTimeObj, setStartTimeObj] = useState<Date>(new Date(2026, 9, 25, 8, 30));
+  const [endTimeObj, setEndTimeObj] = useState<Date>(new Date(2026, 9, 25, 10, 0));
 
   const [eventLocation, setEventLocation] = useState<string>('');
   const [eventType, setEventType] = useState<'Mecz' | 'Trening' | 'Inne'>('Mecz');
+  
+  // Cykliczność intuicyjna
   const [isRecurring, setIsRecurring] = useState<boolean>(false);
-  const [recurringPattern, setRecurringPattern] = useState<string>('Co tydzień (Pon, Śr, Pt)');
 
   const [selectedSquad, setSelectedSquad] = useState<string[]>([]);
   const [squadAttendance, setSquadAttendance] = useState<Record<string, AttendanceStatus>>({});
@@ -105,16 +124,29 @@ export default function KalendarzScreen() {
   const [showStartDatePicker, setShowStartDatePicker] = useState<boolean>(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState<boolean>(false);
   const [showMeetingTimePicker, setShowMeetingTimePicker] = useState<boolean>(false);
-  const [showEventTimePicker, setShowEventTimePicker] = useState<boolean>(false);
+  const [showStartTimePicker, setShowStartTimePicker] = useState<boolean>(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState<boolean>(false);
 
   const formattedStartDate = startDateObj.toISOString().split('T')[0];
   const formattedEndDate = endDateObj.toISOString().split('T')[0];
-  const formattedMeetingTime = `${String(meetingTimeObj.getHours()).padStart(2, '0')}:${String(
-    meetingTimeObj.getMinutes()
-  ).padStart(2, '0')}`;
-  const formattedEventTime = `${String(eventTimeObj.getHours()).padStart(2, '0')}:${String(
-    eventTimeObj.getMinutes()
-  ).padStart(2, '0')}`;
+  const formattedMeetingTime = `${String(meetingTimeObj.getHours()).padStart(2, '0')}:${String(meetingTimeObj.getMinutes()).padStart(2, '0')}`;
+  const formattedStartTime = `${String(startTimeObj.getHours()).padStart(2, '0')}:${String(startTimeObj.getMinutes()).padStart(2, '0')}`;
+  const formattedEndTime = `${String(endTimeObj.getHours()).padStart(2, '0')}:${String(endTimeObj.getMinutes()).padStart(2, '0')}`;
+
+  const currentDayOfWeekName = DAY_NAMES[startDateObj.getDay()];
+
+  // Sprawdzanie czy wydarzenie występuje w danym dniu (uwzględniając cykle co tydzień)
+  const isEventOnDate = (ev: EventItem, dateStr: string) => {
+    if (ev.startDate <= dateStr && dateStr <= ev.endDate) return true;
+    if (ev.isRecurring && ev.recurringDayOfWeek !== undefined) {
+      const targetDate = new Date(dateStr);
+      const startDate = new Date(ev.startDate);
+      if (targetDate >= startDate) {
+        return targetDate.getDay() === ev.recurringDayOfWeek;
+      }
+    }
+    return false;
+  };
 
   // Szablony
   const applyTemplate = (templateType: 'mecz' | 'trening' | 'turniej') => {
@@ -124,23 +156,33 @@ export default function KalendarzScreen() {
       setEventLocation('Stadion Miejski, ul. Sportowa 1');
       setIsRecurring(false);
       setMeetingTimeObj(new Date(startDateObj.setHours(7, 5)));
-      setEventTimeObj(new Date(startDateObj.setHours(8, 30)));
+      setStartTimeObj(new Date(startDateObj.setHours(8, 30)));
+      setEndTimeObj(new Date(startDateObj.setHours(10, 15)));
     } else if (templateType === 'trening') {
       setEventTitle('Trening Cykliczny Drużyny');
       setEventType('Trening');
-      setEventLocation('Orlik Klubowy, ul. Szkolna 5');
+      setEventLocation('Orlik ul. Szkolna 5');
       setIsRecurring(true);
-      setRecurringPattern('Co tydzień (Pon, Śr, Pt)');
       setMeetingTimeObj(new Date(startDateObj.setHours(17, 15)));
-      setEventTimeObj(new Date(startDateObj.setHours(17, 30)));
+      setStartTimeObj(new Date(startDateObj.setHours(17, 30)));
+      setEndTimeObj(new Date(startDateObj.setHours(19, 0)));
     } else if (templateType === 'turniej') {
-      setEventTitle('Turniej Ogólnopolski (Dwudniowy)');
+      setEventTitle('Turniej Dwudniowy');
       setEventType('Mecz');
       setEventLocation('Hala / Kompleks Sportowy');
       setIsRecurring(false);
       setMeetingTimeObj(new Date(startDateObj.setHours(6, 45)));
-      setEventTimeObj(new Date(startDateObj.setHours(8, 0)));
+      setStartTimeObj(new Date(startDateObj.setHours(8, 0)));
+      setEndTimeObj(new Date(startDateObj.setHours(16, 0)));
     }
+  };
+
+  const handlePrevMonth = () => {
+    setCurrentMonthDate(new Date(curYear, curMonth - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentMonthDate(new Date(curYear, curMonth + 1, 1));
   };
 
   const handleDayPress = (dateStr: string) => {
@@ -158,10 +200,11 @@ export default function KalendarzScreen() {
     setStartDateObj(baseDate);
     setEndDateObj(baseDate);
     setMeetingTimeObj(new Date(yr, mo - 1, dy, 7, 5));
-    setEventTimeObj(new Date(yr, mo - 1, dy, 8, 30));
+    setStartTimeObj(new Date(yr, mo - 1, dy, 8, 30));
+    setEndTimeObj(new Date(yr, mo - 1, dy, 10, 0));
     setEventLocation('Stadion Miejski, ul. Sportowa 1');
     setEventType('Mecz');
-    setIsRecurring(false);
+    setIsRecurring(baseDate.getDay() === 1); // np. domyślnie podpowiadaj dla poniedziałku
 
     const initialSquad = availablePlayers.slice(0, 8).map((p) => String(p.id));
     setSelectedSquad(initialSquad);
@@ -188,13 +231,15 @@ export default function KalendarzScreen() {
     const [mHr, mMn] = event.meetingTime.split(':').map(Number);
     setMeetingTimeObj(new Date(sYr, sMo - 1, sDy, mHr, mMn));
 
-    const [eHr, eMn] = event.eventTime.split(':').map(Number);
-    setEventTimeObj(new Date(sYr, sMo - 1, sDy, eHr, eMn));
+    const [sHr, sMn] = event.startTime.split(':').map(Number);
+    setStartTimeObj(new Date(sYr, sMo - 1, sDy, sHr, sMn));
+
+    const [eHr, eMn] = event.endTime.split(':').map(Number);
+    setEndTimeObj(new Date(sYr, sMo - 1, sDy, eHr, eMn));
 
     setEventLocation(event.location);
     setEventType(event.type);
     setIsRecurring(event.isRecurring || false);
-    setRecurringPattern(event.recurringInfo || 'Co tydzień (Pon, Śr, Pt)');
     setSelectedSquad(event.squadIds);
     setSquadAttendance(event.attendance || {});
     setSquadYearFilter('Wszyscy');
@@ -207,6 +252,8 @@ export default function KalendarzScreen() {
       return;
     }
 
+    const recurringDay = isRecurring ? startDateObj.getDay() : undefined;
+
     if (editingEventId) {
       setEvents((prev) =>
         prev.map((ev) =>
@@ -217,11 +264,12 @@ export default function KalendarzScreen() {
                 startDate: formattedStartDate,
                 endDate: formattedEndDate,
                 meetingTime: formattedMeetingTime,
-                eventTime: formattedEventTime,
+                startTime: formattedStartTime,
+                endTime: formattedEndTime,
                 location: eventLocation,
                 type: eventType,
                 isRecurring,
-                recurringInfo: isRecurring ? recurringPattern : undefined,
+                recurringDayOfWeek: recurringDay,
                 squadIds: selectedSquad,
                 attendance: squadAttendance,
               }
@@ -236,16 +284,17 @@ export default function KalendarzScreen() {
         startDate: formattedStartDate,
         endDate: formattedEndDate,
         meetingTime: formattedMeetingTime,
-        eventTime: formattedEventTime,
+        startTime: formattedStartTime,
+        endTime: formattedEndTime,
         location: eventLocation,
         type: eventType,
         isRecurring,
-        recurringInfo: isRecurring ? recurringPattern : undefined,
+        recurringDayOfWeek: recurringDay,
         squadIds: selectedSquad,
         attendance: squadAttendance,
       };
       setEvents([newEv, ...events]);
-      Alert.alert('Dodano ⚽', 'Nowe wydarzenie zostało zapisane.');
+      Alert.alert('Dodano ⚽', isRecurring ? `Dodano cykliczny trening w każde ${currentDayOfWeekName}!` : 'Nowe wydarzenie zostało zapisane.');
     }
 
     setFormModalVisible(false);
@@ -291,7 +340,6 @@ export default function KalendarzScreen() {
     setSelectedSquad(newSquad);
   };
 
-  // KOPIOWANIE POWOŁANIA (BEZ ROCZNIKA W LIŚCIE, Z PROŚBĄ NA KOŃCU)
   const handleCopySquadToClipboard = async () => {
     const nominatedNames = availablePlayers
       .filter((p) => selectedSquad.includes(String(p.id)))
@@ -299,7 +347,7 @@ export default function KalendarzScreen() {
       .join('\n');
 
     const dateStr = formattedStartDate === formattedEndDate ? formattedStartDate : `${formattedStartDate} do ${formattedEndDate}`;
-    const message = `📌 ${eventTitle}\n📅 Data: ${dateStr}\n⏰ Zbiórka: ${formattedMeetingTime} | Początek: ${formattedEventTime}\n📍 Miejsce: ${eventLocation}\n\nKADRA (${selectedSquad.length}):\n${nominatedNames}\n\nProśba o potwierdzenie obecności! 👍`;
+    const message = `📌 ${eventTitle}\n📅 Data: ${dateStr}\n⏰ Zbiórka: ${formattedMeetingTime} | Start: ${formattedStartTime} - ${formattedEndTime}\n📍 Miejsce: ${eventLocation}\n\nKADRA (${selectedSquad.length}):\n${nominatedNames}\n\nProśba o potwierdzenie obecności! 👍`;
 
     await Clipboard.setStringAsync(message);
     Alert.alert('Skopiowano! 📋', 'Zwięzłe powołanie skopiowane do schowka.');
@@ -320,7 +368,7 @@ export default function KalendarzScreen() {
     return p.year === squadYearFilter;
   });
 
-  const dayEvents = events.filter((ev) => ev.startDate === selectedDate || ev.endDate === selectedDate);
+  const dayEvents = events.filter((ev) => isEventOnDate(ev, selectedDate));
 
   return (
     <View style={styles.container}>
@@ -364,16 +412,24 @@ export default function KalendarzScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* WIDOK MIESIĄCA */}
+        {/* WIDOK MIESIĄCA Z NAWIGACJĄ */}
         {viewMode === 'miesiac' && (
           <View style={styles.cardBox}>
-            <Text style={styles.monthTitle}>Październik 2026</Text>
+            <View style={styles.monthNavHeader}>
+              <TouchableOpacity onPress={handlePrevMonth} style={styles.monthNavArrow}>
+                <Ionicons name="chevron-back" size={18} color="#2563eb" />
+              </TouchableOpacity>
+              <Text style={styles.monthTitle}>{MONTH_NAMES[curMonth]} {curYear}</Text>
+              <TouchableOpacity onPress={handleNextMonth} style={styles.monthNavArrow}>
+                <Ionicons name="chevron-forward" size={18} color="#2563eb" />
+              </TouchableOpacity>
+            </View>
             <Text style={styles.monthSubText}>Kliknij dzień, aby zobaczyć wydarzenia</Text>
 
             <View style={styles.calendarGrid}>
-              {Array.from({ length: 31 }, (_, i) => i + 1).map((dayNum) => {
-                const dayStr = `2026-10-${dayNum < 10 ? '0' + dayNum : dayNum}`;
-                const hasEvent = events.some((ev) => ev.startDate === dayStr || ev.endDate === dayStr);
+              {Array.from({ length: daysInCurrentMonth }, (_, i) => i + 1).map((dayNum) => {
+                const dayStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${dayNum < 10 ? '0' + dayNum : dayNum}`;
+                const hasEvent = events.some((ev) => isEventOnDate(ev, dayStr));
                 const isSelected = selectedDate === dayStr;
 
                 return (
@@ -394,17 +450,17 @@ export default function KalendarzScreen() {
         {/* WIDOK TYGODNIA */}
         {viewMode === 'tydzien' && (
           <View style={styles.cardBox}>
-            <Text style={styles.monthTitle}>Bieżący Tydzień (24 - 30 Października)</Text>
+            <Text style={styles.monthTitle}>Wybrany Tydzień</Text>
             {[
-              { day: 'Sobota', date: '2026-10-24' },
-              { day: 'Niedziela', date: '2026-10-25' },
               { day: 'Poniedziałek', date: '2026-10-26' },
               { day: 'Wtorek', date: '2026-10-27' },
               { day: 'Środa', date: '2026-10-28' },
               { day: 'Czwartek', date: '2026-10-29' },
               { day: 'Piątek', date: '2026-10-30' },
+              { day: 'Sobota', date: '2026-10-31' },
+              { day: 'Niedziela', date: '2026-11-01' },
             ].map((dayObj) => {
-              const dEvents = events.filter((ev) => ev.startDate === dayObj.date || ev.endDate === dayObj.date);
+              const dEvents = events.filter((ev) => isEventOnDate(ev, dayObj.date));
 
               return (
                 <TouchableOpacity
@@ -423,7 +479,7 @@ export default function KalendarzScreen() {
                         <View key={ev.id} style={styles.eventSubCard}>
                           <Text style={styles.eventSubCardTitle}>{ev.title}</Text>
                           <Text style={styles.eventSubCardMeta}>
-                            ⏰ Zbiórka: {ev.meetingTime} | Start: {ev.eventTime}
+                            ⏰ Zbiórka: {ev.meetingTime} | Start: {ev.startTime} - {ev.endTime}
                           </Text>
                           <TouchableOpacity
                             onPress={() => openMapLocation(ev.location)}
@@ -456,11 +512,11 @@ export default function KalendarzScreen() {
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={styles.eventTitleText}>{ev.title}</Text>
                   <Text style={styles.eventMetaText}>
-                    📅 {ev.startDate === ev.endDate ? ev.startDate : `${ev.startDate} do ${ev.endDate}`} | ⏰ Zbiórka: <Text style={{ fontWeight: 'bold', color: '#dc2626' }}>{ev.meetingTime}</Text>
+                    📅 {ev.startDate} | ⏰ Zbiórka: <Text style={{ fontWeight: 'bold', color: '#dc2626' }}>{ev.meetingTime}</Text> | Start: <Text style={{ fontWeight: 'bold', color: '#2563eb' }}>{ev.startTime} - {ev.endTime}</Text>
                   </Text>
                   {ev.isRecurring && (
                     <Text style={{ fontSize: 10, color: '#16a34a', fontWeight: 'bold', marginTop: 1 }}>
-                      🔄 {ev.recurringInfo}
+                      🔄 Cykliczne (co tydzień)
                     </Text>
                   )}
 
@@ -508,7 +564,7 @@ export default function KalendarzScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.dayEventTitle}>{ev.title}</Text>
                       <Text style={styles.dayEventSub}>
-                        ⏰ Zbiórka: {ev.meetingTime} | Start: {ev.eventTime}
+                        ⏰ Zbiórka: {ev.meetingTime} | Start: {ev.startTime} - {ev.endTime}
                       </Text>
                       <TouchableOpacity onPress={() => openMapLocation(ev.location)} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
                         <Ionicons name="location-outline" size={11} color="#2563eb" />
@@ -533,7 +589,7 @@ export default function KalendarzScreen() {
         </View>
       </Modal>
 
-      {/* MODAL 2: FORMULARZ Z ROZDZIELONĄ NAZWĄ I ADRESEM ORAZ CYKLAMI */}
+      {/* MODAL 2: FORMULARZ Z INTUICYJNYM CYCLEM I GODZINĄ ZAKOŃCZENIA */}
       <Modal animationType="slide" transparent={true} visible={formModalVisible}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContainer, { maxHeight: '94%' }]}>
@@ -559,7 +615,7 @@ export default function KalendarzScreen() {
                 </TouchableOpacity>
               </ScrollView>
 
-              {/* NAZWA WYDARZENIA (CZYSTE POLE BEZ IKON MAPY) */}
+              {/* NAZWA WYDARZENIA */}
               <Text style={styles.inputLabel}>Nazwa wydarzenia</Text>
               <TextInput
                 style={styles.modalInput}
@@ -568,7 +624,7 @@ export default function KalendarzScreen() {
                 onChangeText={setEventTitle}
               />
 
-              {/* DATA ROZPOCZĘCIA I ZAKOŃCZENIA */}
+              {/* DATY */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
                 <View style={{ flex: 1, marginRight: 6 }}>
                   <Text style={styles.inputLabel}>Data początkowa</Text>
@@ -587,21 +643,26 @@ export default function KalendarzScreen() {
                 </View>
               </View>
 
-              {/* GODZINA ZBIÓRKI I MECZU */}
+              {/* GODZINA ZBIÓRKI, STARTU I ZAKOŃCZENIA */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
-                <View style={{ flex: 1, marginRight: 6 }}>
-                  <Text style={styles.inputLabel}>Godzina Zbiórki ⏰</Text>
+                <View style={{ flex: 1, marginRight: 4 }}>
+                  <Text style={styles.inputLabel}>Zbiórka ⏰</Text>
                   <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowMeetingTimePicker(true)}>
-                    <Ionicons name="time-outline" size={16} color="#dc2626" style={{ marginRight: 6 }} />
-                    <Text style={[styles.pickerBoxBtnText, { color: '#dc2626', fontSize: 13 }]}>{formattedMeetingTime}</Text>
+                    <Text style={[styles.pickerBoxBtnText, { color: '#dc2626', fontSize: 12 }]}>{formattedMeetingTime}</Text>
                   </TouchableOpacity>
                 </View>
 
-                <View style={{ flex: 1, marginLeft: 6 }}>
-                  <Text style={styles.inputLabel}>Godzina Startu ⚽</Text>
-                  <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowEventTimePicker(true)}>
-                    <Ionicons name="time-outline" size={16} color="#2563eb" style={{ marginRight: 6 }} />
-                    <Text style={[styles.pickerBoxBtnText, { color: '#2563eb', fontSize: 13 }]}>{formattedEventTime}</Text>
+                <View style={{ flex: 1, marginHorizontal: 2 }}>
+                  <Text style={styles.inputLabel}>Start ⚽</Text>
+                  <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowStartTimePicker(true)}>
+                    <Text style={[styles.pickerBoxBtnText, { color: '#2563eb', fontSize: 12 }]}>{formattedStartTime}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={{ flex: 1, marginLeft: 4 }}>
+                  <Text style={styles.inputLabel}>Koniec 🏁</Text>
+                  <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowEndTimePicker(true)}>
+                    <Text style={[styles.pickerBoxBtnText, { color: '#059669', fontSize: 12 }]}>{formattedEndTime}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -616,7 +677,7 @@ export default function KalendarzScreen() {
                     setShowStartDatePicker(false);
                     if (d) {
                       setStartDateObj(d);
-                      if (d > endDateObj) setEndDateObj(d); // automatyczne dopasowanie końca
+                      if (d > endDateObj) setEndDateObj(d);
                     }
                   }}
                 />
@@ -647,15 +708,28 @@ export default function KalendarzScreen() {
                 />
               )}
 
-              {showEventTimePicker && (
+              {showStartTimePicker && (
                 <DateTimePicker
-                  value={eventTimeObj}
+                  value={startTimeObj}
                   mode="time"
                   is24Hour={true}
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                   onChange={(evt, d) => {
-                    setShowEventTimePicker(false);
-                    if (d) setEventTimeObj(d);
+                    setShowStartTimePicker(false);
+                    if (d) setStartTimeObj(d);
+                  }}
+                />
+              )}
+
+              {showEndTimePicker && (
+                <DateTimePicker
+                  value={endTimeObj}
+                  mode="time"
+                  is24Hour={true}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(evt, d) => {
+                    setShowEndTimePicker(false);
+                    if (d) setEndTimeObj(d);
                   }}
                 />
               )}
@@ -677,12 +751,16 @@ export default function KalendarzScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* OPCJA CYKLU / POWTARZANIA TRENINGU */}
+              {/* INTUICYJNY CYKL POWTARZANIA */}
               <View style={styles.recurringBox}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#0f172a' }}>🔄 Cykl powtarzania (Trening cykliczny)</Text>
-                    <Text style={{ fontSize: 10, color: '#64748b' }}>Automatycznie powtarzaj w wybrane dni tygodnia</Text>
+                    <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#0f172a' }}>
+                      🔄 Cykl tygodniowy ({currentDayOfWeekName}s)
+                    </Text>
+                    <Text style={{ fontSize: 10, color: '#64748b' }}>
+                      Powtarzaj automatycznie w każdy {currentDayOfWeekName.toLowerCase()}
+                    </Text>
                   </View>
                   <Switch
                     value={isRecurring}
@@ -691,14 +769,6 @@ export default function KalendarzScreen() {
                     thumbColor={isRecurring ? '#2563eb' : '#f1f5f9'}
                   />
                 </View>
-                {isRecurring && (
-                  <TextInput
-                    style={[styles.modalInput, { marginTop: 8 }]}
-                    placeholder="np. Co tydzień (Pon, Śr, Pt)"
-                    value={recurringPattern}
-                    onChangeText={setRecurringPattern}
-                  />
-                )}
               </View>
 
               {/* POWOŁANIE KADRY */}
@@ -854,8 +924,11 @@ const styles = StyleSheet.create({
 
   content: { padding: 16 },
   cardBox: { backgroundColor: '#fff', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#e2e8f0' },
-  monthTitle: { fontSize: 14, fontWeight: 'bold', color: '#0f172a' },
-  monthSubText: { fontSize: 11, color: '#64748b', marginTop: 2, marginBottom: 12 },
+  
+  monthNavHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  monthNavArrow: { padding: 6, backgroundColor: '#eff6ff', borderRadius: 6, borderWidth: 1, borderColor: '#bfdbfe' },
+  monthTitle: { fontSize: 14, fontWeight: 'bold', color: '#0f172a', textAlign: 'center' },
+  monthSubText: { fontSize: 11, color: '#64748b', marginTop: 2, marginBottom: 12, textAlign: 'center' },
 
   calendarGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   dayCell: {
@@ -937,14 +1010,15 @@ const styles = StyleSheet.create({
   pickerBoxBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#eff6ff',
     borderWidth: 1,
     borderColor: '#bfdbfe',
     borderRadius: 8,
-    paddingHorizontal: 10,
+    paddingHorizontal: 6,
     paddingVertical: 7,
   },
-  pickerBoxBtnText: { fontSize: 13, fontWeight: 'bold', color: '#1e40af' },
+  pickerBoxBtnText: { fontSize: 12, fontWeight: 'bold', color: '#1e40af' },
   mapIconButton: { marginLeft: 6, padding: 2 },
 
   recurringBox: {
