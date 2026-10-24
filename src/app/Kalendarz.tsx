@@ -23,19 +23,19 @@ interface EventItem {
   id: string;
   title: string;
   date: string; // YYYY-MM-DD
-  meetingTime: string; // HH:MM (Godzina Zbiórki)
-  eventTime: string; // HH:MM (Godzina Wydarzenia / Meczu)
+  meetingTime: string; // HH:MM
+  eventTime: string; // HH:MM
   location: string;
   type: 'Mecz' | 'Trening' | 'Inne';
   squadIds: string[];
-  attendance: Record<string, AttendanceStatus>; // Statusy obecności dla każdego id zawodnika
+  attendance: Record<string, AttendanceStatus>;
 }
 
 export default function KalendarzScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('miesiac');
   const [selectedDate, setSelectedDate] = useState<string>('2026-10-24');
 
-  // Przygotowanie bazy zawodników z rocznikami
+  // Przygotowanie bazy zawodników
   const availablePlayers = MOCK_100_PLAYERS.slice(0, 24).map((p: any, idx: number) => ({
     ...p,
     firstName: p.firstName || p.name?.split(' ')[0] || 'Zawodnik',
@@ -44,7 +44,7 @@ export default function KalendarzScreen() {
     number: p.number || idx + 1,
   }));
 
-  // Wydarzenia z początkowymi statusami obecności
+  // Wydarzenia
   const [events, setEvents] = useState<EventItem[]>([
     {
       id: '1',
@@ -59,14 +59,14 @@ export default function KalendarzScreen() {
     },
     {
       id: '2',
-      title: 'Trening Taktyczny (Stałe Fragmenty)',
+      title: 'Trening Taktyczny',
       date: '2026-10-26',
       meetingTime: '17:15',
       eventTime: '17:30',
       location: 'Orlik ul. Szkolna 5',
       type: 'Trening',
       squadIds: ['1', '2', '3', '4', '5', '6', '7', '8'],
-      attendance: { '1': 'present', '2': 'present', '3': 'present' },
+      attendance: { '1': 'present', '2': 'present' },
     },
   ]);
 
@@ -74,11 +74,11 @@ export default function KalendarzScreen() {
   const [dayModalVisible, setDayModalVisible] = useState<boolean>(false);
   const [formModalVisible, setFormModalVisible] = useState<boolean>(false);
 
-  // Stany Formularza Wydarzenia
+  // Stany Formularza
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [eventTitle, setEventTitle] = useState<string>('');
   
-  // Daty i Godziny dla Pickerów
+  // Daty i Godziny
   const [eventDateObj, setEventDateObj] = useState<Date>(new Date(2026, 9, 24));
   const [meetingTimeObj, setMeetingTimeObj] = useState<Date>(new Date(2026, 9, 24, 7, 5));
   const [eventTimeObj, setEventTimeObj] = useState<Date>(new Date(2026, 9, 24, 8, 30));
@@ -89,12 +89,11 @@ export default function KalendarzScreen() {
   const [squadAttendance, setSquadAttendance] = useState<Record<string, AttendanceStatus>>({});
   const [squadYearFilter, setSquadYearFilter] = useState<string>('Wszyscy');
 
-  // Stany Widoczności Pickerów
+  // Stany Pickera
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
   const [showMeetingTimePicker, setShowMeetingTimePicker] = useState<boolean>(false);
   const [showEventTimePicker, setShowEventTimePicker] = useState<boolean>(false);
 
-  // Sformatowane wartości
   const formattedDate = eventDateObj.toISOString().split('T')[0];
   const formattedMeetingTime = `${String(meetingTimeObj.getHours()).padStart(2, '0')}:${String(
     meetingTimeObj.getMinutes()
@@ -103,18 +102,18 @@ export default function KalendarzScreen() {
     eventTimeObj.getMinutes()
   ).padStart(2, '0')}`;
 
-  // 1. STOSOWANIE SZABLONÓW WYDARZEŃ (Pkt 2)
+  // Stosowanie Szablonów
   const applyTemplate = (templateType: 'mecz' | 'trening' | 'turniej') => {
     if (templateType === 'mecz') {
-      setEventTitle('Mecz Wyjazdowy / Ligowy');
+      setEventTitle('Mecz Ligowy Wyjazdowy');
       setEventType('Mecz');
-      setEventLocation('Parking przy klubie (Wyjazd Autobusu)');
+      setEventLocation('Stadion Miejski, ul. Sportowa 1');
       setMeetingTimeObj(new Date(eventDateObj.setHours(7, 5)));
       setEventTimeObj(new Date(eventDateObj.setHours(8, 30)));
     } else if (templateType === 'trening') {
-      setEventTitle('Trening Taktyczny / Boiskowy');
+      setEventTitle('Trening Taktyczny');
       setEventType('Trening');
-      setEventLocation('Szatnia Klubowa / Boisko A');
+      setEventLocation('Orlik Klubowy, ul. Szkolna 5');
       setMeetingTimeObj(new Date(eventDateObj.setHours(17, 15)));
       setEventTimeObj(new Date(eventDateObj.setHours(17, 30)));
     } else if (templateType === 'turniej') {
@@ -146,7 +145,6 @@ export default function KalendarzScreen() {
     const initialSquad = availablePlayers.slice(0, 8).map((p) => String(p.id));
     setSelectedSquad(initialSquad);
     
-    // Domyślne statusy obecności: oczekuje
     const initAtt: Record<string, AttendanceStatus> = {};
     initialSquad.forEach((id) => (initAtt[id] = 'pending'));
     setSquadAttendance(initAtt);
@@ -236,7 +234,6 @@ export default function KalendarzScreen() {
     ]);
   };
 
-  // Przełączanie udziału zawodnika w kadrze
   const togglePlayerSquad = (id: string) => {
     if (selectedSquad.includes(id)) {
       setSelectedSquad(selectedSquad.filter((pId) => pId !== id));
@@ -249,7 +246,6 @@ export default function KalendarzScreen() {
     }
   };
 
-  // 2. ZMIANA STATUSU OBECNOŚCI (Pkt 1)
   const setPlayerStatus = (id: string, status: AttendanceStatus) => {
     if (!selectedSquad.includes(id)) {
       setSelectedSquad([...selectedSquad, id]);
@@ -257,26 +253,33 @@ export default function KalendarzScreen() {
     setSquadAttendance((prev) => ({ ...prev, [id]: status }));
   };
 
+  // ZAZNACZ CAŁY ROCZNIK (NOWA SUGESTIA)
+  const selectEntireYear = () => {
+    const yearPlayers = filteredSquadPlayers.map((p) => String(p.id));
+    const newSquad = Array.from(new Set([...selectedSquad, ...yearPlayers]));
+    setSelectedSquad(newSquad);
+  };
+
+  // KRÓTKA I CZYTELNA TREŚĆ POWOŁANIA (BEZ ZBĘDNYCH SZCZEGÓŁÓW)
   const handleCopySquadToClipboard = async () => {
     const nominatedNames = availablePlayers
       .filter((p) => selectedSquad.includes(String(p.id)))
-      .map((p) => {
-        const st = squadAttendance[String(p.id)] || 'pending';
-        const stIcon = st === 'present' ? '✅ Obecny' : st === 'absent' ? '❌ Nieobecny' : '❓ Oczekuje';
-        return `• ${p.firstName} ${p.lastName} (Roczn. ${p.year}, #${p.number}) - [${stIcon}]`;
-      })
+      .map((p) => `• ${p.firstName} ${p.lastName}`)
       .join('\n');
 
-    const message = `📋 POWOŁANIE NA WYDARZENIE\n\n📌 ${eventTitle}\n📅 Data: ${formattedDate}\n⏰ Godzina Zbiórki: ${formattedMeetingTime}\n⚽ Początek Wydarzenia: ${formattedEventTime}\n📍 Miejsce: ${eventLocation}\n\nKADRA (${selectedSquad.length}):\n${nominatedNames}\n\nProśba o potwiwerdzenie obecności! 👍`;
+    const message = `📌 ${eventTitle}\n📅 Data: ${formattedDate}\n⏰ Zbiórka: ${formattedMeetingTime} | Początek: ${formattedEventTime}\n📍 Miejsce: ${eventLocation}\n\nKADRA (${selectedSquad.length}):\n${nominatedNames}`;
 
     await Clipboard.setStringAsync(message);
-    Alert.alert('Skopiowano! 📋', 'Treść powołania ze statusami obecności trafiła do schowka.');
+    Alert.alert('Skopiowano! 📋', 'Zwięzłe powołanie trafiło do schowka.');
   };
 
   const openMapLocation = (loc: string) => {
-    if (!loc.trim()) return;
+    if (!loc.trim()) {
+      Alert.alert('Brak adresu', 'Wpisz lokalizację wydarzenia.');
+      return;
+    }
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}`;
-    Linking.openURL(url).catch(() => Alert.alert('Błąd', 'Nie można otworzyć mapy.'));
+    Linking.openURL(url).catch(() => Alert.alert('Błąd', 'Nie można otworzyć mapy Google.'));
   };
 
   const filteredSquadPlayers = availablePlayers.filter((p) => {
@@ -387,7 +390,7 @@ export default function KalendarzScreen() {
                         <View key={ev.id} style={styles.eventSubCard}>
                           <Text style={styles.eventSubCardTitle}>{ev.title}</Text>
                           <Text style={styles.eventSubCardMeta}>
-                            ⏰ Zbiórka: {ev.meetingTime} | Meczen/Trening: {ev.eventTime}
+                            ⏰ Zbiórka: {ev.meetingTime} | Mecz/Trening: {ev.eventTime}
                           </Text>
                           <TouchableOpacity
                             onPress={() => openMapLocation(ev.location)}
@@ -420,7 +423,7 @@ export default function KalendarzScreen() {
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={styles.eventTitleText}>{ev.title}</Text>
                   <Text style={styles.eventMetaText}>
-                    📅 {ev.date} | ⏰ Zbiórka: <Text style={{ fontWeight: 'bold', color: '#dc2626' }}>{ev.meetingTime}</Text> | Wydarzenie: <Text style={{ fontWeight: 'bold', color: '#2563eb' }}>{ev.eventTime}</Text>
+                    📅 {ev.date} | ⏰ Zbiórka: <Text style={{ fontWeight: 'bold', color: '#dc2626' }}>{ev.meetingTime}</Text> | Start: <Text style={{ fontWeight: 'bold', color: '#2563eb' }}>{ev.eventTime}</Text>
                   </Text>
 
                   <TouchableOpacity
@@ -434,7 +437,7 @@ export default function KalendarzScreen() {
                   </TouchableOpacity>
 
                   <Text style={styles.eventMetaText}>
-                    👥 Powołana kadra: {ev.squadIds.length} zawodników (✅ {Object.values(ev.attendance || {}).filter(s => s === 'present').length} Potwierdzonych)
+                    👥 Powołana kadra: {ev.squadIds.length} zawodników
                   </Text>
                 </View>
 
@@ -492,7 +495,7 @@ export default function KalendarzScreen() {
         </View>
       </Modal>
 
-      {/* MODAL 2: FORMULARZ Z SZABLONAMI I STATUSAMI OBECNOŚCI */}
+      {/* MODAL 2: FORMULARZ Z PRZEWIJANIA SZABLONAMI I MAPAMI */}
       <Modal animationType="slide" transparent={true} visible={formModalVisible}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContainer, { maxHeight: '94%' }]}>
@@ -504,9 +507,9 @@ export default function KalendarzScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* PKT 2: SZYBKIE SZABLONY WYDARZEŃ */}
+              {/* PRZEWIJANE POZIOMO SZABLONY WYDARZEŃ */}
               <Text style={styles.inputLabel}>Szybki szablon wydarzenia:</Text>
-              <View style={styles.templateRow}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
                 <TouchableOpacity style={styles.templateChip} onPress={() => applyTemplate('mecz')}>
                   <Text style={styles.templateChipText}>🚌 Wyjazd na Mecz</Text>
                 </TouchableOpacity>
@@ -514,9 +517,9 @@ export default function KalendarzScreen() {
                   <Text style={styles.templateChipText}>⚽ Trening Domowy</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.templateChip} onPress={() => applyTemplate('turniej')}>
-                  <Text style={styles.templateChipText}>🏆 Turniej</Text>
+                  <Text style={styles.templateChipText}>🏆 Turniej Ogólnopolski</Text>
                 </TouchableOpacity>
-              </View>
+              </ScrollView>
 
               <Text style={styles.inputLabel}>Nazwa wydarzenia</Text>
               <TextInput
@@ -526,7 +529,7 @@ export default function KalendarzScreen() {
                 onChangeText={setEventTitle}
               />
 
-              {/* DATA I DWIE GODZINY */}
+              {/* DATA I GODZINY */}
               <Text style={styles.inputLabel}>Data wydarzenia</Text>
               <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowDatePicker(true)}>
                 <Ionicons name="calendar-outline" size={16} color="#2563eb" style={{ marginRight: 6 }} />
@@ -590,7 +593,7 @@ export default function KalendarzScreen() {
                 />
               )}
 
-              {/* MIEJSCE ZBIÓRKI Z MAPĄ */}
+              {/* MIEJSCE ZBIÓRKI Z DEDYKOWANYM PRZYCISKIEM GOOGLE MAPS */}
               <Text style={styles.inputLabel}>Miejsce zbiórki / adres (Kliknij ikonę mapy)</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <TextInput
@@ -603,11 +606,11 @@ export default function KalendarzScreen() {
                   style={styles.mapIconButton}
                   onPress={() => openMapLocation(eventLocation)}
                 >
-                  <Ionicons name="navigate-circle-outline" size={24} color="#2563eb" />
+                  <Ionicons name="navigate-circle" size={28} color="#2563eb" />
                 </TouchableOpacity>
               </View>
 
-              {/* POWOŁANIE KADRY I RSVS STATUSY */}
+              {/* POWOŁANIE KADRY */}
               <View style={styles.squadHeaderRow}>
                 <Text style={styles.inputLabel}>Powołaj Kadrę ({selectedSquad.length})</Text>
                 <TouchableOpacity onPress={handleCopySquadToClipboard}>
@@ -615,7 +618,7 @@ export default function KalendarzScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* FILTR ROCZNIKÓW */}
+              {/* FILTR ROCZNIKÓW + PRZYCISK ZAZNACZENIA WSZYSTKICH */}
               <View style={styles.yearFilterRow}>
                 <Text style={styles.yearFilterLabel}>Filtruj rocznik:</Text>
                 {['Wszyscy', '2012', '2013', '2014'].map((yr) => (
@@ -629,9 +632,14 @@ export default function KalendarzScreen() {
                     </Text>
                   </TouchableOpacity>
                 ))}
+                {squadYearFilter !== 'Wszyscy' && (
+                  <TouchableOpacity style={styles.selectAllBtn} onPress={selectEntireYear}>
+                    <Text style={styles.selectAllBtnText}>+ Zaznacz rocznik</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
-              {/* PKT 1: ZAWODNICY Z PRZYCISKAMI STATUSU OBECNOŚCI */}
+              {/* ZAWODNICY */}
               <View style={{ marginTop: 4 }}>
                 {filteredSquadPlayers.map((p: any) => {
                   const isSelected = selectedSquad.includes(String(p.id));
@@ -650,13 +658,12 @@ export default function KalendarzScreen() {
                         />
                         <View style={{ marginLeft: 8 }}>
                           <Text style={[styles.squadChipText, isSelected && styles.squadChipTextSelected]}>
-                            {p.firstName} {p.lastName} (#{p.number})
+                            {p.firstName} {p.lastName}
                           </Text>
                           <Text style={styles.squadChipSubText}>Rocznik {p.year}</Text>
                         </View>
                       </TouchableOpacity>
 
-                      {/* WYBÓR STATUSU OBECNOŚCI */}
                       {isSelected && (
                         <View style={styles.attendanceBtnsRow}>
                           <TouchableOpacity
@@ -806,7 +813,7 @@ const styles = StyleSheet.create({
   eventMetaText: { fontSize: 10, color: '#64748b', marginTop: 2 },
   listEditBtn: { padding: 6, backgroundColor: '#eff6ff', borderRadius: 6, borderWidth: 1, borderColor: '#bfdbfe' },
 
-  /* MODALS */
+  /* MODAL */
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.5)', justifyContent: 'center', padding: 16 },
   modalContainer: { backgroundColor: '#fff', borderRadius: 16, padding: 20, elevation: 5 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
@@ -822,8 +829,7 @@ const styles = StyleSheet.create({
   addNewEventInDayText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
 
   /* SZABLONY */
-  templateRow: { flexDirection: 'row', marginBottom: 10 },
-  templateChip: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, marginRight: 6 },
+  templateChip: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, marginRight: 8 },
   templateChipText: { fontSize: 11, fontWeight: 'bold', color: '#1e40af' },
 
   inputLabel: { fontSize: 11, fontWeight: '600', color: '#475569', marginTop: 8, marginBottom: 4 },
@@ -848,17 +854,19 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   pickerBoxBtnText: { fontSize: 13, fontWeight: 'bold', color: '#1e40af' },
-  mapIconButton: { marginLeft: 6, padding: 4 },
+  mapIconButton: { marginLeft: 6, padding: 2 },
 
   squadHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   copyWhatsappBtnText: { fontSize: 11, fontWeight: 'bold', color: '#16a34a' },
 
-  yearFilterRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 6 },
+  yearFilterRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 6, flexWrap: 'wrap' },
   yearFilterLabel: { fontSize: 10, color: '#64748b', marginRight: 6 },
   yearFilterChip: { backgroundColor: '#f1f5f9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginRight: 4 },
   yearFilterChipActive: { backgroundColor: '#2563eb' },
   yearFilterChipText: { fontSize: 10, color: '#475569', fontWeight: '600' },
   yearFilterChipTextActive: { color: '#fff', fontWeight: 'bold' },
+  selectAllBtn: { backgroundColor: '#dbeafe', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginLeft: 4 },
+  selectAllBtnText: { fontSize: 10, fontWeight: 'bold', color: '#1e40af' },
 
   /* KARTA ZAWODNIKA I STATUSY */
   playerRowCard: {
