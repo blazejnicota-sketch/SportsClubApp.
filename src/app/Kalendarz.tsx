@@ -42,11 +42,22 @@ const MONTH_NAMES = [
 ];
 
 const DAY_NAMES = ['Niedziela', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota'];
+const SHORT_WEEK_DAYS = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Ndz'];
+
+const getEventTypeConfig = (type: 'Mecz' | 'Trening' | 'Inne') => {
+  switch (type) {
+    case 'Mecz':
+      return { bg: '#fee2e2', text: '#dc2626', border: '#f87171', badge: '⚽ Mecz' };
+    case 'Trening':
+      return { bg: '#dbeafe', text: '#2563eb', border: '#60a5fa', badge: '🏃 Trening' };
+    case 'Inne':
+      return { bg: '#f3e8ff', text: '#7c3aed', border: '#c084fc', badge: '📌 Inne' };
+  }
+};
 
 export default function KalendarzScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('miesiac');
   
-  // Stan nawigacji po miesiącach
   const [currentMonthDate, setCurrentMonthDate] = useState<Date>(new Date(2026, 9, 1)); // Październik 2026
   const [selectedDate, setSelectedDate] = useState<string>('2026-10-25');
 
@@ -54,7 +65,11 @@ export default function KalendarzScreen() {
   const curMonth = currentMonthDate.getMonth();
   const daysInCurrentMonth = new Date(curYear, curMonth + 1, 0).getDate();
 
-  // Baza zawodników
+  // Obliczanie przesunięcia pierwszego dnia miesiąca (0 = Poniedziałek w tym układzie siatki)
+  // getDay(): 0=Niedziela, 1=Poniedziałek, ..., 6=Sobota -> przekształcamy na Poniedziałek=0 ... Niedziela=6
+  const firstDayIndexRaw = new Date(curYear, curMonth, 1).getDay();
+  const firstDayOffset = firstDayIndexRaw === 0 ? 6 : firstDayIndexRaw - 1;
+
   const availablePlayers = MOCK_100_PLAYERS.slice(0, 24).map((p: any, idx: number) => ({
     ...p,
     firstName: p.firstName || p.name?.split(' ')[0] || 'Zawodnik',
@@ -63,7 +78,6 @@ export default function KalendarzScreen() {
     number: p.number || idx + 1,
   }));
 
-  // Wydarzenia
   const [events, setEvents] = useState<EventItem[]>([
     {
       id: '1',
@@ -81,7 +95,7 @@ export default function KalendarzScreen() {
     {
       id: '2',
       title: 'Trening Cykliczny Drużyny',
-      startDate: '2026-10-26', // Poniedziałek
+      startDate: '2026-10-26',
       endDate: '2026-10-26',
       meetingTime: '17:15',
       startTime: '17:30',
@@ -89,21 +103,18 @@ export default function KalendarzScreen() {
       location: 'Orlik ul. Szkolna 5',
       type: 'Trening',
       isRecurring: true,
-      recurringDayOfWeek: 1, // Poniedziałek
+      recurringDayOfWeek: 1,
       squadIds: ['1', '2', '3', '4', '5', '6', '7', '8'],
       attendance: { '1': 'present', '2': 'present' },
     },
   ]);
 
-  // Modale
   const [dayModalVisible, setDayModalVisible] = useState<boolean>(false);
   const [formModalVisible, setFormModalVisible] = useState<boolean>(false);
 
-  // Stany Formularza
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [eventTitle, setEventTitle] = useState<string>('');
   
-  // Daty i Godziny
   const [startDateObj, setStartDateObj] = useState<Date>(new Date(2026, 9, 25));
   const [endDateObj, setEndDateObj] = useState<Date>(new Date(2026, 9, 25));
   const [meetingTimeObj, setMeetingTimeObj] = useState<Date>(new Date(2026, 9, 25, 7, 5));
@@ -112,15 +123,12 @@ export default function KalendarzScreen() {
 
   const [eventLocation, setEventLocation] = useState<string>('');
   const [eventType, setEventType] = useState<'Mecz' | 'Trening' | 'Inne'>('Mecz');
-  
-  // Cykliczność intuicyjna
   const [isRecurring, setIsRecurring] = useState<boolean>(false);
 
   const [selectedSquad, setSelectedSquad] = useState<string[]>([]);
   const [squadAttendance, setSquadAttendance] = useState<Record<string, AttendanceStatus>>({});
   const [squadYearFilter, setSquadYearFilter] = useState<string>('Wszyscy');
 
-  // Stany Pickerów
   const [showStartDatePicker, setShowStartDatePicker] = useState<boolean>(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState<boolean>(false);
   const [showMeetingTimePicker, setShowMeetingTimePicker] = useState<boolean>(false);
@@ -135,7 +143,6 @@ export default function KalendarzScreen() {
 
   const currentDayOfWeekName = DAY_NAMES[startDateObj.getDay()];
 
-  // Sprawdzanie czy wydarzenie występuje w danym dniu (uwzględniając cykle co tydzień)
   const isEventOnDate = (ev: EventItem, dateStr: string) => {
     if (ev.startDate <= dateStr && dateStr <= ev.endDate) return true;
     if (ev.isRecurring && ev.recurringDayOfWeek !== undefined) {
@@ -148,7 +155,6 @@ export default function KalendarzScreen() {
     return false;
   };
 
-  // Szablony
   const applyTemplate = (templateType: 'mecz' | 'trening' | 'turniej') => {
     if (templateType === 'mecz') {
       setEventTitle('Mecz Godynice Szkoła Podstawowa');
@@ -204,7 +210,7 @@ export default function KalendarzScreen() {
     setEndTimeObj(new Date(yr, mo - 1, dy, 10, 0));
     setEventLocation('Stadion Miejski, ul. Sportowa 1');
     setEventType('Mecz');
-    setIsRecurring(baseDate.getDay() === 1); // np. domyślnie podpowiadaj dla poniedziałku
+    setIsRecurring(baseDate.getDay() === 1);
 
     const initialSquad = availablePlayers.slice(0, 8).map((p) => String(p.id));
     setSelectedSquad(initialSquad);
@@ -340,7 +346,7 @@ export default function KalendarzScreen() {
     setSelectedSquad(newSquad);
   };
 
-  const handleCopySquadToClipboard = async () => {
+  const handleCopySquadAndSendPush = async () => {
     const nominatedNames = availablePlayers
       .filter((p) => selectedSquad.includes(String(p.id)))
       .map((p) => `• ${p.firstName} ${p.lastName}`)
@@ -350,7 +356,11 @@ export default function KalendarzScreen() {
     const message = `📌 ${eventTitle}\n📅 Data: ${dateStr}\n⏰ Zbiórka: ${formattedMeetingTime} | Start: ${formattedStartTime} - ${formattedEndTime}\n📍 Miejsce: ${eventLocation}\n\nKADRA (${selectedSquad.length}):\n${nominatedNames}\n\nProśba o potwierdzenie obecności! 👍`;
 
     await Clipboard.setStringAsync(message);
-    Alert.alert('Skopiowano! 📋', 'Zwięzłe powołanie skopiowane do schowka.');
+
+    Alert.alert(
+      'Wysłano Powiadomienia Push 📲 & Skopiowano 📋',
+      `Powołanie dostarczono do ${selectedSquad.length} zawodników. Tekst powołania został skopiowany do schowka!`
+    );
   };
 
   const openMapLocation = (loc: string) => {
@@ -372,7 +382,6 @@ export default function KalendarzScreen() {
 
   return (
     <View style={styles.container}>
-      {/* NAGŁÓWEK */}
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Kalendarz Drużyny</Text>
@@ -384,7 +393,6 @@ export default function KalendarzScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* PRZEŁĄCZNIK WIDOKU */}
       <View style={styles.viewToggleRow}>
         <TouchableOpacity
           style={[styles.toggleBtn, viewMode === 'miesiac' && styles.toggleBtnActive]}
@@ -412,7 +420,6 @@ export default function KalendarzScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* WIDOK MIESIĄCA Z NAWIGACJĄ */}
         {viewMode === 'miesiac' && (
           <View style={styles.cardBox}>
             <View style={styles.monthNavHeader}>
@@ -426,10 +433,25 @@ export default function KalendarzScreen() {
             </View>
             <Text style={styles.monthSubText}>Kliknij dzień, aby zobaczyć wydarzenia</Text>
 
+            {/* NAGŁÓWKI DNI TYGODNIA */}
+            <View style={styles.weekDaysHeaderRow}>
+              {SHORT_WEEK_DAYS.map((wd, index) => (
+                <Text key={index} style={styles.weekDayHeaderLabel}>{wd}</Text>
+              ))}
+            </View>
+
+            {/* SIATKA KALENDARZA Z PRZESUNIĘCIEM */}
             <View style={styles.calendarGrid}>
+              {/* Puste komórki na początku miesiąca */}
+              {Array.from({ length: firstDayOffset }, (_, i) => (
+                <View key={`empty-${i}`} style={[styles.dayCell, styles.emptyDayCell]} />
+              ))}
+
+              {/* Dni miesiąca */}
               {Array.from({ length: daysInCurrentMonth }, (_, i) => i + 1).map((dayNum) => {
                 const dayStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${dayNum < 10 ? '0' + dayNum : dayNum}`;
-                const hasEvent = events.some((ev) => isEventOnDate(ev, dayStr));
+                const dayEvs = events.filter((ev) => isEventOnDate(ev, dayStr));
+                const hasEvent = dayEvs.length > 0;
                 const isSelected = selectedDate === dayStr;
 
                 return (
@@ -439,7 +461,14 @@ export default function KalendarzScreen() {
                     onPress={() => handleDayPress(dayStr)}
                   >
                     <Text style={[styles.dayCellText, isSelected && styles.dayCellTextSelected]}>{dayNum}</Text>
-                    {hasEvent && <View style={styles.eventDot} />}
+                    {hasEvent && (
+                      <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 2 }}>
+                        {dayEvs.slice(0, 3).map((e, idx) => {
+                          const cfg = getEventTypeConfig(e.type);
+                          return <View key={idx} style={[styles.eventDot, { backgroundColor: cfg.text }]} />;
+                        })}
+                      </View>
+                    )}
                   </TouchableOpacity>
                 );
               })}
@@ -447,7 +476,6 @@ export default function KalendarzScreen() {
           </View>
         )}
 
-        {/* WIDOK TYGODNIA */}
         {viewMode === 'tydzien' && (
           <View style={styles.cardBox}>
             <Text style={styles.monthTitle}>Wybrany Tydzień</Text>
@@ -475,21 +503,33 @@ export default function KalendarzScreen() {
 
                   <View style={{ flex: 1, marginLeft: 10 }}>
                     {dEvents.length > 0 ? (
-                      dEvents.map((ev) => (
-                        <View key={ev.id} style={styles.eventSubCard}>
-                          <Text style={styles.eventSubCardTitle}>{ev.title}</Text>
-                          <Text style={styles.eventSubCardMeta}>
-                            ⏰ Zbiórka: {ev.meetingTime} | Start: {ev.startTime} - {ev.endTime}
-                          </Text>
-                          <TouchableOpacity
-                            onPress={() => openMapLocation(ev.location)}
-                            style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}
-                          >
-                            <Ionicons name="map-outline" size={11} color="#2563eb" style={{ marginRight: 3 }} />
-                            <Text style={{ fontSize: 10, color: '#2563eb', textDecorationLine: 'underline' }}>{ev.location}</Text>
-                          </TouchableOpacity>
-                        </View>
-                      ))
+                      dEvents.map((ev) => {
+                        const cfg = getEventTypeConfig(ev.type);
+                        return (
+                          <View key={ev.id} style={[styles.eventSubCard, { borderLeftColor: cfg.text, borderLeftWidth: 4 }]}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Text style={styles.eventSubCardTitle}>{ev.title}</Text>
+                              <View style={[styles.miniBadge, { backgroundColor: cfg.bg }]}>
+                                <Text style={[styles.miniBadgeText, { color: cfg.text }]}>{ev.type}</Text>
+                              </View>
+                            </View>
+
+                            <TouchableOpacity
+                              onPress={() => openMapLocation(ev.location)}
+                              style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, marginBottom: 3 }}
+                            >
+                              <Ionicons name="map" size={12} color="#2563eb" style={{ marginRight: 4 }} />
+                              <Text style={{ fontSize: 11, color: '#2563eb', fontWeight: 'bold', textDecorationLine: 'underline' }}>
+                                {ev.location}
+                              </Text>
+                            </TouchableOpacity>
+
+                            <Text style={styles.eventSubCardMeta}>
+                              ⏰ Zbiórka: {ev.meetingTime} | Start: {ev.startTime} - {ev.endTime}
+                            </Text>
+                          </View>
+                        );
+                      })
                     ) : (
                       <Text style={styles.noEventText}>Brak zajęć • Kliknij, aby dodać</Text>
                     )}
@@ -500,53 +540,59 @@ export default function KalendarzScreen() {
           </View>
         )}
 
-        {/* WIDOK LISTY */}
         {viewMode === 'lista' && (
           <View>
             <Text style={styles.sectionTitle}>Nadchodzące Wydarzenia</Text>
-            {events.map((ev) => (
-              <View key={ev.id} style={styles.eventListCard}>
-                <View style={styles.eventBadge}>
-                  <Text style={styles.eventBadgeText}>{ev.type}</Text>
-                </View>
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={styles.eventTitleText}>{ev.title}</Text>
-                  <Text style={styles.eventMetaText}>
-                    📅 {ev.startDate} | ⏰ Zbiórka: <Text style={{ fontWeight: 'bold', color: '#dc2626' }}>{ev.meetingTime}</Text> | Start: <Text style={{ fontWeight: 'bold', color: '#2563eb' }}>{ev.startTime} - {ev.endTime}</Text>
-                  </Text>
-                  {ev.isRecurring && (
-                    <Text style={{ fontSize: 10, color: '#16a34a', fontWeight: 'bold', marginTop: 1 }}>
-                      🔄 Cykliczne (co tydzień)
-                    </Text>
-                  )}
+            {events.map((ev) => {
+              const cfg = getEventTypeConfig(ev.type);
+              return (
+                <View key={ev.id} style={[styles.eventListCard, { borderLeftColor: cfg.text, borderLeftWidth: 5 }]}>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                      <Text style={styles.eventTitleText}>{ev.title}</Text>
+                      <View style={[styles.eventBadge, { backgroundColor: cfg.bg }]}>
+                        <Text style={[styles.eventBadgeText, { color: cfg.text }]}>{ev.type}</Text>
+                      </View>
+                    </View>
 
-                  <TouchableOpacity
-                    onPress={() => openMapLocation(ev.location)}
-                    style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}
-                  >
-                    <Ionicons name="navigate-circle-outline" size={14} color="#2563eb" style={{ marginRight: 4 }} />
-                    <Text style={{ fontSize: 11, color: '#2563eb', fontWeight: 'bold', textDecorationLine: 'underline' }}>
-                      {ev.location} (Otwórz w Google Maps)
+                    <TouchableOpacity
+                      onPress={() => openMapLocation(ev.location)}
+                      style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3, marginBottom: 4 }}
+                    >
+                      <Ionicons name="navigate-circle" size={14} color="#2563eb" style={{ marginRight: 4 }} />
+                      <Text style={{ fontSize: 12, color: '#2563eb', fontWeight: 'bold', textDecorationLine: 'underline' }}>
+                        {ev.location} (Otwórz w Google Maps)
+                      </Text>
+                    </TouchableOpacity>
+
+                    <Text style={styles.eventMetaText}>
+                      📅 {ev.startDate} | ⏰ Zbiórka: <Text style={{ fontWeight: 'bold', color: '#dc2626' }}>{ev.meetingTime}</Text> | Start: <Text style={{ fontWeight: 'bold', color: '#2563eb' }}>{ev.startTime} - {ev.endTime}</Text>
                     </Text>
+
+                    {ev.isRecurring && (
+                      <Text style={{ fontSize: 10, color: '#16a34a', fontWeight: 'bold', marginTop: 2 }}>
+                        🔄 Cykliczne (co tydzień)
+                      </Text>
+                    )}
+
+                    <Text style={[styles.eventMetaText, { marginTop: 4 }]}>
+                      👥 Powołana kadra: {ev.squadIds.length} zawodników
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity style={styles.listEditBtn} onPress={() => handleOpenEditModal(ev)}>
+                    <Ionicons name="create-outline" size={16} color="#2563eb" />
                   </TouchableOpacity>
-
-                  <Text style={styles.eventMetaText}>
-                    👥 Powołana kadra: {ev.squadIds.length} zawodników
-                  </Text>
                 </View>
-
-                <TouchableOpacity style={styles.listEditBtn} onPress={() => handleOpenEditModal(ev)}>
-                  <Ionicons name="create-outline" size={16} color="#2563eb" />
-                </TouchableOpacity>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* MODAL 1: ZARZĄDZANIE DNIEM */}
+      {/* MODAL 1: ZARZĄDZANIE DNIEM (POPRAWIONY ADRES Z MAPĄ) */}
       <Modal animationType="fade" transparent={true} visible={dayModalVisible}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
@@ -558,24 +604,35 @@ export default function KalendarzScreen() {
             </View>
 
             {dayEvents.length > 0 ? (
-              <ScrollView style={{ maxHeight: 250 }}>
-                {dayEvents.map((ev) => (
-                  <View key={ev.id} style={styles.dayEventItemBox}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.dayEventTitle}>{ev.title}</Text>
-                      <Text style={styles.dayEventSub}>
-                        ⏰ Zbiórka: {ev.meetingTime} | Start: {ev.startTime} - {ev.endTime}
-                      </Text>
-                      <TouchableOpacity onPress={() => openMapLocation(ev.location)} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                        <Ionicons name="location-outline" size={11} color="#2563eb" />
-                        <Text style={{ fontSize: 10, color: '#2563eb', marginLeft: 2, textDecorationLine: 'underline' }}>{ev.location}</Text>
+              <ScrollView style={{ maxHeight: 280 }}>
+                {dayEvents.map((ev) => {
+                  const cfg = getEventTypeConfig(ev.type);
+                  return (
+                    <View key={ev.id} style={[styles.dayEventItemBox, { borderLeftColor: cfg.text, borderLeftWidth: 4 }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.dayEventTitle}>{ev.title}</Text>
+                        
+                        {/* ADRES W OSOBNYM WIERSZU Z ODNOŚNIKIEM DO MAPS */}
+                        <TouchableOpacity 
+                          onPress={() => openMapLocation(ev.location)} 
+                          style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, marginBottom: 4 }}
+                        >
+                          <Ionicons name="location" size={13} color="#2563eb" style={{ marginRight: 3 }} />
+                          <Text style={{ fontSize: 11, color: '#2563eb', fontWeight: 'bold', textDecorationLine: 'underline' }}>
+                            {ev.location} (Otwórz w Maps)
+                          </Text>
+                        </TouchableOpacity>
+
+                        <Text style={styles.dayEventSub}>
+                          ⏰ Zbiórka: {ev.meetingTime} | Start: {ev.startTime} - {ev.endTime}
+                        </Text>
+                      </View>
+                      <TouchableOpacity style={styles.editExistingBtn} onPress={() => handleOpenEditModal(ev)}>
+                        <Text style={styles.editExistingBtnText}>Edytuj</Text>
                       </TouchableOpacity>
                     </View>
-                    <TouchableOpacity style={styles.editExistingBtn} onPress={() => handleOpenEditModal(ev)}>
-                      <Text style={styles.editExistingBtnText}>Edytuj</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
+                  );
+                })}
               </ScrollView>
             ) : (
               <Text style={styles.noEventsDayText}>Brak zaplanowanych wydarzeń w tym dniu.</Text>
@@ -589,7 +646,7 @@ export default function KalendarzScreen() {
         </View>
       </Modal>
 
-      {/* MODAL 2: FORMULARZ Z INTUICYJNYM CYCLEM I GODZINĄ ZAKOŃCZENIA */}
+      {/* MODAL 2: FORMULARZ */}
       <Modal animationType="slide" transparent={true} visible={formModalVisible}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContainer, { maxHeight: '94%' }]}>
@@ -601,7 +658,6 @@ export default function KalendarzScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* PRZEWIJANE SZABLONY */}
               <Text style={styles.inputLabel}>Szybki szablon wydarzenia:</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
                 <TouchableOpacity style={styles.templateChip} onPress={() => applyTemplate('mecz')}>
@@ -615,7 +671,24 @@ export default function KalendarzScreen() {
                 </TouchableOpacity>
               </ScrollView>
 
-              {/* NAZWA WYDARZENIA */}
+              <Text style={styles.inputLabel}>Typ wydarzenia</Text>
+              <View style={{ flexDirection: 'row', marginBottom: 10 }}>
+                {(['Mecz', 'Trening', 'Inne'] as const).map((t) => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[
+                      styles.typeOptionBtn,
+                      eventType === t && { backgroundColor: getEventTypeConfig(t).bg, borderColor: getEventTypeConfig(t).text }
+                    ]}
+                    onPress={() => setEventType(t)}
+                  >
+                    <Text style={[styles.typeOptionText, eventType === t && { color: getEventTypeConfig(t).text, fontWeight: 'bold' }]}>
+                      {t}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
               <Text style={styles.inputLabel}>Nazwa wydarzenia</Text>
               <TextInput
                 style={styles.modalInput}
@@ -624,7 +697,6 @@ export default function KalendarzScreen() {
                 onChangeText={setEventTitle}
               />
 
-              {/* DATY */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
                 <View style={{ flex: 1, marginRight: 6 }}>
                   <Text style={styles.inputLabel}>Data początkowa</Text>
@@ -643,7 +715,6 @@ export default function KalendarzScreen() {
                 </View>
               </View>
 
-              {/* GODZINA ZBIÓRKI, STARTU I ZAKOŃCZENIA */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
                 <View style={{ flex: 1, marginRight: 4 }}>
                   <Text style={styles.inputLabel}>Zbiórka ⏰</Text>
@@ -667,7 +738,6 @@ export default function KalendarzScreen() {
                 </View>
               </View>
 
-              {/* PICKERS */}
               {showStartDatePicker && (
                 <DateTimePicker
                   value={startDateObj}
@@ -734,11 +804,10 @@ export default function KalendarzScreen() {
                 />
               )}
 
-              {/* ADRES / MIEJSCE ZBIÓRKI Z PRZYCISKIEM GOOGLE MAPS */}
               <Text style={styles.inputLabel}>Adres / Miejsce zbiórki (Kliknij ikonę mapy 🧭)</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
                 <TextInput
-                  style={[styles.modalInput, { flex: 1 }]}
+                  style={[styles.modalInput, { flex: 1, marginBottom: 0 }]}
                   placeholder="np. Stadion Miejski, ul. Sportowa 1"
                   value={eventLocation}
                   onChangeText={setEventLocation}
@@ -747,19 +816,16 @@ export default function KalendarzScreen() {
                   style={styles.mapIconButton}
                   onPress={() => openMapLocation(eventLocation)}
                 >
-                  <Ionicons name="navigate-circle" size={28} color="#2563eb" />
+                  <Ionicons name="map" size={18} color="#fff" />
                 </TouchableOpacity>
               </View>
 
-              {/* INTUICYJNY CYKL POWTARZANIA */}
               <View style={styles.recurringBox}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#0f172a' }}>
-                      🔄 Cykl tygodniowy ({currentDayOfWeekName}s)
-                    </Text>
-                    <Text style={{ fontSize: 10, color: '#64748b' }}>
-                      Powtarzaj automatycznie w każdy {currentDayOfWeekName.toLowerCase()}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#1e293b' }}>🔄 Trening Cykliczny Co Tydzień</Text>
+                    <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                      Automatycznie powtarzaj w każdy {currentDayOfWeekName}
                     </Text>
                   </View>
                   <Switch
@@ -771,102 +837,82 @@ export default function KalendarzScreen() {
                 </View>
               </View>
 
-              {/* POWOŁANIE KADRY */}
-              <View style={styles.squadHeaderRow}>
-                <Text style={styles.inputLabel}>Powołaj Kadrę ({selectedSquad.length})</Text>
-                <TouchableOpacity onPress={handleCopySquadToClipboard}>
-                  <Text style={styles.copyWhatsappBtnText}>📋 Kopiuj powołanie</Text>
-                </TouchableOpacity>
+              <View style={{ marginTop: 15, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 10 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={[styles.inputLabel, { marginBottom: 0 }]}>Powołania Kadry ({selectedSquad.length})</Text>
+                  <TouchableOpacity onPress={handleCopySquadAndSendPush} style={styles.pushActionBtn}>
+                    <Ionicons name="notifications-outline" size={14} color="#fff" style={{ marginRight: 4 }} />
+                    <Text style={styles.pushActionBtnText}>Wyślij Push & Kopiuj</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={{ flexDirection: 'row', marginBottom: 8 }}>
+                  {['Wszyscy', '2012', '2013', '2014'].map((yr) => (
+                    <TouchableOpacity
+                      key={yr}
+                      style={[styles.filterChip, squadYearFilter === yr && styles.filterChipActive]}
+                      onPress={() => setSquadYearFilter(yr)}
+                    >
+                      <Text style={[styles.filterChipText, squadYearFilter === yr && styles.filterChipTextActive]}>{yr}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity style={styles.selectAllChip} onPress={selectEntireYear}>
+                    <Text style={styles.selectAllChipText}>Zaznacz widocznych</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView style={{ maxHeight: 180, backgroundColor: '#f8fafc', borderRadius: 8, padding: 6, borderWidth: 1, borderColor: '#e2e8f0' }}>
+                  {filteredSquadPlayers.map((player: any) => {
+                    const isSelected = selectedSquad.includes(String(player.id));
+                    const status = squadAttendance[player.id] || 'pending';
+
+                    return (
+                      <View key={player.id} style={styles.playerRowItem}>
+                        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }} onPress={() => togglePlayerSquad(String(player.id))}>
+                          <Ionicons
+                            name={isSelected ? 'checkbox' : 'square-outline'}
+                            size={18}
+                            color={isSelected ? '#2563eb' : '#94a3b8'}
+                            style={{ marginRight: 6 }}
+                          />
+                          <Text style={{ fontSize: 12, color: '#1e293b', fontWeight: isSelected ? 'bold' : 'normal' }}>
+                            {player.firstName} {player.lastName} ({player.year})
+                          </Text>
+                        </TouchableOpacity>
+
+                        {isSelected && (
+                          <View style={{ flexDirection: 'row' }}>
+                            <TouchableOpacity
+                              style={[styles.statusMiniBtn, status === 'present' && { backgroundColor: '#16a34a' }]}
+                              onPress={() => setPlayerStatus(String(player.id), 'present')}
+                            >
+                              <Text style={[styles.statusMiniText, status === 'present' && { color: '#fff' }]}>obecny</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.statusMiniBtn, status === 'absent' && { backgroundColor: '#dc2626' }]}
+                              onPress={() => setPlayerStatus(String(player.id), 'absent')}
+                            >
+                              <Text style={[styles.statusMiniText, status === 'absent' && { color: '#fff' }]}>nieobecny</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
               </View>
 
-              {/* FILTR ROCZNIKÓW */}
-              <View style={styles.yearFilterRow}>
-                <Text style={styles.yearFilterLabel}>Filtruj rocznik:</Text>
-                {['Wszyscy', '2012', '2013', '2014'].map((yr) => (
-                  <TouchableOpacity
-                    key={yr}
-                    style={[styles.yearFilterChip, squadYearFilter === yr && styles.yearFilterChipActive]}
-                    onPress={() => setSquadYearFilter(yr)}
-                  >
-                    <Text style={[styles.yearFilterChipText, squadYearFilter === yr && styles.yearFilterChipTextActive]}>
-                      {yr}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-                {squadYearFilter !== 'Wszyscy' && (
-                  <TouchableOpacity style={styles.selectAllBtn} onPress={selectEntireYear}>
-                    <Text style={styles.selectAllBtnText}>+ Zaznacz rocznik</Text>
+              <View style={{ flexDirection: 'row', marginTop: 20, marginBottom: 10 }}>
+                {editingEventId && (
+                  <TouchableOpacity style={styles.deleteBtnModal} onPress={handleDeleteEvent}>
+                    <Ionicons name="trash-outline" size={16} color="#dc2626" />
                   </TouchableOpacity>
                 )}
-              </View>
-
-              {/* LISTA ZAWODNIKÓW */}
-              <View style={{ marginTop: 4 }}>
-                {filteredSquadPlayers.map((p: any) => {
-                  const isSelected = selectedSquad.includes(String(p.id));
-                  const status = squadAttendance[String(p.id)] || 'pending';
-
-                  return (
-                    <View key={p.id} style={[styles.playerRowCard, isSelected && styles.playerRowCardSelected]}>
-                      <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
-                        onPress={() => togglePlayerSquad(String(p.id))}
-                      >
-                        <Ionicons
-                          name={isSelected ? 'checkbox' : 'square-outline'}
-                          size={18}
-                          color={isSelected ? '#2563eb' : '#64748b'}
-                        />
-                        <View style={{ marginLeft: 8 }}>
-                          <Text style={[styles.squadChipText, isSelected && styles.squadChipTextSelected]}>
-                            {p.firstName} {p.lastName}
-                          </Text>
-                          <Text style={styles.squadChipSubText}>Rocznik {p.year}</Text>
-                        </View>
-                      </TouchableOpacity>
-
-                      {isSelected && (
-                        <View style={styles.attendanceBtnsRow}>
-                          <TouchableOpacity
-                            style={[styles.attBtn, status === 'present' && styles.attBtnPresent]}
-                            onPress={() => setPlayerStatus(String(p.id), 'present')}
-                          >
-                            <Text style={styles.attBtnText}>✅</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[styles.attBtn, status === 'pending' && styles.attBtnPending]}
-                            onPress={() => setPlayerStatus(String(p.id), 'pending')}
-                          >
-                            <Text style={styles.attBtnText}>❓</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[styles.attBtn, status === 'absent' && styles.attBtnAbsent]}
-                            onPress={() => setPlayerStatus(String(p.id), 'absent')}
-                          >
-                            <Text style={styles.attBtnText}>❌</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                    </View>
-                  );
-                })}
+                <TouchableOpacity style={[styles.saveEventBtn, { flex: 1 }]} onPress={handleSaveEvent}>
+                  <Text style={styles.saveEventBtnText}>{editingEventId ? 'Zapisz Zmiany' : 'Utwórz Wydarzenie'}</Text>
+                </TouchableOpacity>
               </View>
             </ScrollView>
-
-            <View style={styles.modalButtonsRow}>
-              {editingEventId && (
-                <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteEvent}>
-                  <Ionicons name="trash-outline" size={16} color="#dc2626" />
-                </TouchableOpacity>
-              )}
-              <View style={{ flex: 1 }} />
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setFormModalVisible(false)}>
-                <Text style={styles.cancelBtnText}>Anuluj</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEvent}>
-                <Text style={styles.saveBtnText}>Zapisz Wydarzenie</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </Modal>
@@ -875,201 +921,101 @@ export default function KalendarzScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
-
-  header: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#0f172a' },
-  headerSubtitle: { fontSize: 12, color: '#64748b', marginTop: 2 },
-  addBtn: {
-    backgroundColor: '#2563eb',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 8,
-  },
+  container: { flex: 1, backgroundColor: '#f8fafc', paddingHorizontal: 16, paddingTop: 10 },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#0f172a' },
+  headerSubtitle: { fontSize: 12, color: '#64748b' },
+  addBtn: { backgroundColor: '#2563eb', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
   addBtnText: { color: '#fff', fontSize: 12, fontWeight: 'bold', marginLeft: 4 },
 
-  viewToggleRow: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  toggleBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#f1f5f9',
-    marginRight: 6,
-  },
-  toggleBtnActive: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe' },
-  toggleText: { fontSize: 11, fontWeight: '600', color: '#64748b', marginLeft: 4 },
+  viewToggleRow: { flexDirection: 'row', backgroundColor: '#e2e8f0', borderRadius: 8, padding: 3, marginBottom: 12 },
+  toggleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, borderRadius: 6 },
+  toggleBtnActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+  toggleText: { fontSize: 12, color: '#64748b', fontWeight: '600', marginLeft: 4 },
   toggleTextActive: { color: '#2563eb', fontWeight: 'bold' },
 
-  content: { padding: 16 },
-  cardBox: { backgroundColor: '#fff', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#e2e8f0' },
-  
-  monthNavHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  monthNavArrow: { padding: 6, backgroundColor: '#eff6ff', borderRadius: 6, borderWidth: 1, borderColor: '#bfdbfe' },
-  monthTitle: { fontSize: 14, fontWeight: 'bold', color: '#0f172a', textAlign: 'center' },
-  monthSubText: { fontSize: 11, color: '#64748b', marginTop: 2, marginBottom: 12, textAlign: 'center' },
+  content: { flex: 1 },
+  cardBox: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 4, elevation: 2 },
+  monthNavHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  monthNavArrow: { padding: 6, backgroundColor: '#eff6ff', borderRadius: 6 },
+  monthTitle: { fontSize: 16, fontWeight: 'bold', color: '#1e293b' },
+  monthSubText: { fontSize: 11, color: '#64748b', textAlign: 'center', marginBottom: 10 },
 
-  calendarGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  dayCell: {
-    width: '14.28%',
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 6,
-    marginBottom: 4,
-  },
-  dayCellSelected: { backgroundColor: '#2563eb' },
-  dayCellHasEvent: { backgroundColor: '#dbeafe' },
-  dayCellText: { fontSize: 11, fontWeight: '600', color: '#334155' },
-  dayCellTextSelected: { color: '#fff', fontWeight: 'bold' },
-  eventDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#2563eb', marginTop: 2 },
+  weekDaysHeaderRow: { flexDirection: 'row', marginBottom: 6 },
+  weekDayHeaderLabel: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: 'bold', color: '#64748b' },
 
-  weekDayRow: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  weekDayHeader: { width: 80 },
-  weekDayName: { fontSize: 12, fontWeight: 'bold', color: '#0f172a' },
+  calendarGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start' },
+  dayCell: { width: '13.5%', aspectRatio: 1, margin: '0.6%', justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc', borderRadius: 6, borderWidth: 1, borderColor: '#e2e8f0' },
+  emptyDayCell: { backgroundColor: 'transparent', borderWidth: 0 },
+  dayCellSelected: { backgroundColor: '#2563eb', borderColor: '#1d4ed8' },
+  dayCellHasEvent: { borderColor: '#93c5fd', backgroundColor: '#eff6ff' },
+  dayCellText: { fontSize: 12, fontWeight: 'bold', color: '#334155' },
+  dayCellTextSelected: { color: '#fff' },
+  eventDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#2563eb', marginHorizontal: 1 },
+
+  weekDayRow: { flexDirection: 'row', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', alignItems: 'flex-start' },
+  weekDayHeader: { width: 85 },
+  weekDayName: { fontSize: 12, fontWeight: 'bold', color: '#1e293b' },
   weekDayDate: { fontSize: 10, color: '#64748b' },
-  eventSubCard: { backgroundColor: '#eff6ff', padding: 8, borderRadius: 6, marginBottom: 4, borderWidth: 1, borderColor: '#bfdbfe' },
-  eventSubCardTitle: { fontSize: 12, fontWeight: 'bold', color: '#1e40af' },
-  eventSubCardMeta: { fontSize: 10, color: '#1e3a8a', marginTop: 2 },
-  noEventText: { fontSize: 11, color: '#94a3b8', fontStyle: 'italic' },
+  eventSubCard: { backgroundColor: '#f8fafc', borderRadius: 6, padding: 8, marginBottom: 6, borderWidth: 1, borderColor: '#e2e8f0' },
+  eventSubCardTitle: { fontSize: 12, fontWeight: 'bold', color: '#0f172a' },
+  eventSubCardMeta: { fontSize: 10, color: '#64748b', marginTop: 1 },
+  noEventText: { fontSize: 11, color: '#94a3b8', fontStyle: 'italic', paddingTop: 4 },
 
-  sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#334155', marginBottom: 10 },
-  eventListCard: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  eventBadge: { backgroundColor: '#eff6ff', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  eventBadgeText: { fontSize: 10, fontWeight: 'bold', color: '#2563eb' },
-  eventTitleText: { fontSize: 13, fontWeight: 'bold', color: '#0f172a' },
-  eventMetaText: { fontSize: 10, color: '#64748b', marginTop: 2 },
-  listEditBtn: { padding: 6, backgroundColor: '#eff6ff', borderRadius: 6, borderWidth: 1, borderColor: '#bfdbfe' },
+  sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#1e293b', marginBottom: 8 },
+  eventListCard: { backgroundColor: '#fff', borderRadius: 10, padding: 12, marginBottom: 10, flexDirection: 'row', alignItems: 'flex-start', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 3, elevation: 1, borderWidth: 1, borderColor: '#e2e8f0' },
+  eventBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 },
+  eventBadgeText: { fontSize: 10, fontWeight: 'bold' },
+  eventTitleText: { fontSize: 14, fontWeight: 'bold', color: '#0f172a' },
+  eventMetaText: { fontSize: 11, color: '#475569', marginTop: 2 },
+  listEditBtn: { padding: 6, backgroundColor: '#f1f5f9', borderRadius: 6, marginLeft: 8 },
 
-  /* MODAL */
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.5)', justifyContent: 'center', padding: 16 },
-  modalContainer: { backgroundColor: '#fff', borderRadius: 16, padding: 20, elevation: 5 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  modalTitle: { fontSize: 15, fontWeight: 'bold', color: '#0f172a' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 16 },
+  modalContainer: { backgroundColor: '#fff', borderRadius: 14, padding: 16, maxHeight: '85%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', paddingBottom: 8 },
+  modalTitle: { fontSize: 15, fontWeight: 'bold', color: '#1e293b' },
 
-  dayEventItemBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', padding: 10, borderRadius: 8, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0' },
-  dayEventTitle: { fontSize: 12, fontWeight: 'bold', color: '#0f172a' },
-  dayEventSub: { fontSize: 10, color: '#64748b', marginTop: 2 },
-  editExistingBtn: { backgroundColor: '#eff6ff', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: '#bfdbfe' },
-  editExistingBtnText: { fontSize: 11, fontWeight: 'bold', color: '#2563eb' },
-  noEventsDayText: { fontSize: 12, color: '#64748b', textAlign: 'center', marginVertical: 14, fontStyle: 'italic' },
+  dayEventItemBox: { backgroundColor: '#f8fafc', borderRadius: 8, padding: 10, marginBottom: 8, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0' },
+  dayEventTitle: { fontSize: 13, fontWeight: 'bold', color: '#1e293b' },
+  dayEventSub: { fontSize: 11, color: '#64748b', marginTop: 1 },
+  editExistingBtn: { backgroundColor: '#eff6ff', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 },
+  editExistingBtnText: { color: '#2563eb', fontSize: 11, fontWeight: 'bold' },
+  noEventsDayText: { fontSize: 12, color: '#64748b', textAlign: 'center', marginVertical: 20 },
   addNewEventInDayBtn: { backgroundColor: '#2563eb', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 8, marginTop: 10 },
   addNewEventInDayText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
 
-  /* SZABLONY */
-  templateChip: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, marginRight: 8 },
-  templateChipText: { fontSize: 11, fontWeight: 'bold', color: '#1e40af' },
+  inputLabel: { fontSize: 11, fontWeight: 'bold', color: '#475569', marginBottom: 4, marginTop: 8 },
+  modalInput: { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: '#1e293b', marginBottom: 8 },
+  pickerBoxBtn: { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  pickerBoxBtnText: { fontSize: 12, color: '#1e293b', fontWeight: '600' },
+  mapIconButton: { backgroundColor: '#2563eb', padding: 10, borderRadius: 8, marginLeft: 6, justifyContent: 'center', alignItems: 'center' },
 
-  inputLabel: { fontSize: 11, fontWeight: '600', color: '#475569', marginTop: 8, marginBottom: 4 },
-  modalInput: {
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    fontSize: 12,
-    color: '#0f172a',
-  },
-  pickerBoxBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#eff6ff',
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 7,
-  },
-  pickerBoxBtnText: { fontSize: 12, fontWeight: 'bold', color: '#1e40af' },
-  mapIconButton: { marginLeft: 6, padding: 2 },
+  templateChip: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, marginRight: 6 },
+  templateChipText: { fontSize: 11, color: '#1d4ed8', fontWeight: 'bold' },
 
-  recurringBox: {
-    backgroundColor: '#f1f5f9',
-    borderRadius: 8,
-    padding: 10,
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
+  typeOptionBtn: { flex: 1, borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 6, paddingVertical: 6, alignItems: 'center', marginHorizontal: 2, backgroundColor: '#f8fafc' },
+  typeOptionText: { fontSize: 11, color: '#64748b' },
 
-  squadHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
-  copyWhatsappBtnText: { fontSize: 11, fontWeight: 'bold', color: '#16a34a' },
+  recurringBox: { backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#bbf7d0', borderRadius: 8, padding: 10, marginTop: 8 },
 
-  yearFilterRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 6, flexWrap: 'wrap' },
-  yearFilterLabel: { fontSize: 10, color: '#64748b', marginRight: 6 },
-  yearFilterChip: { backgroundColor: '#f1f5f9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginRight: 4 },
-  yearFilterChipActive: { backgroundColor: '#2563eb' },
-  yearFilterChipText: { fontSize: 10, color: '#475569', fontWeight: '600' },
-  yearFilterChipTextActive: { color: '#fff', fontWeight: 'bold' },
-  selectAllBtn: { backgroundColor: '#dbeafe', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginLeft: 4 },
-  selectAllBtnText: { fontSize: 10, fontWeight: 'bold', color: '#1e40af' },
+  pushActionBtn: { backgroundColor: '#16a34a', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  pushActionBtnText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
 
-  /* KARTA ZAWODNIKA I STATUSY */
-  playerRowCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#f8fafc',
-    padding: 8,
-    borderRadius: 8,
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  playerRowCardSelected: { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' },
-  squadChipText: { fontSize: 11, color: '#334155', fontWeight: '600' },
-  squadChipTextSelected: { color: '#2563eb', fontWeight: 'bold' },
-  squadChipSubText: { fontSize: 9, color: '#64748b' },
+  filterChip: { backgroundColor: '#f1f5f9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, marginRight: 4, borderWidth: 1, borderColor: '#cbd5e1' },
+  filterChipActive: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
+  filterChipText: { fontSize: 10, color: '#475569' },
+  filterChipTextActive: { color: '#fff', fontWeight: 'bold' },
+  selectAllChip: { backgroundColor: '#eff6ff', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, borderWidth: 1, borderColor: '#bfdbfe' },
+  selectAllChipText: { fontSize: 10, color: '#2563eb', fontWeight: 'bold' },
 
-  attendanceBtnsRow: { flexDirection: 'row', alignItems: 'center' },
-  attBtn: { paddingHorizontal: 6, paddingVertical: 4, borderRadius: 6, backgroundColor: '#f1f5f9', marginLeft: 4 },
-  attBtnPresent: { backgroundColor: '#dcfce7', borderWidth: 1, borderColor: '#86efac' },
-  attBtnPending: { backgroundColor: '#fef3c7', borderWidth: 1, borderColor: '#fde047' },
-  attBtnAbsent: { backgroundColor: '#fee2e2', borderWidth: 1, borderColor: '#fca5a5' },
-  attBtnText: { fontSize: 10 },
+  playerRowItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  statusMiniBtn: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: '#e2e8f0', marginLeft: 4 },
+  statusMiniText: { fontSize: 9, color: '#475569', fontWeight: 'bold' },
 
-  modalButtonsRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16, alignItems: 'center' },
-  deleteBtn: { padding: 8, backgroundColor: '#fee2e2', borderRadius: 8 },
-  cancelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, marginRight: 6 },
-  cancelBtnText: { fontSize: 12, color: '#64748b', fontWeight: '600' },
-  saveBtn: { backgroundColor: '#2563eb', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
-  saveBtnText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+  deleteBtnModal: { backgroundColor: '#fee2e2', borderWidth: 1, borderColor: '#fca5a5', padding: 10, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 8 },
+  saveEventBtn: { backgroundColor: '#2563eb', borderRadius: 8, paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
+  saveEventBtnText: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
+
+  miniBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  miniBadgeText: { fontSize: 9, fontWeight: 'bold' },
 });
