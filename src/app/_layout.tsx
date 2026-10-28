@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Platform, StatusBar } from 'react-native';
+import { PlayersProvider } from './PlayersContext';
 
 type RoleType = 'Trener' | 'Zawodnik' | 'Rodzice';
 
@@ -9,84 +10,86 @@ export default function RootLayout() {
   const [currentRole, setCurrentRole] = useState<RoleType>('Trener');
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      {/* GÓRNY PASEK WYBORU ROLI (Poprawiona pozycja - nie blokuje treści) */}
-      <View style={styles.roleBarContainer}>
-        <View style={styles.roleBar}>
-          {(['Trener', 'Zawodnik', 'Rodzice'] as RoleType[]).map((role) => (
-            <TouchableOpacity
-              key={role}
-              style={[styles.roleBtn, currentRole === role && styles.roleBtnActive]}
-              onPress={() => setCurrentRole(role)}
-            >
-              <Text style={[styles.roleText, currentRole === role && styles.roleTextActive]}>
-                {role}
-              </Text>
-            </TouchableOpacity>
-          ))}
+    <PlayersProvider>
+      <SafeAreaView style={styles.safeArea}>
+        {/* GÓRNY PASEK WYBORU ROLI */}
+        <View style={styles.roleBarContainer}>
+          <View style={styles.roleBar}>
+            {(['Trener', 'Zawodnik', 'Rodzice'] as RoleType[]).map((role) => (
+              <TouchableOpacity
+                key={role}
+                style={[styles.roleBtn, currentRole === role && styles.roleBtnActive]}
+                onPress={() => setCurrentRole(role)}
+              >
+                <Text style={[styles.roleText, currentRole === role && styles.roleTextActive]}>
+                  {role}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
-      </View>
 
-      {/* GŁÓWNY NAWIGATOR ZAKŁADEK */}
-      <View style={{ flex: 1 }}>
-        <Tabs
-          screenOptions={{
-            headerShown: false,
-            tabBarActiveTintColor: '#2563eb',
-            tabBarInactiveTintColor: '#64748b',
-            tabBarStyle: styles.tabBar,
-            tabBarLabelStyle: styles.tabLabel,
-          }}
-        >
-          {/* 5 GŁÓWNYCH ZAKŁADEK */}
-          <Tabs.Screen
-            name="index"
-            options={{
-              title: 'Start',
-              tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
+        {/* GŁÓWNY NAWIGATOR ZAKŁADEK */}
+        <View style={{ flex: 1 }}>
+          <Tabs
+            screenOptions={{
+              headerShown: false,
+              tabBarActiveTintColor: '#2563eb',
+              tabBarInactiveTintColor: '#64748b',
+              tabBarStyle: styles.tabBar,
+              tabBarLabelStyle: styles.tabLabel,
             }}
-          />
-          <Tabs.Screen
-            name="Kalendarz"
-            options={{
-              title: 'Kalendarz',
-              tabBarIcon: ({ color, size }) => <Ionicons name="calendar-outline" size={size} color={color} />,
-            }}
-          />
-          <Tabs.Screen
-            name="Boisko"
-            options={{
-              title: 'Boisko',
-              tabBarIcon: ({ color, size }) => <Ionicons name="football-outline" size={size} color={color} />,
-            }}
-          />
-          <Tabs.Screen
-            name="Szatnia"
-            options={{
-              title: 'Szatnia',
-              tabBarIcon: ({ color, size }) => <Ionicons name="fitness-outline" size={size} color={color} />,
-            }}
-          />
-          <Tabs.Screen
-            name="Zawodnicy"
-            options={{
-              title: 'Zawodnicy',
-              tabBarIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />,
-            }}
-          />
+          >
+            {/* 5 GŁÓWNYCH ZAKŁADEK */}
+            <Tabs.Screen
+              name="index"
+              options={{
+                title: 'Start',
+                tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
+              }}
+            />
+            <Tabs.Screen
+              name="Kalendarz"
+              options={{
+                title: 'Kalendarz',
+                tabBarIcon: ({ color, size }) => <Ionicons name="calendar-outline" size={size} color={color} />,
+              }}
+            />
+            <Tabs.Screen
+              name="Boisko"
+              options={{
+                title: 'Boisko',
+                tabBarIcon: ({ color, size }) => <Ionicons name="football-outline" size={size} color={color} />,
+              }}
+            />
+            <Tabs.Screen
+              name="Szatnia"
+              options={{
+                title: 'Szatnia',
+                tabBarIcon: ({ color, size }) => <Ionicons name="fitness-outline" size={size} color={color} />,
+              }}
+            />
+            <Tabs.Screen
+              name="Zawodnicy"
+              options={{
+                title: 'Zawodnicy',
+                tabBarIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />,
+              }}
+            />
 
-          {/* UKRYTE EKRANY POMOCNICZE I MODUŁY (href: null usuwa je z paska dolnego) */}
-          <Tabs.Screen name="Finanse" options={{ href: null }} />
-          <Tabs.Screen name="Auth" options={{ href: null }} />
-          <Tabs.Screen name="testy" options={{ href: null }} />
-          <Tabs.Screen name="Klub" options={{ href: null }} />
-          <Tabs.Screen name="Raporty" options={{ href: null }} />
-          <Tabs.Screen name="RodzicPanel" options={{ href: null }} />
-          <Tabs.Screen name="ZadaniaDomowe" options={{ href: null }} />
-          <Tabs.Screen name="ZawodnikPanel" options={{ href: null }} />
-        </Tabs>
-      </View>
-    </SafeAreaView>
+            {/* UKRYTE EKRANY POMOCNICZE I MODUŁY */}
+            <Tabs.Screen name="Finanse" options={{ href: null }} />
+            <Tabs.Screen name="Auth" options={{ href: null }} />
+            <Tabs.Screen name="testy" options={{ href: null }} />
+            <Tabs.Screen name="Klub" options={{ href: null }} />
+            <Tabs.Screen name="Raporty" options={{ href: null }} />
+            <Tabs.Screen name="RodzicPanel" options={{ href: null }} />
+            <Tabs.Screen name="ZadaniaDomowe" options={{ href: null }} />
+            <Tabs.Screen name="ZawodnikPanel" options={{ href: null }} />
+          </Tabs>
+        </View>
+      </SafeAreaView>
+    </PlayersProvider>
   );
 }
 

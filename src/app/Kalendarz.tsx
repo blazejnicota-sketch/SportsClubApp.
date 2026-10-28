@@ -145,42 +145,64 @@ export default function KalendarzScreen() {
 
   const currentDayOfWeekName = DAY_NAMES[startDateObj.getDay()];
 
-  const isEventOnDate = (ev: EventItem, dateStr: string) => {
-    if (ev.startDate <= dateStr && dateStr <= ev.endDate) return true;
+const isEventOnDate = (ev: EventItem, dateStr: string) => {
+    // 1. Jeśli to ZWYKŁE (niecykliczne) wydarzenie w przedziale dat:
+    if (!ev.isRecurring && ev.startDate <= dateStr && dateStr <= ev.endDate) {
+      return true;
+    }
+
+    // 2. Jeśli to TRENING CYKLICZNY (trający w pewnym zakresie, np. od października do czerwca):
     if (ev.isRecurring && ev.recurringDayOfWeek !== undefined) {
-      const targetDate = new Date(dateStr);
-      const startDate = new Date(ev.startDate);
-      if (targetDate >= startDate) {
-        return targetDate.getDay() === ev.recurringDayOfWeek;
+      // Data musi mieścić się w ogólnym zakresie trwania cyklu (od startu do końca sezonu)
+      if (dateStr >= ev.startDate && dateStr <= ev.endDate) {
+        const [tY, tM, tD] = dateStr.split('-').map(Number);
+        const targetDate = new Date(tY, tM - 1, tD);
+
+        const [sY, sM, sD] = ev.startDate.split('-').map(Number);
+        const startDate = new Date(sY, sM - 1, sD);
+
+        // Czy to ten sam dzień tygodnia (np. Poniedziałek)?
+        const isSameDayOfWeek = targetDate.getDay() === ev.recurringDayOfWeek;
+
+        // Liczymy pełne doby, aby uniknąć błędów stref czasowych
+        const targetDaysTotal = Math.floor(targetDate.getTime() / (1000 * 60 * 60 * 24));
+        const startDaysTotal = Math.floor(startDate.getTime() / (1000 * 60 * 60 * 24));
+        const diffDays = targetDaysTotal - startDaysTotal;
+
+        // Czy minęła pełna krotność 7 dni od daty startowej?
+        const isExactWeekInterval = diffDays % 7 === 0;
+
+        return isSameDayOfWeek && isExactWeekInterval;
       }
     }
+
     return false;
   };
 
-  const applyTemplate = (templateType: 'mecz' | 'trening' | 'turniej') => {
+const applyTemplate = (templateType: 'mecz' | 'trening' | 'turniej') => {
     if (templateType === 'mecz') {
-      setEventTitle('Mecz Godynice Szkoła Podstawowa');
+      setEventTitle(''); // Puste pole nazwy
       setEventType('Mecz');
-      setEventLocation('Stadion Miejski, ul. Sportowa 1');
-      setMeetingLocation('Klub Sportowy, ul. Sportowa 1 (Szatnia)');
+      setEventLocation(''); // Puste pole adresu
+      setMeetingLocation(''); // Puste pole zbiórki
       setIsRecurring(false);
       setMeetingTimeObj(new Date(startDateObj.setHours(7, 5)));
       setStartTimeObj(new Date(startDateObj.setHours(8, 30)));
       setEndTimeObj(new Date(startDateObj.setHours(10, 15)));
     } else if (templateType === 'trening') {
-      setEventTitle('Trening Cykliczny Drużyny');
+      setEventTitle(''); // Puste pole nazwy
       setEventType('Trening');
-      setEventLocation('Orlik ul. Szkolna 5');
-      setMeetingLocation('Orlik ul. Szkolna 5');
+      setEventLocation(''); // Puste pole adresu
+      setMeetingLocation(''); // Puste pole zbiórki
       setIsRecurring(true);
       setMeetingTimeObj(new Date(startDateObj.setHours(17, 15)));
       setStartTimeObj(new Date(startDateObj.setHours(17, 30)));
       setEndTimeObj(new Date(startDateObj.setHours(19, 0)));
     } else if (templateType === 'turniej') {
-      setEventTitle('Turniej Piłkarski');
+      setEventTitle(''); // Puste pole nazwy
       setEventType('Mecz');
-      setEventLocation('Hala / Kompleks Sportowy');
-      setMeetingLocation('Klub Sportowy (Zbiórka przed wyjazdem)');
+      setEventLocation(''); // Puste pole adresu
+      setMeetingLocation(''); // Puste pole zbiórki
       setIsRecurring(false);
       setMeetingTimeObj(new Date(startDateObj.setHours(6, 45)));
       setStartTimeObj(new Date(startDateObj.setHours(8, 0)));
@@ -201,30 +223,31 @@ export default function KalendarzScreen() {
     setDayModalVisible(true);
   };
 
-  const handleOpenCreateModal = (dateStr: string) => {
+const handleOpenCreateModal = (dateStr: string) => {
     setDayModalVisible(false);
     setEditingEventId(null);
+    
+    // Gwarantujemy, że pola tekstowe są całkowicie puste:
     setEventTitle('');
+    setEventLocation('');
+    setMeetingLocation('');
     
     const [yr, mo, dy] = dateStr.split('-').map(Number);
     const baseDate = new Date(yr, mo - 1, dy);
     setStartDateObj(baseDate);
     setEndDateObj(baseDate);
-    setMeetingTimeObj(new Date(yr, mo - 1, dy, 7, 5));
-    setStartTimeObj(new Date(yr, mo - 1, dy, 8, 30));
-    setEndTimeObj(new Date(yr, mo - 1, dy, 10, 0));
-    setEventLocation('Stadion Miejski, ul. Sportowa 1');
-    setMeetingLocation('Klub Sportowy, ul. Sportowa 1');
-    setEventType('Mecz');
-    setIsRecurring(baseDate.getDay() === 1);
-
-    const initialSquad = availablePlayers.slice(0, 8).map((p) => String(p.id));
-    setSelectedSquad(initialSquad);
     
-    const initAtt: Record<string, AttendanceStatus> = {};
-    initialSquad.forEach((id) => (initAtt[id] = 'pending'));
-    setSquadAttendance(initAtt);
+    // Domyślne godziny startowe bez szablonów tekstowych
+    setMeetingTimeObj(new Date(yr, mo - 1, dy, 8, 0));
+    setStartTimeObj(new Date(yr, mo - 1, dy, 9, 0));
+    setEndTimeObj(new Date(yr, mo - 1, dy, 10, 0));
+    
+    setEventType('Trening');
+    setIsRecurring(false);
 
+    // Czyszczymy lub zostawiamy domyślną kadrę (tutaj ustawiamy pustą listę, aby trener sam zdecydował)
+    setSelectedSquad([]);
+    setSquadAttendance({});
     setSquadYearFilter('Wszyscy');
     setFormModalVisible(true);
   };
@@ -358,7 +381,11 @@ export default function KalendarzScreen() {
   const handleCopySquadAndSendPush = async () => {
     const nominatedNames = availablePlayers
       .filter((p) => selectedSquad.includes(String(p.id)))
-      .map((p) => `• ${p.firstName} ${p.lastName}`)
+      .map((p) => {
+        const cleanFirst = (p.firstName || '').replace(/\s*\(\d{4}\)/g, '');
+        const cleanLast = (p.lastName || '').replace(/\s*\(\d{4}\)/g, '');
+        return `• ${cleanFirst} ${cleanLast}`;
+      })
       .join('\n');
 
     const dateStr = formattedStartDate === formattedEndDate ? formattedStartDate : `${formattedStartDate} do ${formattedEndDate}`;
@@ -732,16 +759,16 @@ export default function KalendarzScreen() {
               <Text style={styles.inputLabel}>Nazwa wydarzenia</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="np. Mecz Godynice Szkoła Podstawowa"
+                placeholder=""
                 value={eventTitle}
                 onChangeText={setEventTitle}
               />
 
-              {/* LOKALIZACIJA / ADRES WYDARZENIA */}
+              {/* LOKALIZACJA / ADRES WYDARZENIA */}
               <Text style={[styles.inputLabel, { marginTop: 8 }]}>Lokalizacja / Adres Wydarzenia (Google Maps)</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="np. Stadion Miejski, ul. Sportowa 1"
+                placeholder=""
                 value={eventLocation}
                 onChangeText={setEventLocation}
               />
@@ -838,7 +865,7 @@ export default function KalendarzScreen() {
                 />
               )}
 
-              {/* SEKCJA ZBIÓRKI (PRZENIESIONA PONIŻEJ GODZIN WYDARZENIA) */}
+              {/* SEKCJA ZBIÓRKI (PONIŻEJ GODZIN WYDARZENIA) */}
               <View style={styles.meetingSectionBox}>
                 <Text style={[styles.inputLabel, { color: '#dc2626' }]}>⏰ Szczegóły Zbiórki</Text>
                 
@@ -865,7 +892,7 @@ export default function KalendarzScreen() {
                 <Text style={[styles.inputLabel, { marginTop: 6 }]}>Adres zbiórki (opcjonalnie)</Text>
                 <TextInput
                   style={styles.modalInput}
-                  placeholder="np. Klub Sportowy, ul. Sportowa 1 (Szatnia)"
+                  placeholder=""
                   value={meetingLocation}
                   onChangeText={setMeetingLocation}
                 />
@@ -916,6 +943,8 @@ export default function KalendarzScreen() {
                 {filteredSquadPlayers.map((player) => {
                   const isSelected = selectedSquad.includes(String(player.id));
                   const status = squadAttendance[String(player.id)] || 'pending';
+                  const cleanFirstName = (player.firstName || '').replace(/\s*\(\d{4}\)/g, '');
+                  const cleanLastName = (player.lastName || '').replace(/\s*\(\d{4}\)/g, '');
 
                   return (
                     <View key={player.id} style={styles.squadItemRow}>
@@ -927,7 +956,7 @@ export default function KalendarzScreen() {
                           {isSelected && <Ionicons name="checkmark" size={12} color="#fff" />}
                         </View>
                         <View style={{ marginLeft: 8 }}>
-                          <Text style={styles.squadPlayerName}>{player.firstName} {player.lastName}</Text>
+                          <Text style={styles.squadPlayerName}>{cleanFirstName} {cleanLastName}</Text>
                           <Text style={styles.squadPlayerSub}>Rocznik: {player.year} • Nr {player.number}</Text>
                         </View>
                       </TouchableOpacity>
