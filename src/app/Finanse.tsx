@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { MOCK_100_PLAYERS } from './data/mockPlayers';
+import { usePlayers } from './PlayersContext';
 
 type PaymentStatus = 'oplacone' | 'zaleglosc' | 'czesciowo';
 type YearFilter = 'WSZYSTKIE' | '2012' | '2013' | '2014';
@@ -25,6 +25,8 @@ interface PaymentRecord {
 }
 
 export default function FinanseScreen() {
+  const { players } = usePlayers();
+
   const [selectedYear, setSelectedYear] = useState<YearFilter>('WSZYSTKIE');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedMonth, setSelectedMonth] = useState<string>('Październik 2026');
@@ -50,18 +52,18 @@ export default function FinanseScreen() {
     return 'Zawodnik';
   };
 
-  // Filtrowanie zawodników
+  // Filtrowanie zawodników z użyciem globalnego kontekstu
   const filteredPlayers = useMemo(() => {
-    return MOCK_100_PLAYERS.slice(0, 25).filter((p: any) => {
+    return players.filter((p: any) => {
       const pName = getPlayerName(p).toLowerCase();
       const matchesSearch = pName.includes(searchQuery.toLowerCase());
 
-      const pYear = p.year || (parseInt(p.id) % 2 === 0 ? '2012' : '2013');
+      const pYear = String(p.year || '2012');
       const matchesYear = selectedYear === 'WSZYSTKIE' || pYear === selectedYear;
 
       return matchesSearch && matchesYear;
     });
-  }, [searchQuery, selectedYear]);
+  }, [players, searchQuery, selectedYear]);
 
   // Statystyki finansowe
   const stats = useMemo(() => {
@@ -192,7 +194,7 @@ export default function FinanseScreen() {
 
         {filteredPlayers.map((player: any) => {
           const pName = getPlayerName(player);
-          const pYear = player.year || (parseInt(player.id) % 2 === 0 ? '2012' : '2013');
+          const pYear = player.year || '2012';
           const pay = payments[player.id] || {
             playerId: player.id,
             month: selectedMonth,
@@ -210,7 +212,7 @@ export default function FinanseScreen() {
 
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={styles.playerName}>{pName}</Text>
-                  <Text style={styles.playerMeta}>Rocznik {pYear} • Składka: 180 zł</Text>
+                  <Text style={styles.playerMeta}>Rocznik {pYear} | Składka: 180 zł</Text>
                 </View>
 
                 <TouchableOpacity

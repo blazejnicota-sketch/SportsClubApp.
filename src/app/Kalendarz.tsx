@@ -15,7 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { MOCK_100_PLAYERS } from './data/mockPlayers';
+import { usePlayers } from './PlayersContext';
 
 type ViewMode = 'miesiac' | 'tydzien' | 'lista';
 type AttendanceStatus = 'present' | 'pending' | 'absent';
@@ -57,6 +57,7 @@ const getEventTypeConfig = (type: 'Mecz' | 'Trening' | 'Inne') => {
 };
 
 export default function KalendarzScreen() {
+  const { players: availablePlayers, updatePlayer } = usePlayers();
   const [viewMode, setViewMode] = useState<ViewMode>('miesiac');
   
   const [currentMonthDate, setCurrentMonthDate] = useState<Date>(new Date(2026, 9, 1)); // Październik 2026
@@ -68,14 +69,6 @@ export default function KalendarzScreen() {
 
   const firstDayIndexRaw = new Date(curYear, curMonth, 1).getDay();
   const firstDayOffset = firstDayIndexRaw === 0 ? 6 : firstDayIndexRaw - 1;
-
-  const availablePlayers = MOCK_100_PLAYERS.slice(0, 24).map((p: any, idx: number) => ({
-    ...p,
-    firstName: p.firstName || p.name?.split(' ')[0] || 'Zawodnik',
-    lastName: p.lastName || p.name?.split(' ')[1] || `#${idx + 1}`,
-    year: p.year || (idx % 3 === 0 ? '2012' : idx % 3 === 1 ? '2013' : '2014'),
-    number: p.number || idx + 1,
-  }));
 
   const [events, setEvents] = useState<EventItem[]>([
     {
@@ -145,15 +138,12 @@ export default function KalendarzScreen() {
 
   const currentDayOfWeekName = DAY_NAMES[startDateObj.getDay()];
 
-const isEventOnDate = (ev: EventItem, dateStr: string) => {
-    // 1. Jeśli to ZWYKŁE (niecykliczne) wydarzenie w przedziale dat:
+  const isEventOnDate = (ev: EventItem, dateStr: string) => {
     if (!ev.isRecurring && ev.startDate <= dateStr && dateStr <= ev.endDate) {
       return true;
     }
 
-    // 2. Jeśli to TRENING CYKLICZNY (trający w pewnym zakresie, np. od października do czerwca):
     if (ev.isRecurring && ev.recurringDayOfWeek !== undefined) {
-      // Data musi mieścić się w ogólnym zakresie trwania cyklu (od startu do końca sezonu)
       if (dateStr >= ev.startDate && dateStr <= ev.endDate) {
         const [tY, tM, tD] = dateStr.split('-').map(Number);
         const targetDate = new Date(tY, tM - 1, tD);
@@ -161,15 +151,12 @@ const isEventOnDate = (ev: EventItem, dateStr: string) => {
         const [sY, sM, sD] = ev.startDate.split('-').map(Number);
         const startDate = new Date(sY, sM - 1, sD);
 
-        // Czy to ten sam dzień tygodnia (np. Poniedziałek)?
         const isSameDayOfWeek = targetDate.getDay() === ev.recurringDayOfWeek;
 
-        // Liczymy pełne doby, aby uniknąć błędów stref czasowych
         const targetDaysTotal = Math.floor(targetDate.getTime() / (1000 * 60 * 60 * 24));
         const startDaysTotal = Math.floor(startDate.getTime() / (1000 * 60 * 60 * 24));
         const diffDays = targetDaysTotal - startDaysTotal;
 
-        // Czy minęła pełna krotność 7 dni od daty startowej?
         const isExactWeekInterval = diffDays % 7 === 0;
 
         return isSameDayOfWeek && isExactWeekInterval;
@@ -179,30 +166,30 @@ const isEventOnDate = (ev: EventItem, dateStr: string) => {
     return false;
   };
 
-const applyTemplate = (templateType: 'mecz' | 'trening' | 'turniej') => {
+  const applyTemplate = (templateType: 'mecz' | 'trening' | 'turniej') => {
     if (templateType === 'mecz') {
-      setEventTitle(''); // Puste pole nazwy
+      setEventTitle('');
       setEventType('Mecz');
-      setEventLocation(''); // Puste pole adresu
-      setMeetingLocation(''); // Puste pole zbiórki
+      setEventLocation('');
+      setMeetingLocation('');
       setIsRecurring(false);
       setMeetingTimeObj(new Date(startDateObj.setHours(7, 5)));
       setStartTimeObj(new Date(startDateObj.setHours(8, 30)));
       setEndTimeObj(new Date(startDateObj.setHours(10, 15)));
     } else if (templateType === 'trening') {
-      setEventTitle(''); // Puste pole nazwy
+      setEventTitle('');
       setEventType('Trening');
-      setEventLocation(''); // Puste pole adresu
-      setMeetingLocation(''); // Puste pole zbiórki
+      setEventLocation('');
+      setMeetingLocation('');
       setIsRecurring(true);
       setMeetingTimeObj(new Date(startDateObj.setHours(17, 15)));
       setStartTimeObj(new Date(startDateObj.setHours(17, 30)));
       setEndTimeObj(new Date(startDateObj.setHours(19, 0)));
     } else if (templateType === 'turniej') {
-      setEventTitle(''); // Puste pole nazwy
+      setEventTitle('');
       setEventType('Mecz');
-      setEventLocation(''); // Puste pole adresu
-      setMeetingLocation(''); // Puste pole zbiórki
+      setEventLocation('');
+      setMeetingLocation('');
       setIsRecurring(false);
       setMeetingTimeObj(new Date(startDateObj.setHours(6, 45)));
       setStartTimeObj(new Date(startDateObj.setHours(8, 0)));
@@ -223,11 +210,10 @@ const applyTemplate = (templateType: 'mecz' | 'trening' | 'turniej') => {
     setDayModalVisible(true);
   };
 
-const handleOpenCreateModal = (dateStr: string) => {
+  const handleOpenCreateModal = (dateStr: string) => {
     setDayModalVisible(false);
     setEditingEventId(null);
     
-    // Gwarantujemy, że pola tekstowe są całkowicie puste:
     setEventTitle('');
     setEventLocation('');
     setMeetingLocation('');
@@ -237,7 +223,6 @@ const handleOpenCreateModal = (dateStr: string) => {
     setStartDateObj(baseDate);
     setEndDateObj(baseDate);
     
-    // Domyślne godziny startowe bez szablonów tekstowych
     setMeetingTimeObj(new Date(yr, mo - 1, dy, 8, 0));
     setStartTimeObj(new Date(yr, mo - 1, dy, 9, 0));
     setEndTimeObj(new Date(yr, mo - 1, dy, 10, 0));
@@ -245,7 +230,6 @@ const handleOpenCreateModal = (dateStr: string) => {
     setEventType('Trening');
     setIsRecurring(false);
 
-    // Czyszczymy lub zostawiamy domyślną kadrę (tutaj ustawiamy pustą listę, aby trener sam zdecydował)
     setSelectedSquad([]);
     setSquadAttendance({});
     setSquadYearFilter('Wszyscy');
@@ -287,6 +271,22 @@ const handleOpenCreateModal = (dateStr: string) => {
       Alert.alert('Błąd', 'Podaj nazwę wydarzenia.');
       return;
     }
+
+    // Automatyczna aktualizacja statystyk frekwencji zawodników w kontekście
+    selectedSquad.forEach((playerId) => {
+      const status = squadAttendance[playerId];
+      const playerObj = availablePlayers.find((p: any) => String(p.id) === String(playerId));
+      
+      if (playerObj && (status === 'present' || status === 'absent')) {
+        const currentTotal = playerObj.trainingsTotal || 0;
+        const currentPresent = playerObj.trainingsPresent || 0;
+
+        updatePlayer(playerId, {
+          trainingsTotal: currentTotal + 1,
+          trainingsPresent: status === 'present' ? currentPresent + 1 : currentPresent,
+        });
+      }
+    });
 
     const recurringDay = isRecurring ? startDateObj.getDay() : undefined;
 
@@ -373,15 +373,15 @@ const handleOpenCreateModal = (dateStr: string) => {
   };
 
   const selectEntireYear = () => {
-    const yearPlayers = filteredSquadPlayers.map((p) => String(p.id));
+    const yearPlayers = filteredSquadPlayers.map((p: any) => String(p.id));
     const newSquad = Array.from(new Set([...selectedSquad, ...yearPlayers]));
     setSelectedSquad(newSquad);
   };
 
   const handleCopySquadAndSendPush = async () => {
     const nominatedNames = availablePlayers
-      .filter((p) => selectedSquad.includes(String(p.id)))
-      .map((p) => {
+      .filter((p: any) => selectedSquad.includes(String(p.id)))
+      .map((p: any) => {
         const cleanFirst = (p.firstName || '').replace(/\s*\(\d{4}\)/g, '');
         const cleanLast = (p.lastName || '').replace(/\s*\(\d{4}\)/g, '');
         return `• ${cleanFirst} ${cleanLast}`;
@@ -409,9 +409,9 @@ const handleOpenCreateModal = (dateStr: string) => {
     Linking.openURL(url).catch(() => Alert.alert('Błąd', 'Nie można otworzyć mapy Google.'));
   };
 
-  const filteredSquadPlayers = availablePlayers.filter((p) => {
+  const filteredSquadPlayers = availablePlayers.filter((p: any) => {
     if (squadYearFilter === 'Wszyscy') return true;
-    return p.year === squadYearFilter;
+    return String(p.year) === String(squadYearFilter);
   });
 
   const dayEvents = events.filter((ev) => isEventOnDate(ev, selectedDate));
@@ -726,74 +726,67 @@ const handleOpenCreateModal = (dateStr: string) => {
 
             <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
               <Text style={styles.inputLabel}>Szybki szablon wydarzenia:</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
                 <TouchableOpacity style={styles.templateChip} onPress={() => applyTemplate('mecz')}>
-                  <Text style={styles.templateChipText}>🚌 Wyjazd na Mecz</Text>
+                  <Text style={styles.templateChipText}>⚽ Szablon: Mecz Ligowy</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.templateChip} onPress={() => applyTemplate('trening')}>
-                  <Text style={styles.templateChipText}>⚽ Trening Cykliczny</Text>
+                  <Text style={styles.templateChipText}>🏃 Szablon: Trening Cykliczny</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.templateChip} onPress={() => applyTemplate('turniej')}>
-                  <Text style={styles.templateChipText}>🏆 Turniej</Text>
+                  <Text style={styles.templateChipText}>🏆 Szablon: Turniej</Text>
                 </TouchableOpacity>
               </ScrollView>
 
               <Text style={styles.inputLabel}>Typ wydarzenia</Text>
               <View style={{ flexDirection: 'row', marginBottom: 10 }}>
-                {(['Mecz', 'Trening', 'Inne'] as const).map((t) => (
+                {(['Mecz', 'Trening', 'Inne'] as ('Mecz' | 'Trening' | 'Inne')[]).map((t) => (
                   <TouchableOpacity
                     key={t}
-                    style={[
-                      styles.typeOptionBtn,
-                      eventType === t && { backgroundColor: getEventTypeConfig(t).bg, borderColor: getEventTypeConfig(t).text }
-                    ]}
+                    style={[styles.typeOptionBtn, eventType === t && styles.toggleBtnActive]}
                     onPress={() => setEventType(t)}
                   >
-                    <Text style={[styles.typeOptionText, eventType === t && { color: getEventTypeConfig(t).text, fontWeight: 'bold' }]}>
-                      {t}
-                    </Text>
+                    <Text style={[styles.typeOptionText, eventType === t && styles.toggleTextActive]}>{t}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
-              <Text style={styles.inputLabel}>Nazwa wydarzenia</Text>
+              <Text style={styles.inputLabel}>Nazwa wydarzenia / Przeciwnik *</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder=""
+                placeholder="np. Mecz z WKS Wieluń / Trening techniczny"
+                placeholderTextColor="#94a3b8"
                 value={eventTitle}
                 onChangeText={setEventTitle}
               />
 
-              {/* LOKALIZACJA / ADRES WYDARZENIA */}
-              <Text style={[styles.inputLabel, { marginTop: 8 }]}>Lokalizacja / Adres Wydarzenia (Google Maps)</Text>
+              <Text style={styles.inputLabel}>Adres właściwy wydarzenia (Stadion / Boisko / Hala)</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder=""
+                placeholder="np. Stadion Miejski, ul. Sportowa 1"
+                placeholderTextColor="#94a3b8"
                 value={eventLocation}
                 onChangeText={setEventLocation}
               />
 
-              <TouchableOpacity
-                onPress={() => openMapLocation(eventLocation)}
-                style={styles.quickMapLinkRow}
-              >
-                <Ionicons name="navigate" size={14} color="#2563eb" style={{ marginRight: 4 }} />
-                <Text style={styles.quickMapLinkText}>Otwórz trasę wydarzenia w Google Maps 🗺️</Text>
-              </TouchableOpacity>
-
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
                 <View style={{ flex: 1, marginRight: 6 }}>
-                  <Text style={styles.inputLabel}>Data początkowa</Text>
-                  <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowStartDatePicker(true)}>
-                    <Ionicons name="calendar-outline" size={14} color="#2563eb" style={{ marginRight: 4 }} />
+                  <Text style={styles.inputLabel}>Data od</Text>
+                  <TouchableOpacity
+                    style={styles.pickerBoxBtn}
+                    onPress={() => setShowStartDatePicker(true)}
+                  >
+                    <Ionicons name="calendar-outline" size={14} color="#2563eb" style={{ marginRight: 6 }} />
                     <Text style={styles.pickerBoxBtnText}>{formattedStartDate}</Text>
                   </TouchableOpacity>
                 </View>
-
                 <View style={{ flex: 1, marginLeft: 6 }}>
-                  <Text style={styles.inputLabel}>Data końcowa</Text>
-                  <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowEndDatePicker(true)}>
-                    <Ionicons name="calendar-outline" size={14} color="#2563eb" style={{ marginRight: 4 }} />
+                  <Text style={styles.inputLabel}>Data do</Text>
+                  <TouchableOpacity
+                    style={styles.pickerBoxBtn}
+                    onPress={() => setShowEndDatePicker(true)}
+                  >
+                    <Ionicons name="calendar-outline" size={14} color="#2563eb" style={{ marginRight: 6 }} />
                     <Text style={styles.pickerBoxBtnText}>{formattedEndDate}</Text>
                   </TouchableOpacity>
                 </View>
@@ -806,7 +799,10 @@ const handleOpenCreateModal = (dateStr: string) => {
                   display="default"
                   onChange={(event, selected) => {
                     setShowStartDatePicker(false);
-                    if (selected) setStartDateObj(selected);
+                    if (selected) {
+                      setStartDateObj(selected);
+                      setEndDateObj(selected);
+                    }
                   }}
                 />
               )}
@@ -823,7 +819,6 @@ const handleOpenCreateModal = (dateStr: string) => {
                 />
               )}
 
-              {/* GODZINY WYDARZENIA (Start / Koniec) */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
                 <View style={{ flex: 1, marginRight: 6 }}>
                   <Text style={styles.inputLabel}>Start 🚀</Text>
@@ -865,7 +860,6 @@ const handleOpenCreateModal = (dateStr: string) => {
                 />
               )}
 
-              {/* SEKCJA ZBIÓRKI (PONIŻEJ GODZIN WYDARZENIA) */}
               <View style={styles.meetingSectionBox}>
                 <Text style={[styles.inputLabel, { color: '#dc2626' }]}>⏰ Szczegóły Zbiórki</Text>
                 
@@ -919,7 +913,6 @@ const handleOpenCreateModal = (dateStr: string) => {
                 />
               </View>
 
-              {/* SEKCJA KADRY I POWOŁAŃ */}
               <View style={styles.squadSectionHeader}>
                 <Text style={styles.inputLabel}>Powołana Kadra ({selectedSquad.length} zawodników)</Text>
                 <TouchableOpacity onPress={selectEntireYear}>
@@ -928,7 +921,7 @@ const handleOpenCreateModal = (dateStr: string) => {
               </View>
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                {['Wszyscy', '2012', '2013', '2014'].map((yr) => (
+                {['Wszyscy', '2012', '2013', '2014', '2015', '2016'].map((yr) => (
                   <TouchableOpacity
                     key={yr}
                     style={[styles.filterChip, squadYearFilter === yr && styles.filterChipActive]}
@@ -940,9 +933,10 @@ const handleOpenCreateModal = (dateStr: string) => {
               </ScrollView>
 
               <View style={styles.squadListContainer}>
-                {filteredSquadPlayers.map((player) => {
-                  const isSelected = selectedSquad.includes(String(player.id));
-                  const status = squadAttendance[String(player.id)] || 'pending';
+                {filteredSquadPlayers.map((player: any) => {
+                  const pId = String(player.id);
+                  const isSelected = selectedSquad.includes(pId);
+                  const status = squadAttendance[pId] || 'pending';
                   const cleanFirstName = (player.firstName || '').replace(/\s*\(\d{4}\)/g, '');
                   const cleanLastName = (player.lastName || '').replace(/\s*\(\d{4}\)/g, '');
 
@@ -950,14 +944,14 @@ const handleOpenCreateModal = (dateStr: string) => {
                     <View key={player.id} style={styles.squadItemRow}>
                       <TouchableOpacity
                         style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
-                        onPress={() => togglePlayerSquad(String(player.id))}
+                        onPress={() => togglePlayerSquad(pId)}
                       >
                         <View style={[styles.checkboxBox, isSelected && styles.checkboxBoxChecked]}>
                           {isSelected && <Ionicons name="checkmark" size={12} color="#fff" />}
                         </View>
                         <View style={{ marginLeft: 8 }}>
                           <Text style={styles.squadPlayerName}>{cleanFirstName} {cleanLastName}</Text>
-                          <Text style={styles.squadPlayerSub}>Rocznik: {player.year} • Nr {player.number}</Text>
+                          <Text style={styles.squadPlayerSub}>Rocznik: {player.year} | Nr {player.number}</Text>
                         </View>
                       </TouchableOpacity>
 
@@ -965,19 +959,19 @@ const handleOpenCreateModal = (dateStr: string) => {
                         <View style={styles.statusButtonsRow}>
                           <TouchableOpacity
                             style={[styles.statusBtn, status === 'present' && { backgroundColor: '#16a34a' }]}
-                            onPress={() => setPlayerStatus(String(player.id), 'present')}
+                            onPress={() => setPlayerStatus(pId, 'present')}
                           >
                             <Text style={[styles.statusBtnText, status === 'present' && { color: '#fff' }]}>Tak</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             style={[styles.statusBtn, status === 'pending' && { backgroundColor: '#ca8a04' }]}
-                            onPress={() => setPlayerStatus(String(player.id), 'pending')}
+                            onPress={() => setPlayerStatus(pId, 'pending')}
                           >
                             <Text style={[styles.statusBtnText, status === 'pending' && { color: '#fff' }]}>?</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             style={[styles.statusBtn, status === 'absent' && { backgroundColor: '#dc2626' }]}
-                            onPress={() => setPlayerStatus(String(player.id), 'absent')}
+                            onPress={() => setPlayerStatus(pId, 'absent')}
                           >
                             <Text style={[styles.statusBtnText, status === 'absent' && { color: '#fff' }]}>Nie</Text>
                           </TouchableOpacity>
@@ -989,7 +983,6 @@ const handleOpenCreateModal = (dateStr: string) => {
               </View>
             </ScrollView>
 
-            {/* STAŁY PANEL PRZYCISKÓW NA SAMYM DOLE */}
             <View style={styles.modalStickyFooter}>
               <TouchableOpacity style={styles.pushActionBtn} onPress={handleCopySquadAndSendPush}>
                 <Ionicons name="paper-plane-outline" size={15} color="#fff" style={{ marginRight: 6 }} />
