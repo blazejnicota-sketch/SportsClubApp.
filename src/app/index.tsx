@@ -1,125 +1,199 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
+  SafeAreaView,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
+// Importujemy panele ról
+import ZawodnikPanelScreen from './ZawodnikPanel';
+import RodzicPanelScreen from './RodzicPanel';
+
+type UserRole = 'trener' | 'zawodnik' | 'rodzic';
+
 export default function HomeScreen() {
   const router = useRouter();
+  const [currentRole, setCurrentRole] = useState<UserRole>('trener');
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* NAGŁÓWEK Z WELCOME BANNER */}
-      <View style={styles.headerBanner}>
-        <View style={styles.headerTextGroup}>
-          <Text style={styles.welcomeSubtitle}>Witaj ponownie 👋</Text>
-          <Text style={styles.welcomeTitle}>Trenerze Macieju</Text>
-          <Text style={styles.teamTag}>UKS Sparta • Rocznik 2012/2013</Text>
-        </View>
-        <View style={styles.headerIconBox}>
-          <Ionicons name="football" size={28} color="#2563eb" />
-        </View>
+    <SafeAreaView style={styles.safeContainer}>
+      {/* GÓRNY PASEK WYBORU ROLI (ZABEZPIECZONY PRZED NOTCHEM) */}
+      <View style={styles.roleSwitchContainer}>
+        <TouchableOpacity
+          style={[styles.roleTab, currentRole === 'trener' && styles.roleTabActive]}
+          onPress={() => setCurrentRole('trener')}
+        >
+          <Text style={[styles.roleTabText, currentRole === 'trener' && styles.roleTabTextActive]}>
+            Trener
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.roleTab, currentRole === 'zawodnik' && styles.roleTabActive]}
+          onPress={() => setCurrentRole('zawodnik')}
+        >
+          <Text style={[styles.roleTabText, currentRole === 'zawodnik' && styles.roleTabTextActive]}>
+            Zawodnik
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.roleTab, currentRole === 'rodzic' && styles.roleTabActive]}
+          onPress={() => setCurrentRole('rodzic')}
+        >
+          <Text style={[styles.roleTabText, currentRole === 'rodzic' && styles.roleTabTextActive]}>
+            Rodzice
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.content}>
-        {/* KARTA STATUSU ZESPOŁU */}
-        <View style={styles.statusCard}>
-          <Text style={styles.statusCardTitle}>Kondycja Zespołu (Październik)</Text>
-          <View style={styles.statusGrid}>
-            <View style={styles.statusItem}>
-              <Text style={styles.statusValue}>18 / 20</Text>
-              <Text style={styles.statusLabel}>Zdrowych graczy</Text>
+      {/* DYNAMICZNA TREŚĆ W ZALEŻNOŚCI OD WYBRANEJ ROLI */}
+      {currentRole === 'trener' && (
+        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+          {/* NAGŁÓWEK Z BANNEREM POWITALNYM */}
+          <View style={styles.headerBanner}>
+            <View style={styles.headerTextGroup}>
+              <Text style={styles.welcomeSubtitle}>Witaj ponownie 👋</Text>
+              <Text style={styles.welcomeTitle}>Trenerze Macieju</Text>
+              <Text style={styles.teamTag}>UKS Sparta • Rocznik 2012/2013</Text>
             </View>
-            <View style={styles.statusDivider} />
-            <View style={styles.statusItem}>
-              <Text style={[styles.statusValue, { color: '#16a34a' }]}>92%</Text>
-              <Text style={styles.statusLabel}>Frekwencja</Text>
-            </View>
-            <View style={styles.statusDivider} />
-            <View style={styles.statusItem}>
-              <Text style={[styles.statusValue, { color: '#d97706' }]}>2.msc</Text>
-              <Text style={styles.statusLabel}>W lidze</Text>
+            <View style={styles.headerIconBox}>
+              <Ionicons name="football" size={28} color="#2563eb" />
             </View>
           </View>
-        </View>
 
-        {/* ALERTY I POWIADOMIENIA */}
-        <Text style={styles.sectionTitle}>Szybkie Alerty</Text>
-        <View style={styles.alertBox}>
-          <Ionicons name="alert-circle" size={20} color="#d97706" style={{ marginRight: 10 }} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.alertTitle}>Mecz Ligowy w Sobotę!</Text>
-            <Text style={styles.alertSub}>3 rodziców nie potwierdziło jeszcze obecności dziecka.</Text>
+          <View style={styles.content}>
+            {/* KARTA STATUSU ZESPOŁU */}
+            <View style={styles.statusCard}>
+              <Text style={styles.statusCardTitle}>Kondycja Zespołu (Październik)</Text>
+              <View style={styles.statusGrid}>
+                <View style={styles.statusItem}>
+                  <Text style={styles.statusValue}>18 / 20</Text>
+                  <Text style={styles.statusLabel}>Zdrowych graczy</Text>
+                </View>
+                <View style={styles.statusDivider} />
+                <View style={styles.statusItem}>
+                  <Text style={[styles.statusValue, { color: '#16a34a' }]}>92%</Text>
+                  <Text style={styles.statusLabel}>Frekwencja</Text>
+                </View>
+                <View style={styles.statusDivider} />
+                <View style={styles.statusItem}>
+                  <Text style={[styles.statusValue, { color: '#d97706' }]}>2.msc</Text>
+                  <Text style={styles.statusLabel}>W lidze</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* ALERTY I POWIADOMIENIA */}
+            <Text style={styles.sectionTitle}>Szybkie Alerty</Text>
+            <View style={styles.alertBox}>
+              <Ionicons name="alert-circle" size={20} color="#d97706" style={{ marginRight: 10 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.alertTitle}>Mecz Ligowy w Sobotę!</Text>
+                <Text style={styles.alertSub}>3 rodziców nie potwierdziło jeszcze obecności dziecka.</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.alertActionBtn}
+                onPress={() => router.push('/Kalendarz' as any)}
+              >
+                <Text style={styles.alertActionText}>Sprawdź</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* SZYBKIE SKRÓTY DO MODUŁÓW */}
+            <Text style={styles.sectionTitle}>Centrum Dowodzenia</Text>
+            
+            <View style={styles.shortcutsGrid}>
+              <TouchableOpacity
+                style={styles.shortcutCard}
+                onPress={() => router.push('/Boisko' as any)}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: '#eff6ff' }]}>
+                  <Ionicons name="football" size={22} color="#2563eb" />
+                </View>
+                <Text style={styles.shortcutTitle}>Tablica & Mecz</Text>
+                <Text style={styles.shortcutDesc}>Ustawienie i protokół</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.shortcutCard}
+                onPress={() => router.push('/Szatnia' as any)}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: '#f0fdf4' }]}>
+                  <Ionicons name="fitness" size={22} color="#16a34a" />
+                </View>
+                <Text style={styles.shortcutTitle}>Szatnia & Testy</Text>
+                <Text style={styles.shortcutDesc}>Zdrowie i notatki</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.shortcutCard}
+                onPress={() => router.push('/Raporty' as any)}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: '#fdf4ff' }]}>
+                  <Ionicons name="stats-chart" size={22} color="#9333ea" />
+                </View>
+                <Text style={styles.shortcutTitle}>Raporty & Kary</Text>
+                <Text style={styles.shortcutDesc}>Statystyki i eksport PDF</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.shortcutCard}
+                onPress={() => router.push('/Finanse' as any)}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: '#fef2f2' }]}>
+                  <Ionicons name="wallet" size={22} color="#dc2626" />
+                </View>
+                <Text style={styles.shortcutTitle}>Finanse</Text>
+                <Text style={styles.shortcutDesc}>Składki i opłaty</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          <TouchableOpacity
-            style={styles.alertActionBtn}
-            onPress={() => router.push('/Kalendarz' as any)}
-          >
-            <Text style={styles.alertActionText}>Sprawdź</Text>
-          </TouchableOpacity>
-        </View>
+        </ScrollView>
+      )}
 
-        {/* SZYBKIE SKRÓTY DO MODUŁÓW */}
-        <Text style={styles.sectionTitle}>Centrum Dowodzenia</Text>
-        
-        <View style={styles.shortcutsGrid}>
-          <TouchableOpacity
-            style={styles.shortcutCard}
-            onPress={() => router.push('/Boisko' as any)}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: '#eff6ff' }]}>
-              <Ionicons name="football" size={22} color="#2563eb" />
-            </View>
-            <Text style={styles.shortcutTitle}>Tablica & Mecz</Text>
-            <Text style={styles.shortcutDesc}>Ustawienie i protokół</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.shortcutCard}
-            onPress={() => router.push('/Szatnia' as any)}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: '#f0fdf4' }]}>
-              <Ionicons name="fitness" size={22} color="#16a34a" />
-            </View>
-            <Text style={styles.shortcutTitle}>Szatnia & Testy</Text>
-            <Text style={styles.shortcutDesc}>Zdrowie i notatki</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.shortcutCard}
-            onPress={() => router.push('/Kalendarz' as any)}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: '#fffbeb' }]}>
-              <Ionicons name="calendar" size={22} color="#d97706" />
-            </View>
-            <Text style={styles.shortcutTitle}>Obecność</Text>
-            <Text style={styles.shortcutDesc}>Listy i powołania</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.shortcutCard}
-            onPress={() => router.push('/Finanse' as any)}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: '#fef2f2' }]}>
-              <Ionicons name="wallet" size={22} color="#dc2626" />
-            </View>
-            <Text style={styles.shortcutTitle}>Finanse</Text>
-            <Text style={styles.shortcutDesc}>Składki i opłaty</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </ScrollView>
+      {currentRole === 'zawodnik' && <ZawodnikPanelScreen />}
+      {currentRole === 'rodzic' && <RodzicPanelScreen />}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeContainer: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
+  },
   container: { flex: 1, backgroundColor: '#f8fafc' },
+  
+  roleSwitchContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#0f172a',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+  },
+  roleTab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+    marginHorizontal: 4,
+    backgroundColor: '#1e293b',
+  },
+  roleTabActive: { backgroundColor: '#2563eb' },
+  roleTabText: { color: '#94a3b8', fontSize: 13, fontWeight: 'bold' },
+  roleTabTextActive: { color: '#fff' },
+
   headerBanner: {
     backgroundColor: '#fff',
     paddingHorizontal: 20,

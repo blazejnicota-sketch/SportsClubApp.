@@ -8,174 +8,160 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { usePlayers } from './PlayersContext';
+
+interface HomeTask {
+  id: string;
+  title: string;
+  description: string;
+  deadline: string;
+  isCompleted: boolean;
+}
 
 export default function ZawodnikPanelScreen() {
-  const [activeTab, setActiveTab] = useState<'challenges' | 'calendar' | 'stats'>('challenges');
+  const { players } = usePlayers();
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string>(
+    players.length > 0 ? String(players[0].id) : '1'
+  );
 
-  // Stan zadań domowych (Strefa Wyzwań XP)
-  const [tasks, setTasks] = useState([
-    { id: '1', title: '30 minut żonglerki bez upadku piłki', xp: 150, completed: true },
-    { id: '2', title: 'Rozciąganie i mobilność (15 min)', xp: 100, completed: false },
-    { id: '3', title: '100 podań o ścianę obiema nogami', xp: 200, completed: false },
+  const currentPlayer = players.find((p: any) => String(p.id) === String(selectedPlayerId)) || players[0];
+
+  // Przykładowe zadania domowe od trenera przypisane do zawodnika
+  const [tasks, setTasks] = useState<HomeTask[]>([
+    {
+      id: '1',
+      title: 'Trening techniczny: Prowadzenie piłki',
+      description: '500 dotknięć piłki wewnętrzną i zewnętrzną częścią stopy w domu/ogrodzie.',
+      deadline: 'Jutro, 18:00',
+      isCompleted: false,
+    },
+    {
+      id: '2',
+      title: 'Zadanie motoryczne: Stabilizacja (Core)',
+      description: '3 serie deski (plank) po 45 sekund oraz rozciąganie pośladków.',
+      deadline: 'Piątek',
+      isCompleted: true,
+    },
+    {
+      id: '3',
+      title: 'Analiza wideo i mobilność',
+      description: 'Rozciąganie powięziowe nóg (roller) – min. 10 minut.',
+      deadline: 'Sobota',
+      isCompleted: false,
+    },
   ]);
 
-  const toggleTask = (id: string) => {
+  const toggleTaskCompletion = (taskId: string) => {
     setTasks((prev) =>
-      prev.map((task) => (task.id === id ? { ...task, completed: !task.completed } : task))
+      prev.map((t) => {
+        if (t.id === taskId) {
+          const newState = !t.isCompleted;
+          if (newState) {
+            Alert.alert('Brawo! 💪', 'Zadanie zostało oznaczone jako wykonane. Trener widzi Twój postęp!');
+          }
+          return { ...t, isCompleted: newState };
+        }
+        return t;
+      })
     );
   };
 
-  const totalXp = tasks.filter((t) => t.completed).reduce((sum, t) => sum + t.xp, 450);
-
   return (
     <View style={styles.container}>
-      {/* NAGŁÓWEK / PROFIL ZAWODNIKA */}
+      {/* NAGŁÓWEK */}
       <View style={styles.header}>
-        <View style={styles.playerInfoRow}>
-          <View style={styles.avatarContainer}>
-            <Ionicons name="person" size={24} color="#2563eb" />
-          </View>
-          <View style={{ marginLeft: 12 }}>
-            <Text style={styles.greeting}>Cześć, Janek! 👋</Text>
-            <Text style={styles.headerTitle}>Pomocnik • UKS Sparta (U-14)</Text>
-          </View>
-        </View>
-
-        {/* LICZNIK XP I POZIOMU */}
-        <View style={styles.xpBadge}>
-          <Ionicons name="flash" size={14} color="#f59e0b" style={{ marginRight: 4 }} />
-          <Text style={styles.xpText}>{totalXp} XP</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>Strefa Zawodnika ⚽⚡</Text>
+          <Text style={styles.headerSubtitle}>Twój indywidualny rozwój, zadania i statystyki</Text>
         </View>
       </View>
 
-      {/* PRZEŁĄCZNIK ZAKŁADEK */}
-      <View style={styles.tabsRow}>
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'challenges' && styles.activeTabBtn]}
-          onPress={() => setActiveTab('challenges')}
-        >
-          <Ionicons
-            name="trophy-outline"
-            size={15}
-            color={activeTab === 'challenges' ? '#2563eb' : '#64748b'}
-          />
-          <Text style={[styles.tabText, activeTab === 'challenges' && styles.activeTabText]}>
-            Strefa Wyzwań
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'calendar' && styles.activeTabBtn]}
-          onPress={() => setActiveTab('calendar')}
-        >
-          <Ionicons
-            name="calendar-outline"
-            size={15}
-            color={activeTab === 'calendar' ? '#2563eb' : '#64748b'}
-          />
-          <Text style={[styles.tabText, activeTab === 'calendar' && styles.activeTabText]}>
-            Mój Kalendarz
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'stats' && styles.activeTabBtn]}
-          onPress={() => setActiveTab('stats')}
-        >
-          <Ionicons
-            name="stats-chart-outline"
-            size={15}
-            color={activeTab === 'stats' ? '#2563eb' : '#64748b'}
-          />
-          <Text style={[styles.tabText, activeTab === 'stats' && styles.activeTabText]}>
-            Moje Wyniki
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ZAWARTOŚĆ */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {activeTab === 'challenges' && (
-          <View>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Zadania Domowe & Wyzwania</Text>
-              <Text style={styles.subtleText}>Zbieraj XP i odznaki!</Text>
+        {/* WYBÓR PROFILU ZAWODNIKA */}
+        <Text style={styles.sectionLabel}>Aktywny profil:</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+          {players.map((player: any) => {
+            const isSelected = String(player.id) === String(selectedPlayerId);
+            const cleanName = (player.name || `${player.firstName} ${player.lastName}`).replace(/\s*\(\d{4}\)/g, '');
+            return (
+              <TouchableOpacity
+                key={player.id}
+                style={[styles.playerChip, isSelected && styles.playerChipActive]}
+                onPress={() => setSelectedPlayerId(String(player.id))}
+              >
+                <Text style={[styles.playerChipText, isSelected && styles.playerChipTextActive]}>
+                  #{player.number || '•'} {cleanName}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {currentPlayer && (
+          <>
+            {/* KARTA PROFILU I POZYCJI */}
+            <View style={styles.profileCard}>
+              <View style={styles.avatarLarge}>
+                <Text style={styles.avatarLargeText}>#{currentPlayer.number || '10'}</Text>
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.profileName}>{currentPlayer.name || `${currentPlayer.firstName} ${currentPlayer.lastName}`}</Text>
+                <Text style={styles.profileMeta}>Pozycja: {currentPlayer.position || 'Pomocnik'} | Rocznik {currentPlayer.year || '2012'}</Text>
+                <View style={styles.formBadge}>
+                  <Text style={styles.formBadgeText}>🔥 Forma: Wysoka (9.2 / 10)</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* SEKCJA: ZADANIA DOMOWE OD TRENERA */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, marginTop: 4 }}>
+              <Text style={styles.sectionTitle}>Zadania Domowe od Trenera 📋</Text>
+              <Text style={{ fontSize: 11, color: '#2563eb', fontWeight: 'bold' }}>
+                {tasks.filter(t => t.isCompleted).length} / {tasks.length} ukończone
+              </Text>
             </View>
 
             {tasks.map((task) => (
               <TouchableOpacity
                 key={task.id}
-                style={[styles.taskCard, task.completed && styles.taskCardCompleted]}
-                onPress={() => toggleTask(task.id)}
+                style={[styles.taskCard, task.isCompleted && styles.taskCardCompleted]}
+                onPress={() => toggleTaskCompletion(task.id)}
               >
-                <View style={styles.taskLeft}>
-                  <View style={[styles.checkbox, task.completed && styles.checkboxChecked]}>
-                    {task.completed && <Ionicons name="checkmark" size={12} color="#fff" />}
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                  <View style={[styles.checkboxBox, task.isCompleted && styles.checkboxBoxChecked]}>
+                    {task.isCompleted && <Ionicons name="checkmark" size={14} color="#fff" />}
                   </View>
-                  <View style={{ marginLeft: 12, flex: 1 }}>
-                    <Text style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={[styles.taskTitle, task.isCompleted && styles.taskTitleCompleted]}>
                       {task.title}
                     </Text>
-                    <Text style={styles.taskXp}>+{task.xp} XP</Text>
+                    <Text style={styles.taskDesc}>{task.description}</Text>
+                    <Text style={styles.taskDeadline}>⏰ Termin: {task.deadline}</Text>
                   </View>
                 </View>
               </TouchableOpacity>
             ))}
-          </View>
-        )}
 
-        {activeTab === 'calendar' && (
-          <View>
-            <Text style={styles.sectionTitle}>Nadchodzące Wydarzenia</Text>
-
-            <View style={styles.eventCard}>
-              <View style={styles.eventCardTop}>
-                <View style={styles.badgeMatch}>
-                  <Text style={styles.badgeMatchText}>MECZ LIGOWY</Text>
-                </View>
-                <Text style={styles.eventDateText}>Sobota, 17:30</Text>
+            {/* STATYSTYKI INDYWIDUALNE ZAWODNIKA */}
+            <Text style={styles.sectionTitle}>Twoje Statystyki w Sezonie 📊</Text>
+            <View style={styles.statsGrid}>
+              <View style={styles.statBox}>
+                <Text style={styles.statBoxNum}>⚽ 4</Text>
+                <Text style={styles.statBoxLabel}>Bramki</Text>
               </View>
-              <Text style={styles.eventTitle}>UKS Sparta vs MKS Orzeł</Text>
-              <Text style={styles.eventLocation}>📍 Stadion Miejski (Zbiórka 16:30)</Text>
-
-              <View style={styles.confirmBox}>
-                <Text style={styles.confirmLabel}>Twoja obecność:</Text>
-                <View style={styles.confirmButtons}>
-                  <TouchableOpacity
-                    style={[styles.confirmBtn, styles.confirmYes]}
-                    onPress={() => Alert.alert('Potwierdzone', 'Zgłosiłeś obecność na meczu!')}
-                  >
-                    <Text style={styles.confirmYesText}>✓ Będę</Text>
-                  </TouchableOpacity>
-                </View>
+              <View style={styles.statBox}>
+                <Text style={styles.statBoxNum}>🎯 7</Text>
+                <Text style={styles.statBoxLabel}>Asysty</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Text style={styles.statBoxNum}>⭐ 2</Text>
+                <Text style={styles.statBoxLabel}>MVP Meczów</Text>
               </View>
             </View>
-          </View>
+          </>
         )}
 
-        {activeTab === 'stats' && (
-          <View>
-            <Text style={styles.sectionTitle}>Moje Testy Motoryczne</Text>
-
-            <View style={styles.statsOverviewCard}>
-              <View style={styles.statBox}>
-                <Text style={styles.statLabel}>Sprint 30m</Text>
-                <Text style={styles.statValue}>4.21 s</Text>
-                <Text style={styles.statDiff}>📉 -0.05s (Lepiej)</Text>
-              </View>
-              <View style={styles.statBox}>
-                <Text style={styles.statLabel}>BEEP Test</Text>
-                <Text style={styles.statValue}>11.4</Text>
-                <Text style={styles.statDiff}>📈 +0.8 (Super)</Text>
-              </View>
-              <View style={styles.statBox}>
-                <Text style={styles.statLabel}>Skok w dal</Text>
-                <Text style={styles.statValue}>2.15 m</Text>
-                <Text style={styles.statDiff}>➡️ Bez zmian</Text>
-              </View>
-            </View>
-          </View>
-        )}
+        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
@@ -187,133 +173,106 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  playerInfoRow: { flexDirection: 'row', alignItems: 'center' },
-  avatarContainer: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#eff6ff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-  },
-  greeting: { fontSize: 11, color: '#64748b' },
-  headerTitle: { fontSize: 14, fontWeight: 'bold', color: '#0f172a' },
-  xpBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fffbeb',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#fde68a',
-  },
-  xpText: { fontSize: 12, fontWeight: 'bold', color: '#d97706' },
-
-  tabsRow: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
   },
-  tabBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#f1f5f9',
-    marginRight: 6,
-  },
-  activeTabBtn: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#2563eb' },
-  tabText: { fontSize: 11, fontWeight: '600', color: '#64748b', marginLeft: 4 },
-  activeTabText: { color: '#2563eb' },
-
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#0f172a' },
+  headerSubtitle: { fontSize: 12, color: '#64748b', marginTop: 2 },
   content: { padding: 16 },
-  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#334155', marginBottom: 12 },
-  subtleText: { fontSize: 11, color: '#64748b' },
 
+  sectionLabel: { fontSize: 11, fontWeight: 'bold', color: '#64748b', marginBottom: 6 },
+  playerChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 20,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  playerChipActive: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
+  playerChipText: { fontSize: 12, fontWeight: 'bold', color: '#475569' },
+  playerChipTextActive: { color: '#fff' },
+
+  profileCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 16,
+  },
+  avatarLarge: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#2563eb',
+  },
+  avatarLargeText: { fontSize: 14, fontWeight: 'bold', color: '#2563eb' },
+  profileName: { fontSize: 14, fontWeight: 'bold', color: '#0f172a' },
+  profileMeta: { fontSize: 11, color: '#64748b', marginTop: 1 },
+  formBadge: {
+    backgroundColor: '#dcfce7',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 6,
+  },
+    formBadgeText: { fontSize: 10, fontWeight: 'bold', color: '#16a34a' },
+
+  sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#0f172a', marginBottom: 10, marginTop: 8 },
+  
   taskCard: {
     backgroundColor: '#fff',
     borderRadius: 10,
-    padding: 14,
-    marginBottom: 10,
+    padding: 12,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
-  taskCardCompleted: { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' },
-  taskLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  checkbox: {
-    width: 22,
-    height: 22,
+  taskCardCompleted: {
+    backgroundColor: '#f0fdf4',
+    borderColor: '#bbf7d0',
+  },
+  checkboxBox: {
+    width: 20,
+    height: 20,
     borderRadius: 6,
     borderWidth: 2,
     borderColor: '#cbd5e1',
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkboxChecked: { backgroundColor: '#16a34a', borderColor: '#16a34a' },
-  taskTitle: { fontSize: 13, fontWeight: '600', color: '#0f172a' },
-  taskTitleCompleted: { textDecorationLine: 'line-through', color: '#64748b' },
-  taskXp: { fontSize: 11, color: '#d97706', fontWeight: 'bold', marginTop: 2 },
-
-  eventCard: {
+    marginTop: 2,
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#2563eb',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
   },
-  eventCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  badgeMatch: { backgroundColor: '#eff6ff', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  badgeMatchText: { fontSize: 10, fontWeight: 'bold', color: '#2563eb' },
-  eventDateText: { fontSize: 11, color: '#64748b' },
-  eventTitle: { fontSize: 16, fontWeight: 'bold', color: '#0f172a' },
-  eventLocation: { fontSize: 12, color: '#475569', marginTop: 4, marginBottom: 14 },
-  confirmBox: {
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-    paddingTop: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  checkboxBoxChecked: {
+    backgroundColor: '#16a34a',
+    borderColor: '#16a34a',
   },
-  confirmLabel: { fontSize: 12, color: '#64748b', fontWeight: '600' },
-  confirmButtons: { flexDirection: 'row' },
-  confirmBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 },
-  confirmYes: { backgroundColor: '#16a34a' },
-  confirmYesText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
+  taskTitle: { fontSize: 13, fontWeight: 'bold', color: '#0f172a' },
+  taskTitleCompleted: { textDecorationLine: 'line-through', color: '#166534' },
+  taskDesc: { fontSize: 11, color: '#475569', marginTop: 2, lineHeight: 15 },
+  taskDeadline: { fontSize: 10, color: '#dc2626', fontWeight: 'bold', marginTop: 6 },
 
-  statsOverviewCard: { flexDirection: 'row', justifyContent: 'space-between' },
+  statsGrid: { flexDirection: 'row', justifyContent: 'space-between' },
   statBox: {
+    flex: 1,
     backgroundColor: '#fff',
     borderRadius: 10,
     padding: 12,
-    width: '32%',
     alignItems: 'center',
+    marginHorizontal: 4,
     borderWidth: 1,
     borderColor: '#e2e8f0',
   },
-  statLabel: { fontSize: 10, color: '#64748b' },
-  statValue: { fontSize: 16, fontWeight: 'bold', color: '#2563eb', marginTop: 4 },
-  statDiff: { fontSize: 9, fontWeight: 'bold', color: '#16a34a', marginTop: 4, textAlign: 'center' },
+  statBoxNum: { fontSize: 16, fontWeight: 'bold', color: '#0f172a' },
+  statBoxLabel: { fontSize: 10, color: '#64748b', textAlign: 'center', marginTop: 4 },
 });

@@ -8,15 +8,19 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { MOCK_100_PLAYERS } from './data/mockPlayers';
+import { usePlayers } from './PlayersContext';
 
 export default function RaportyScreen() {
+  const { players } = usePlayers();
   const [activeTab, setActiveTab] = useState<'player' | 'team'>('team');
-  const [selectedPlayerId, setSelectedPlayerId] = useState<string>(MOCK_100_PLAYERS[0]?.id || '1');
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string>(
+    players.length > 0 ? String(players[0].id) : '1'
+  );
 
   // Pomocnicza funkcja pobierania imienia i nazwiska
   const getPlayerName = (player: any) => {
-    if (player.name) return player.name;
+    if (!player) return 'Zawodnik';
+    if (player.name) return player.name.replace(/\s*\(\d{4}\)/g, '');
     if (player.firstName || player.lastName) {
       return `${player.firstName || ''} ${player.lastName || ''}`.trim();
     }
@@ -26,19 +30,19 @@ export default function RaportyScreen() {
     return 'Zawodnik';
   };
 
-  const selectedPlayer = MOCK_100_PLAYERS.find((p) => p.id === selectedPlayerId) || MOCK_100_PLAYERS[0];
+  const selectedPlayer = players.find((p: any) => String(p.id) === String(selectedPlayerId)) || players[0];
 
   const handleExportPdf = () => {
-    Alert.alert('Eksport Raportu 📄', 'Wygenerowano raport PDF gotowy do druku i wysyłki!');
+    Alert.alert('Eksport Raportu 📄', 'Wygenerowano raport PDF gotowy do druku i wysyłki do Zarządu / Rodziców!');
   };
 
   return (
     <View style={styles.container}>
       {/* NAGŁÓWEK */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Centrum Raportów i Analytics</Text>
+        <Text style={styles.headerTitle}>Centrum Raportów i Analytics 📊</Text>
         <Text style={styles.headerSubtitle}>
-          Generowanie kart zawodników, zestawień frekwencji i eksport danych
+          Karty zawodników, zestawienia frekwencji i statystyki zespołu
         </Text>
       </View>
 
@@ -80,7 +84,7 @@ export default function RaportyScreen() {
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Podsumowanie Miesięczne (Październik 2026)</Text>
               <TouchableOpacity onPress={handleExportPdf}>
-                <Text style={styles.addBtnText}>📄 Eksport do PDF</Text>
+                <Text style={styles.addBtnText}>📄 Eksport PDF</Text>
               </TouchableOpacity>
             </View>
 
@@ -95,7 +99,7 @@ export default function RaportyScreen() {
               <View style={styles.summaryCard}>
                 <Ionicons name="trophy-outline" size={20} color="#16a34a" />
                 <Text style={styles.summaryValue}>14 : 3</Text>
-                <Text style={styles.summaryLabel}>Bilans Brainek</Text>
+                <Text style={styles.summaryLabel}>Bilans Bramek</Text>
               </View>
             </View>
 
@@ -115,7 +119,7 @@ export default function RaportyScreen() {
 
             {/* PRZODUJĄCY ZAWODNICY */}
             <Text style={styles.subSectionTitle}>Liderzy Frekwencji i Zaangażowania</Text>
-            {MOCK_100_PLAYERS.slice(0, 4).map((player: any, idx) => (
+            {players.slice(0, 5).map((player: any, idx: number) => (
               <View key={player.id} style={styles.leaderRow}>
                 <Text style={styles.leaderRank}>#{idx + 1}</Text>
                 <Text style={styles.leaderName}>{getPlayerName(player)}</Text>
@@ -131,63 +135,63 @@ export default function RaportyScreen() {
             
             {/* HORIZONTALNY WYBÓR ZAWODNIKA */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.playerPickerScroll}>
-              {MOCK_100_PLAYERS.slice(0, 10).map((p: any) => {
-                const isSelected = p.id === selectedPlayerId;
+              {players.map((p: any) => {
+                const isSelected = String(p.id) === String(selectedPlayerId);
                 return (
                   <TouchableOpacity
                     key={p.id}
                     style={[styles.playerChip, isSelected && styles.playerChipActive]}
-                    onPress={() => setSelectedPlayerId(p.id)}
+                    onPress={() => setSelectedPlayerId(String(p.id))}
                   >
                     <Text style={[styles.playerChipText, isSelected && styles.playerChipTextActive]}>
-                      {getPlayerName(p)}
+                      #{p.number || '•'} {getPlayerName(p)}
                     </Text>
                   </TouchableOpacity>
                 );
               })}
             </ScrollView>
 
-            {/* KARTA INDYWIDUALNA */}
-            <View style={styles.profileCard}>
-              <View style={styles.profileHeader}>
-                <View style={styles.avatarLarge}>
-                  <Ionicons name="person" size={32} color="#2563eb" />
+            {/* KARTA INDYWIDUALNA ZAWODNIKA */}
+            {selectedPlayer && (
+              <View style={styles.profileCard}>
+                <View style={styles.profileHeader}>
+                  <View style={styles.avatarLarge}>
+                    <Text style={styles.avatarText}>#{selectedPlayer.number || '10'}</Text>
+                  </View>
+                  <View style={{ marginLeft: 14, flex: 1 }}>
+                    <Text style={styles.profileName}>{getPlayerName(selectedPlayer)}</Text>
+                    <Text style={styles.profileSub}>
+                      Pozycja: {selectedPlayer.position || 'Pomocnik'} | Rocznik {selectedPlayer.year || '2012'}
+                    </Text>
+                  </View>
                 </View>
-                <View style={{ marginLeft: 14 }}>
-                  <Text style={styles.profileName}>{getPlayerName(selectedPlayer)}</Text>
-                  <Text style={styles.profileSub}>
-                    {selectedPlayer.position || 'Pomocnik'} • Rocznik 2012
-                  </Text>
+
+                <View style={styles.divider} />
+
+                <View style={styles.statsOverviewRow}>
+                  <View style={styles.profileStatItem}>
+                    <Text style={styles.statNumber}>95%</Text>
+                    <Text style={styles.statTitle}>Obecność</Text>
+                  </View>
+                  <View style={styles.profileStatItem}>
+                    <Text style={styles.statNumber}>12</Text>
+                    <Text style={styles.statTitle}>Mecze</Text>
+                  </View>
+                  <View style={styles.profileStatItem}>
+                    <Text style={styles.statNumber}>5</Text>
+                    <Text style={styles.statTitle}>Bramki</Text>
+                  </View>
                 </View>
+
+                <TouchableOpacity style={styles.downloadCardBtn} onPress={handleExportPdf}>
+                  <Ionicons name="download-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.downloadCardBtnText}>Pobierz Kartę Zawodnika (PDF)</Text>
+                </TouchableOpacity>
               </View>
-
-              <View style={styles.divider} />
-
-              <View style={styles.statsOverviewRow}>
-                <View style={styles.profileStatItem}>
-                  <Text style={styles.statNumber}>95%</Text>
-
-                  <Text style={styles.statTitle}>Obecność</Text>
-                </View>
-                <View style={styles.profileStatItem}>
-                  <Text style={styles.statNumber}>12</Text>
-
-                  <Text style={styles.statTitle}>Mecze</Text>
-                </View>
-                <View style={styles.profileStatItem}>
-                  <Text style={styles.statNumber}>5</Text>
-
-                  <Text style={styles.statTitle}>Bramki</Text>
-                </View>
-              </View>
-
-              <TouchableOpacity style={styles.downloadCardBtn} onPress={handleExportPdf}>
-                <Ionicons name="download-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
-                <Text style={styles.downloadCardBtnText}>Pobierz Kartę Zawodnika (PDF)</Text>
-              </TouchableOpacity>
-            </View>
+            )}
           </View>
         )}
+        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
@@ -265,7 +269,7 @@ const styles = StyleSheet.create({
   playerPickerScroll: { marginBottom: 14 },
   playerChip: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: '#fff',
     borderWidth: 1,
@@ -282,7 +286,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    elevation: 1,
   },
   profileHeader: { flexDirection: 'row', alignItems: 'center' },
   avatarLarge: {
@@ -292,9 +295,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#eff6ff',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
+    borderWidth: 2,
+    borderColor: '#2563eb',
   },
+  avatarText: { fontSize: 15, fontWeight: 'bold', color: '#2563eb' },
   profileName: { fontSize: 16, fontWeight: 'bold', color: '#0f172a' },
   profileSub: { fontSize: 12, color: '#64748b', marginTop: 2 },
 

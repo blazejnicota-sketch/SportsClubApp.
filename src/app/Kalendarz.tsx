@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { usePlayers } from './PlayersContext';
+import { notificationService } from './notificationService';
 
 type ViewMode = 'miesiac' | 'tydzien' | 'lista';
 type AttendanceStatus = 'present' | 'pending' | 'absent';
@@ -168,7 +169,7 @@ export default function KalendarzScreen() {
 
   const applyTemplate = (templateType: 'mecz' | 'trening' | 'turniej') => {
     if (templateType === 'mecz') {
-      setEventTitle('');
+      setEventTitle('Mecz Ligowy');
       setEventType('Mecz');
       setEventLocation('');
       setMeetingLocation('');
@@ -177,7 +178,7 @@ export default function KalendarzScreen() {
       setStartTimeObj(new Date(startDateObj.setHours(8, 30)));
       setEndTimeObj(new Date(startDateObj.setHours(10, 15)));
     } else if (templateType === 'trening') {
-      setEventTitle('');
+      setEventTitle('Trening Drużyny');
       setEventType('Trening');
       setEventLocation('');
       setMeetingLocation('');
@@ -186,7 +187,7 @@ export default function KalendarzScreen() {
       setStartTimeObj(new Date(startDateObj.setHours(17, 30)));
       setEndTimeObj(new Date(startDateObj.setHours(19, 0)));
     } else if (templateType === 'turniej') {
-      setEventTitle('');
+      setEventTitle('Turniej Piłkarski');
       setEventType('Mecz');
       setEventLocation('');
       setMeetingLocation('');
@@ -272,7 +273,6 @@ export default function KalendarzScreen() {
       return;
     }
 
-    // Automatyczna aktualizacja statystyk frekwencji zawodników w kontekście
     selectedSquad.forEach((playerId) => {
       const status = squadAttendance[playerId];
       const playerObj = availablePlayers.find((p: any) => String(p.id) === String(playerId));
@@ -392,6 +392,12 @@ export default function KalendarzScreen() {
     const message = `📌 ${eventTitle}\n📅 Data: ${dateStr}\n⏰ Zbiórka: ${formattedMeetingTime} (${meetingLocation || 'Miejsce zbiórki'}) | Start: ${formattedStartTime} - ${formattedEndTime}\n📍 Miejsce wydarzenia: ${eventLocation}\n\nKADRA (${selectedSquad.length}):\n${nominatedNames}\n\nProśba o potwierdzenie obecności! 👍`;
 
     await Clipboard.setStringAsync(message);
+
+    // Wywołanie powiadomienia systemowego przez zintegrowany serwis
+    await notificationService.sendLocalAlert(
+      `⚽ Powołanie: ${eventTitle}`,
+      `Zbiórka: ${formattedMeetingTime}. Sprawdź szczegóły w aplikacji!`
+    );
 
     Alert.alert(
       'Wysłano Powiadomienia Push 📲 & Skopiowano 📋',
@@ -740,53 +746,51 @@ export default function KalendarzScreen() {
 
               <Text style={styles.inputLabel}>Typ wydarzenia</Text>
               <View style={{ flexDirection: 'row', marginBottom: 10 }}>
-                {(['Mecz', 'Trening', 'Inne'] as ('Mecz' | 'Trening' | 'Inne')[]).map((t) => (
+                {(['Mecz', 'Trening', 'Inne'] as const).map((t) => (
                   <TouchableOpacity
                     key={t}
-                    style={[styles.typeOptionBtn, eventType === t && styles.toggleBtnActive]}
+                    style={[styles.typeOptionBtn, eventType === t && { backgroundColor: '#dbeafe', borderColor: '#2563eb' }]}
                     onPress={() => setEventType(t)}
                   >
-                    <Text style={[styles.typeOptionText, eventType === t && styles.toggleTextActive]}>{t}</Text>
+                    <Text style={[styles.typeOptionText, eventType === t && { color: '#2563eb', fontWeight: 'bold' }]}>{t}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
-              <Text style={styles.inputLabel}>Nazwa wydarzenia / Przeciwnik *</Text>
+              <Text style={styles.inputLabel}>Nazwa wydarzenia</Text>
               <TextInput
                 style={styles.modalInput}
                 placeholder="np. Mecz z WKS Wieluń / Trening techniczny"
-                placeholderTextColor="#94a3b8"
                 value={eventTitle}
                 onChangeText={setEventTitle}
               />
 
-              <Text style={styles.inputLabel}>Adres właściwy wydarzenia (Stadion / Boisko / Hala)</Text>
+              <Text style={styles.inputLabel}>Adres wydarzenia (docelowy)</Text>
               <TextInput
                 style={styles.modalInput}
                 placeholder="np. Stadion Miejski, ul. Sportowa 1"
-                placeholderTextColor="#94a3b8"
                 value={eventLocation}
                 onChangeText={setEventLocation}
               />
 
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+              <TouchableOpacity
+                onPress={() => openMapLocation(eventLocation)}
+                style={styles.quickMapLinkRow}
+              >
+                <Ionicons name="map" size={13} color="#2563eb" style={{ marginRight: 4 }} />
+                <Text style={styles.quickMapLinkText}>Sprawdź trasę docelową w Google Maps 🗺️</Text>
+              </TouchableOpacity>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
                 <View style={{ flex: 1, marginRight: 6 }}>
                   <Text style={styles.inputLabel}>Data od</Text>
-                  <TouchableOpacity
-                    style={styles.pickerBoxBtn}
-                    onPress={() => setShowStartDatePicker(true)}
-                  >
-                    <Ionicons name="calendar-outline" size={14} color="#2563eb" style={{ marginRight: 6 }} />
+                  <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowStartDatePicker(true)}>
                     <Text style={styles.pickerBoxBtnText}>{formattedStartDate}</Text>
                   </TouchableOpacity>
                 </View>
                 <View style={{ flex: 1, marginLeft: 6 }}>
                   <Text style={styles.inputLabel}>Data do</Text>
-                  <TouchableOpacity
-                    style={styles.pickerBoxBtn}
-                    onPress={() => setShowEndDatePicker(true)}
-                  >
-                    <Ionicons name="calendar-outline" size={14} color="#2563eb" style={{ marginRight: 6 }} />
+                  <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowEndDatePicker(true)}>
                     <Text style={styles.pickerBoxBtnText}>{formattedEndDate}</Text>
                   </TouchableOpacity>
                 </View>
@@ -799,10 +803,7 @@ export default function KalendarzScreen() {
                   display="default"
                   onChange={(event, selected) => {
                     setShowStartDatePicker(false);
-                    if (selected) {
-                      setStartDateObj(selected);
-                      setEndDateObj(selected);
-                    }
+                    if (selected) setStartDateObj(selected);
                   }}
                 />
               )}
@@ -886,7 +887,7 @@ export default function KalendarzScreen() {
                 <Text style={[styles.inputLabel, { marginTop: 6 }]}>Adres zbiórki (opcjonalnie)</Text>
                 <TextInput
                   style={styles.modalInput}
-                  placeholder=""
+                  placeholder="np. Klub Sportowy, szatnia główna"
                   value={meetingLocation}
                   onChangeText={setMeetingLocation}
                 />
