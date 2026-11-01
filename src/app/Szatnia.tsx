@@ -28,7 +28,7 @@ export default function SzatniaScreen() {
   const [addPlayerModalVisible, setAddPlayerModalVisible] = useState<boolean>(false);
   const [editPlayerModalVisible, setEditPlayerModalVisible] = useState<boolean>(false);
 
-  // Stan dla testu motorycznego (Pkt 2 i 3)
+  // Stan dla testu motorycznego
   const [selectedPlayerForTest, setSelectedPlayerForTest] = useState<Player | null>(null);
   const [sprintTime, setSprintTime] = useState<string>('4.5');
   const [jumpDist, setJumpDist] = useState<string>('210');
@@ -40,7 +40,7 @@ export default function SzatniaScreen() {
   const [newYear, setNewYear] = useState<string>('2016');
   const [newPosition, setNewPosition] = useState<string>('Pomocnik');
 
-  // Stan dla edycji istniejącego zawodnika (Pkt 1)
+  // Stan dla edycji istniejącego zawodnika
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [editFirstName, setEditFirstName] = useState<string>('');
   const [editLastName, setEditLastName] = useState<string>('');
@@ -68,7 +68,6 @@ export default function SzatniaScreen() {
     return playersData.filter((p: any) => p.injuryStatus && p.injuryStatus !== 'Zdrowy').length;
   }, [playersData]);
 
-  // Pkt 2 i 3: Zapis pomiaru testu z zachowaniem historii w tablicy tests
   const handleSaveTest = () => {
     if (!selectedPlayerForTest) return;
     const currentDate = new Date().toLocaleDateString('pl-PL');
@@ -91,7 +90,6 @@ export default function SzatniaScreen() {
     Alert.alert('Sukces 📊', 'Wyniki pomiarów i historia zostały zaktualizowane.');
   };
 
-  // Dodanie nowego zawodnika
   const handleAddNewPlayer = () => {
     if (!newFirstName.trim() || !newLastName.trim()) {
       Alert.alert('Błąd', 'Podaj imię i nazwisko nowego zawodnika.');
@@ -119,7 +117,6 @@ export default function SzatniaScreen() {
     Alert.alert('Sukces ⚽', 'Nowy zawodnik został dodany do bazy!');
   };
 
-  // Pkt 1: Otwarcie modala edycji gracza
   const openEditModal = (player: Player) => {
     setEditingPlayer(player);
     setEditFirstName(player.firstName || '');
@@ -144,7 +141,6 @@ export default function SzatniaScreen() {
     Alert.alert('Sukces', 'Dane zawodnika zostały zaktualizowane.');
   };
 
-  // Pkt 1: Usuwanie zawodnika z potwierdzeniem
   const handleDeletePlayerPrompt = (player: Player) => {
     Alert.alert(
       'Usuń zawodnika',
@@ -160,7 +156,6 @@ export default function SzatniaScreen() {
     );
   };
 
-  // Pkt 4: Szybka zmiana statusu zdrowotnego jednym kliknięciem
   const toggleHealthStatus = (player: Player) => {
     const nextStatus = player.injuryStatus === 'Zdrowy' ? 'Kontuzja (2 tyg. przerwy)' : 'Zdrowy';
     updatePlayer(player.id, { injuryStatus: nextStatus });
@@ -318,7 +313,7 @@ export default function SzatniaScreen() {
                   </Text>
                 </View>
 
-                {/* PRZYCISKI AKCI (EDYCJA / USUWANIE / POMIAR) */}
+                {/* PRZYCISKI AKCJI (EDYCJA / USUWANIE) */}
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <TouchableOpacity
                     style={[styles.actionIconBtn, { marginRight: 6 }]}
@@ -370,7 +365,7 @@ export default function SzatniaScreen() {
                 </>
               )}
 
-              {/* ZAKŁADKA: ZDROWIE (PKT 4 - Szybka zmiana statusu) */}
+              {/* ZAKŁADKA: ZDROWIE */}
               {activeSubTab === 'zdrowie' && (
                 <View style={styles.healthRow}>
                   <TouchableOpacity
@@ -394,7 +389,7 @@ export default function SzatniaScreen() {
                 </View>
               )}
 
-              {/* ZAKŁADKA: NOTATKI I HISTORIA TESTÓW (PKT 3) */}
+              {/* ZAKŁADKA: NOTATKI I HISTORIA TESTÓW */}
               {activeSubTab === 'notatki' && (
                 <View style={styles.noteBox}>
                   <Text style={styles.noteTitle}>Notatka trenerska:</Text>
@@ -461,7 +456,7 @@ export default function SzatniaScreen() {
         </View>
       </Modal>
 
-      {/* MODAL 2: EDYCJA DANYCH ZAWODNIKA (PKT 1) */}
+      {/* MODAL 2: EDYCJA DANYCH ZAWODNIKA */}
       <Modal animationType="slide" transparent={true} visible={editPlayerModalVisible}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
@@ -504,7 +499,7 @@ export default function SzatniaScreen() {
         </View>
       </Modal>
 
-      {/* MODAL 3: WPISYWANIE WYNIKÓW TESTU (PKT 2 i 3) */}
+      {/* MODAL 3: WPISYWANIE WYNIKÓW TESTU */}
       <Modal animationType="slide" transparent={true} visible={testModalVisible}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
@@ -545,7 +540,11 @@ export default function SzatniaScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#f8fafc',
+    paddingTop: 20, // Poprawiony margines górny (oddech od paska systemowego)
+  },
   header: {
     backgroundColor: '#fff',
     paddingHorizontal: 16,
@@ -722,7 +721,6 @@ const styles = StyleSheet.create({
   },
   modalButtonsRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16 },
   cancelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, marginRight: 6 },
-  cancelBtnTest: {},
   cancelBtnText: { fontSize: 12, color: '#64748b', fontWeight: '600' },
   saveBtn: { backgroundColor: '#2563eb', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },

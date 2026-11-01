@@ -372,6 +372,18 @@ export default function KalendarzScreen() {
     setSquadAttendance((prev) => ({ ...prev, [id]: status }));
   };
 
+  const handleQuickAttendanceChange = (eventId: string, playerId: string, status: AttendanceStatus) => {
+    setEvents((prevEvents) =>
+      prevEvents.map((ev) => {
+        if (ev.id === eventId) {
+          const updatedAttendance = { ...ev.attendance, [playerId]: status };
+          return { ...ev, attendance: updatedAttendance };
+        }
+        return ev;
+      })
+    );
+  };
+
   const selectEntireYear = () => {
     const yearPlayers = filteredSquadPlayers.map((p: any) => String(p.id));
     const newSquad = Array.from(new Set([...selectedSquad, ...yearPlayers]));
@@ -393,7 +405,6 @@ export default function KalendarzScreen() {
 
     await Clipboard.setStringAsync(message);
 
-    // Wywołanie powiadomienia systemowego przez zintegrowany serwis
     await notificationService.sendLocalAlert(
       `⚽ Powołanie: ${eventTitle}`,
       `Zbiórka: ${formattedMeetingTime}. Sprawdź szczegóły w aplikacji!`
@@ -427,7 +438,7 @@ export default function KalendarzScreen() {
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Kalendarz Drużyny</Text>
-          <Text style={styles.headerSubtitle}>Terminarz, zbiórki i powołania</Text>
+          <Text style={styles.headerSubtitle}>Terminarz, zbiórki i szybka obecność</Text>
         </View>
         <TouchableOpacity style={styles.addBtn} onPress={() => handleOpenCreateModal(selectedDate)}>
           <Ionicons name="add" size={16} color="#fff" />
@@ -473,7 +484,7 @@ export default function KalendarzScreen() {
                 <Ionicons name="chevron-forward" size={18} color="#2563eb" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.monthSubText}>Kliknij dzień, aby zobaczyć wydarzenia</Text>
+            <Text style={styles.monthSubText}>Kliknij dzień, aby zobaczyć wydarzenia i sprawdzić obecność</Text>
 
             <View style={styles.weekDaysHeaderRow}>
               {SHORT_WEEK_DAYS.map((wd, index) => (
@@ -654,10 +665,10 @@ export default function KalendarzScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* MODAL 1: ZARZĄDZANIE DNIEM */}
+      {/* MODAL 1: ZARZĄDZANIE DNIEM + SZYBKA OBECNOŚĆ TRENERA */}
       <Modal animationType="fade" transparent={true} visible={dayModalVisible}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
+          <View style={[styles.modalContainer, { maxHeight: '85%' }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Wydarzenia dla: {selectedDate}</Text>
               <TouchableOpacity onPress={() => setDayModalVisible(false)}>
@@ -666,43 +677,75 @@ export default function KalendarzScreen() {
             </View>
 
             {dayEvents.length > 0 ? (
-              <ScrollView style={{ maxHeight: 280 }}>
+              <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
                 {dayEvents.map((ev) => {
                   const cfg = getEventTypeConfig(ev.type);
                   return (
-                    <View key={ev.id} style={[styles.dayEventItemBox, { borderLeftColor: cfg.text, borderLeftWidth: 4 }]}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.dayEventTitle}>{ev.title}</Text>
-                        
-                        <TouchableOpacity 
-                          onPress={() => openMapLocation(ev.location)} 
-                          style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, marginBottom: 2 }}
-                        >
-                          <Ionicons name="location" size={13} color="#2563eb" style={{ marginRight: 3 }} />
-                          <Text style={{ fontSize: 11, color: '#2563eb', fontWeight: 'bold', textDecorationLine: 'underline' }}>
-                            Adres: {ev.location}
-                          </Text>
-                        </TouchableOpacity>
-
-                        {ev.meetingLocation ? (
+                    <View key={ev.id} style={[styles.dayEventItemBox, { borderLeftColor: cfg.text, borderLeftWidth: 4, flexDirection: 'column', alignItems: 'stretch' }]}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.dayEventTitle}>{ev.title}</Text>
+                          
                           <TouchableOpacity 
-                            onPress={() => openMapLocation(ev.meetingLocation || '')} 
-                            style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}
+                            onPress={() => openMapLocation(ev.location)} 
+                            style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, marginBottom: 2 }}
                           >
-                            <Ionicons name="flag" size={12} color="#dc2626" style={{ marginRight: 3 }} />
-                            <Text style={{ fontSize: 11, color: '#dc2626', fontWeight: 'bold', textDecorationLine: 'underline' }}>
-                              Zbiórka: {ev.meetingTime} | {ev.meetingLocation}
+                            <Ionicons name="location" size={13} color="#2563eb" style={{ marginRight: 3 }} />
+                            <Text style={{ fontSize: 11, color: '#2563eb', fontWeight: 'bold', textDecorationLine: 'underline' }}>
+                              Adres: {ev.location}
                             </Text>
                           </TouchableOpacity>
-                        ) : null}
 
-                        <Text style={styles.dayEventSub}>
-                          ⏰ Start: {ev.startTime} - {ev.endTime}
-                        </Text>
+                          <Text style={styles.dayEventSub}>
+                            ⏰ Start: {ev.startTime} - {ev.endTime}
+                          </Text>
+                        </View>
+                        <TouchableOpacity style={styles.editExistingBtn} onPress={() => handleOpenEditModal(ev)}>
+                          <Text style={styles.editExistingBtnText}>Edytuj</Text>
+                        </TouchableOpacity>
                       </View>
-                      <TouchableOpacity style={styles.editExistingBtn} onPress={() => handleOpenEditModal(ev)}>
-                        <Text style={styles.editExistingBtnText}>Edytuj</Text>
-                      </TouchableOpacity>
+
+                      {/* SEKCJA SZYBKIEJ OBECNOŚCI DLA TRENERA */}
+                      <View style={styles.quickAttendanceBox}>
+                        <Text style={styles.quickAttendanceHeader}>⚡ Szybka obecność trenera na zajęciach:</Text>
+                        {ev.squadIds.length > 0 ? (
+                          ev.squadIds.map((pId) => {
+                            const playerObj = availablePlayers.find((p: any) => String(p.id) === String(pId));
+                            if (!playerObj) return null;
+                            const status = ev.attendance?.[pId] || 'pending';
+                            const cleanFirst = (playerObj.firstName || '').replace(/\s*\(\d{4}\)/g, '');
+                            const cleanLast = (playerObj.lastName || '').replace(/\s*\(\d{4}\)/g, '');
+
+                            return (
+                              <View key={pId} style={styles.quickAttendanceRow}>
+                                <Text style={styles.quickAttendancePlayerName}>{cleanFirst} {cleanLast}</Text>
+                                <View style={styles.statusButtonsRow}>
+                                  <TouchableOpacity
+                                    style={[styles.statusBtn, status === 'present' && { backgroundColor: '#16a34a' }]}
+                                    onPress={() => handleQuickAttendanceChange(ev.id, pId, 'present')}
+                                  >
+                                    <Text style={[styles.statusBtnText, status === 'present' && { color: '#fff' }]}>Tak</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    style={[styles.statusBtn, status === 'pending' && { backgroundColor: '#ca8a04' }]}
+                                    onPress={() => handleQuickAttendanceChange(ev.id, pId, 'pending')}
+                                  >
+                                    <Text style={[styles.statusBtnText, status === 'pending' && { color: '#fff' }]}>?</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    style={[styles.statusBtn, status === 'absent' && { backgroundColor: '#dc2626' }]}
+                                    onPress={() => handleQuickAttendanceChange(ev.id, pId, 'absent')}
+                                  >
+                                    <Text style={[styles.statusBtnText, status === 'absent' && { color: '#fff' }]}>Nie</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                            );
+                          })
+                        ) : (
+                          <Text style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>Brak powołanych zawodników do sprawdzenia obecności.</Text>
+                        )}
+                      </View>
                     </View>
                   );
                 })}
@@ -719,7 +762,7 @@ export default function KalendarzScreen() {
         </View>
       </Modal>
 
-      {/* MODAL 2: FORMULARZ */}
+      {/* MODAL 2: FORMULARZ TWORZENIA/EDYCJI */}
       <Modal animationType="slide" transparent={true} visible={formModalVisible}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContainer, { height: '92%' }]}>
@@ -1012,7 +1055,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
-    paddingTop: 10,
+    paddingTop: 20, // Poprawiony margines górny (oddech od paska systemowego)
   },
   header: {
     flexDirection: 'row',
@@ -1269,9 +1312,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
     padding: 10,
     borderRadius: 8,
-    marginBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
+    marginBottom: 10,
   },
   dayEventTitle: {
     fontSize: 13,
@@ -1292,6 +1333,31 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#2563eb',
     fontWeight: 'bold',
+  },
+  quickAttendanceBox: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+  },
+  quickAttendanceHeader: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#1e293b',
+    marginBottom: 6,
+  },
+  quickAttendanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  quickAttendancePlayerName: {
+    fontSize: 11,
+    color: '#334155',
+    fontWeight: '500',
   },
   noEventsDayText: {
     fontSize: 12,

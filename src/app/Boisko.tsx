@@ -448,7 +448,11 @@ export default function BoiskoScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#f8fafc',
+    paddingTop: 20, // Poprawiony margines górny (oddech od paska systemowego)
+  },
   header: {
     backgroundColor: '#fff',
     paddingHorizontal: 16,
