@@ -9,7 +9,6 @@ import {
   Modal,
   Alert,
   Linking,
-  Platform,
   Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -139,34 +138,6 @@ export default function KalendarzScreen() {
 
   const currentDayOfWeekName = DAY_NAMES[startDateObj.getDay()];
 
-  const isEventOnDate = (ev: EventItem, dateStr: string) => {
-    if (!ev.isRecurring && ev.startDate <= dateStr && dateStr <= ev.endDate) {
-      return true;
-    }
-
-    if (ev.isRecurring && ev.recurringDayOfWeek !== undefined) {
-      if (dateStr >= ev.startDate && dateStr <= ev.endDate) {
-        const [tY, tM, tD] = dateStr.split('-').map(Number);
-        const targetDate = new Date(tY, tM - 1, tD);
-
-        const [sY, sM, sD] = ev.startDate.split('-').map(Number);
-        const startDate = new Date(sY, sM - 1, sD);
-
-        const isSameDayOfWeek = targetDate.getDay() === ev.recurringDayOfWeek;
-
-        const targetDaysTotal = Math.floor(targetDate.getTime() / (1000 * 60 * 60 * 24));
-        const startDaysTotal = Math.floor(startDate.getTime() / (1000 * 60 * 60 * 24));
-        const diffDays = targetDaysTotal - startDaysTotal;
-
-        const isExactWeekInterval = diffDays % 7 === 0;
-
-        return isSameDayOfWeek && isExactWeekInterval;
-      }
-    }
-
-    return false;
-  };
-
   const applyTemplate = (templateType: 'mecz' | 'trening' | 'turniej') => {
     if (templateType === 'mecz') {
       setEventTitle('Mecz Ligowy');
@@ -196,6 +167,34 @@ export default function KalendarzScreen() {
       setStartTimeObj(new Date(startDateObj.setHours(8, 0)));
       setEndTimeObj(new Date(startDateObj.setHours(16, 0)));
     }
+  };
+
+  const isEventOnDate = (ev: EventItem, dateStr: string) => {
+    if (!ev.isRecurring && ev.startDate <= dateStr && dateStr <= ev.endDate) {
+      return true;
+    }
+
+    if (ev.isRecurring && ev.recurringDayOfWeek !== undefined) {
+      if (dateStr >= ev.startDate && dateStr <= ev.endDate) {
+        const [tY, tM, tD] = dateStr.split('-').map(Number);
+        const targetDate = new Date(tY, tM - 1, tD);
+
+        const [sY, sM, sD] = ev.startDate.split('-').map(Number);
+        const startDate = new Date(sY, sM - 1, sD);
+
+        const isSameDayOfWeek = targetDate.getDay() === ev.recurringDayOfWeek;
+
+        const targetDaysTotal = Math.floor(targetDate.getTime() / (1000 * 60 * 60 * 24));
+        const startDaysTotal = Math.floor(startDate.getTime() / (1000 * 60 * 60 * 24));
+        const diffDays = targetDaysTotal - startDaysTotal;
+
+        const isExactWeekInterval = diffDays % 7 === 0;
+
+        return isSameDayOfWeek && isExactWeekInterval;
+      }
+    }
+
+    return false;
   };
 
   const handlePrevMonth = () => {
@@ -743,7 +742,7 @@ export default function KalendarzScreen() {
                             );
                           })
                         ) : (
-                          <Text style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>Brak powołanych zawodników do sprawdzenia obecności.</Text>
+                          <Text style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic' }}>Brak powołanej kadry</Text>
                         )}
                       </View>
                     </View>
@@ -755,40 +754,52 @@ export default function KalendarzScreen() {
             )}
 
             <TouchableOpacity style={styles.addNewEventInDayBtn} onPress={() => handleOpenCreateModal(selectedDate)}>
-              <Ionicons name="add-circle-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.addNewEventInDayText}>+ Dodaj nowe wydarzenie w tym dniu</Text>
+              <Ionicons name="add" size={16} color="#fff" style={{ marginRight: 4 }} />
+              <Text style={styles.addNewEventInDayText}>Dodaj wydarzenie w tym dniu</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* MODAL 2: FORMULARZ TWORZENIA/EDYCJI */}
+      {/* MODAL 2: FORMULARZ TWORZENIA / EDYCJI WYDARZENIA */}
       <Modal animationType="slide" transparent={true} visible={formModalVisible}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContainer, { height: '92%' }]}>
+          <View style={[styles.modalContainer, { maxHeight: '90%' }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{editingEventId ? 'Edytuj Wydarzenie ✏️' : 'Nowe Wydarzenie 📅'}</Text>
+              <Text style={styles.modalTitle}>{editingEventId ? 'Edytuj Wydarzenie ✏️' : 'Nowe Wydarzenie ⚽'}</Text>
               <TouchableOpacity onPress={() => setFormModalVisible(false)}>
                 <Ionicons name="close" size={22} color="#64748b" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
-              <Text style={styles.inputLabel}>Szybki szablon wydarzenia:</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                <TouchableOpacity style={styles.templateChip} onPress={() => applyTemplate('mecz')}>
-                  <Text style={styles.templateChipText}>⚽ Szablon: Mecz Ligowy</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.templateChip} onPress={() => applyTemplate('trening')}>
-                  <Text style={styles.templateChipText}>🏃 Szablon: Trening Cykliczny</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.templateChip} onPress={() => applyTemplate('turniej')}>
-                  <Text style={styles.templateChipText}>🏆 Szablon: Turniej</Text>
-                </TouchableOpacity>
-              </ScrollView>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {!editingEventId && (
+                <View style={{ marginBottom: 10 }}>
+                  <Text style={styles.inputLabel}>Szybkie Szablony:</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <TouchableOpacity style={styles.templateChip} onPress={() => applyTemplate('mecz')}>
+                      <Text style={styles.templateChipText}>⚽ Mecz Ligowy</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.templateChip} onPress={() => applyTemplate('trening')}>
+                      <Text style={styles.templateChipText}>🏃 Trening</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.templateChip} onPress={() => applyTemplate('turniej')}>
+                      <Text style={styles.templateChipText}>🏆 Turniej</Text>
+                    </TouchableOpacity>
+                  </ScrollView>
+                </View>
+              )}
 
-              <Text style={styles.inputLabel}>Typ wydarzenia</Text>
-              <View style={{ flexDirection: 'row', marginBottom: 10 }}>
+              <Text style={styles.inputLabel}>Nazwa Wydarzenia</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="np. Mecz z Wartą Sieradz"
+                value={eventTitle}
+                onChangeText={setEventTitle}
+              />
+
+              <Text style={styles.inputLabel}>Typ Wydarzenia</Text>
+              <View style={{ flexDirection: 'row', marginBottom: 8 }}>
                 {(['Mecz', 'Trening', 'Inne'] as const).map((t) => (
                   <TouchableOpacity
                     key={t}
@@ -800,39 +811,27 @@ export default function KalendarzScreen() {
                 ))}
               </View>
 
-              <Text style={styles.inputLabel}>Nazwa wydarzenia</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="np. Mecz z WKS Wieluń / Trening techniczny"
-                value={eventTitle}
-                onChangeText={setEventTitle}
-              />
-
-              <Text style={styles.inputLabel}>Adres wydarzenia (docelowy)</Text>
+              <Text style={styles.inputLabel}>Miejsce / Adres Główny</Text>
               <TextInput
                 style={styles.modalInput}
                 placeholder="np. Stadion Miejski, ul. Sportowa 1"
                 value={eventLocation}
                 onChangeText={setEventLocation}
               />
-
-              <TouchableOpacity
-                onPress={() => openMapLocation(eventLocation)}
-                style={styles.quickMapLinkRow}
-              >
-                <Ionicons name="map" size={13} color="#2563eb" style={{ marginRight: 4 }} />
-                <Text style={styles.quickMapLinkText}>Sprawdź trasę docelową w Google Maps 🗺️</Text>
+              <TouchableOpacity onPress={() => openMapLocation(eventLocation)} style={styles.quickMapLinkRow}>
+                <Ionicons name="navigate" size={13} color="#2563eb" style={{ marginRight: 4 }} />
+                <Text style={styles.quickMapLinkText}>Sprawdź trasę główną w Google Maps 🗺️</Text>
               </TouchableOpacity>
 
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
                 <View style={{ flex: 1, marginRight: 6 }}>
-                  <Text style={styles.inputLabel}>Data od</Text>
+                  <Text style={styles.inputLabel}>Data Od 📅</Text>
                   <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowStartDatePicker(true)}>
                     <Text style={styles.pickerBoxBtnText}>{formattedStartDate}</Text>
                   </TouchableOpacity>
                 </View>
                 <View style={{ flex: 1, marginLeft: 6 }}>
-                  <Text style={styles.inputLabel}>Data do</Text>
+                  <Text style={styles.inputLabel}>Data Do 📅</Text>
                   <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowEndDatePicker(true)}>
                     <Text style={styles.pickerBoxBtnText}>{formattedEndDate}</Text>
                   </TouchableOpacity>
@@ -1055,7 +1054,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
-    paddingTop: 20, // Poprawiony margines górny (oddech od paska systemowego)
+    paddingTop: 20,
   },
   header: {
     flexDirection: 'row',

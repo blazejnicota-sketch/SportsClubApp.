@@ -11,27 +11,36 @@ Notifications.setNotificationHandler({
 });
 
 export const notificationService = {
-  // Prośba o uprawnienia do powiadomień
+  // Prośba o uprawnienia do powiadomień i pobranie Expo Push Token
   async requestPermissions() {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-    
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
+    try {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      
+      if (finalStatus !== 'granted') {
+        Alert.alert('Brak uprawnień', 'Nie włączono powiadomień push dla tej aplikacji.');
+        return null;
+      }
+      
+      // Pobranie tokenu urządzenia do powiadomień zdalnych
+      const tokenData = await Notifications.getExpoPushTokenAsync();
+      console.log('Expo Push Token:', tokenData.data);
+      return tokenData.data;
+    } catch (error) {
+      console.log('Błąd podczas pobierania uprawnień/tokenu:', error);
+      return null;
     }
-    
-    if (finalStatus !== 'granted') {
-      Alert.alert('Brak uprawnień', 'Nie włączono powiadomień push dla tej aplikacji.');
-      return false;
-    }
-    return true;
   },
 
   // Natychmiastowe powiadomienie testowe / alert
   async sendLocalAlert(title: string, body: string) {
-    const hasPermission = await this.requestPermissions();
-    if (!hasPermission) return;
+    const token = await this.requestPermissions();
+    if (!token) return;
 
     await Notifications.scheduleNotificationAsync({
       content: {
@@ -45,8 +54,8 @@ export const notificationService = {
 
   // Zaplanowanie powiadomienia o zbiórce meczowej
   async scheduleMatchReminder(matchTitle: string, secondsInFuture: number) {
-    const hasPermission = await this.requestPermissions();
-    if (!hasPermission) return;
+    const token = await this.requestPermissions();
+    if (!token) return;
 
     await Notifications.scheduleNotificationAsync({
       content: {
@@ -56,5 +65,30 @@ export const notificationService = {
       },
       trigger: { seconds: secondsInFuture } as any,
     });
+  },
+
+  // NOWOŚĆ: Zdalne wysyłanie powiadomienia Push do urządzenia przez serwer/API Expo
+  async sendPushNotification(expoPushToken: string, title: string, body: string) {
+    const message = {
+      to: expoPushToken,
+      sound: 'default',
+      title: title,
+      body: body,
+      data: { academyApp: true },
+    };
+
+    try {
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(message),
+      });
+    } catch (error) {
+      console.log('Błąd wysyłania powiadomienia push:', error);
+    }
   }
 };

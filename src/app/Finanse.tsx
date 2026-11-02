@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,14 +8,17 @@ import {
   TextInput,
   Modal,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePlayers } from './PlayersContext';
+import { supabase } from '../services/supabase';
 
 type PaymentStatus = 'oplacone' | 'zaleglosc' | 'czesciowo';
 type YearFilter = 'WSZYSTKIE' | '2012' | '2013' | '2014';
 
 interface PaymentRecord {
+  id?: string;
   playerId: string;
   month: string;
   amountDue: number;
@@ -30,19 +33,57 @@ export default function FinanseScreen() {
   const [selectedYear, setSelectedYear] = useState<YearFilter>('WSZYSTKIE');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedMonth, setSelectedMonth] = useState<string>('Październik 2026');
+  const [loading, setLoading] = useState<boolean>(true);
 
   // Stany modali
   const [reminderModalVisible, setReminderModalVisible] = useState<boolean>(false);
   const [selectedPlayerForReminder, setSelectedPlayerForReminder] = useState<any>(null);
 
-  // Symulowana baza wpłat
-  const [payments, setPayments] = useState<{ [playerId: string]: PaymentRecord }>({
-    '1': { playerId: '1', month: 'Październik 2026', amountDue: 180, amountPaid: 180, status: 'oplacone', lastPaymentDate: '2026-10-05' },
-    '2': { playerId: '2', month: 'Październik 2026', amountDue: 180, amountPaid: 0, status: 'zaleglosc' },
-    '3': { playerId: '3', month: 'Październik 2026', amountDue: 180, amountPaid: 180, status: 'oplacone', lastPaymentDate: '2026-10-10' },
-    '4': { playerId: '4', month: 'Październik 2026', amountDue: 180, amountPaid: 90, status: 'czesciowo', lastPaymentDate: '2026-10-12' },
-    '5': { playerId: '5', month: 'Październik 2026', amountDue: 180, amountPaid: 0, status: 'zaleglosc' },
-  });
+  // Stan płatności pobierany z Supabase (klucz to ID zawodnika)
+  const [payments, setPayments] = useState<{ [playerId: string]: PaymentRecord }>({});
+
+  const DEFAULT_AMOUNT = 180;
+
+  // Pobieranie danych o płatnościach z Supabase przy zmianie miesiąca
+  useEffect(() => {
+    fetchPaymentsFromSupabase();
+  }, [selectedMonth]);
+
+  const fetchPaymentsFromSupabase = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('payments')
+        .select('*');
+
+      if (error) throw error;
+
+      const paymentsMap: { [playerId: string]: PaymentRecord } = {};
+      if (data) {
+        data.forEach((item: any) => {
+          let appStatus: PaymentStatus = 'zaleglosc';
+          if (item.status === 'PAID') appStatus = 'oplacone';
+          else if (item.status === 'PENDING') appStatus = 'czesciowo';
+          else if (item.status === 'OVERDUE') appStatus = 'zaleglosc';
+
+          paymentsMap[item.player_id] = {
+            id: item.id,
+            playerId: item.player_id,
+            month: selectedMonth,
+            amountDue: DEFAULT_AMOUNT,
+            amountPaid: appStatus === 'oplacone' ? DEFAULT_AMOUNT : (appStatus === 'czesciowo' ? DEFAULT_AMOUNT / 2 : 0),
+            status: appStatus,
+            lastPaymentDate: item.paid_at ? item.paid_at.split('T')[0] : undefined,
+          };
+        });
+      }
+      setPayments(paymentsMap);
+    } catch (err: any) {
+      console.error('Błąd pobierania płatności:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getPlayerName = (player: any) => {
     if (player.name) return player.name;
@@ -85,31 +126,65 @@ export default function FinanseScreen() {
     return { totalPaidCount, totalOverdueCount, totalCollected, percent };
   }, [filteredPlayers, payments]);
 
-  // Zmiana statusu wpłaty
-  const togglePaymentStatus = (playerId: string) => {
-    setPayments((prev) => {
-      const current = prev[playerId] || { playerId, month: selectedMonth, amountDue: 180, amountPaid: 0, status: 'zaleglosc' };
-      let newStatus: PaymentStatus = 'oplacone';
-      let newPaid = 180;
+  // Zmiana statusu wpłaty i zapis w Supabase
+  const togglePaymentStatus = async (playerId: string) => {
+    const current = payments[playerId] || { 
+      playerId, 
+      month: selectedMonth, 
+      amountDue: DEFAULT_AMOUNT, 
+      amountPaid: 0, 
+      status: 'zaleglosc' 
+    };
 
-      if (current.status === 'oplacone') {
-        newStatus = 'zaleglosc';
-        newPaid = 0;
-      } else if (current.status === 'zaleglosc') {
-        newStatus = 'czesciowo';
-        newPaid = 90;
-      }
+    let newStatus: PaymentStatus = 'oplacone';
+    let newPaid = DEFAULT_AMOUNT;
 
-      return {
-        ...prev,
-        [playerId]: {
-          ...current,
-          status: newStatus,
-          amountPaid: newPaid,
-          lastPaymentDate: newStatus === 'oplacone' ? new Date().toISOString().split('T')[0] : current.lastPaymentDate,
+    if (current.status === 'oplacone') {
+      newStatus = 'zaleglosc';
+      newPaid = 0;
+    } else if (current.status === 'zaleglosc') {
+      newStatus = 'czesciowo';
+      newPaid = DEFAULT_AMOUNT / 2;
+    } else {
+      newStatus = 'oplacone';
+      newPaid = DEFAULT_AMOUNT;
+    }
+
+    const dbStatus = newStatus === 'oplacone' ? 'PAID' : (newStatus === 'czesciowo' ? 'PENDING' : 'OVERDUE');
+    const paidAtValue = newStatus === 'oplacone' ? new Date().toISOString() : null;
+
+    setPayments((prev) => ({
+      ...prev,
+      [playerId]: {
+        ...current,
+        status: newStatus,
+        amountPaid: newPaid,
+        lastPaymentDate: newStatus === 'oplacone' ? new Date().toISOString().split('T')[0] : current.lastPaymentDate,
+      },
+    }));
+
+    try {
+      const monthNumber = 10; 
+      const yearNumber = 2026;
+
+      const { error } = await supabase.from('payments').upsert(
+        {
+          player_id: playerId,
+          month: monthNumber,
+          year: yearNumber,
+          amount: DEFAULT_AMOUNT,
+          status: dbStatus,
+          paid_at: paidAtValue,
+          updated_at: new Date().toISOString(),
         },
-      };
-    });
+        { onConflict: 'player_id,month,year' }
+      );
+
+      if (error) throw error;
+    } catch (err: any) {
+      Alert.alert('Błąd zapisu', 'Nie udało się zaktualizować płatności w bazie: ' + err.message);
+      fetchPaymentsFromSupabase();
+    }
   };
 
   const openReminderModal = (player: any) => {
@@ -121,7 +196,7 @@ export default function FinanseScreen() {
     const pName = selectedPlayerForReminder ? getPlayerName(selectedPlayerForReminder) : 'Zawodnik';
     Alert.alert(
       'Skopiowano do Schowka! 📋',
-      `Przypomnienie dla rodzica zawodnika ${pName} za miesiąc ${selectedMonth} (Kwota: 180 zł) jest gotowe do wysłania na WhatsApp.`
+      `Przypomnienie dla rodzica zawodnika ${pName} za miesiąc ${selectedMonth} (Kwota: ${DEFAULT_AMOUNT} zł) jest gotowe do wysłania na WhatsApp.`
     );
     setReminderModalVisible(false);
   };
@@ -187,70 +262,76 @@ export default function FinanseScreen() {
       </View>
 
       {/* LISTA SKŁADEK ZAWODNIKÓW */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionTitle}>
-          Lista Zawodników ({filteredPlayers.length})
-        </Text>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#2563eb" />
+        </View>
+      ) : (
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <Text style={styles.sectionTitle}>
+            Lista Zawodników ({filteredPlayers.length})
+          </Text>
 
-        {filteredPlayers.map((player: any) => {
-          const pName = getPlayerName(player);
-          const pYear = player.year || '2012';
-          const pay = payments[player.id] || {
-            playerId: player.id,
-            month: selectedMonth,
-            amountDue: 180,
-            amountPaid: 0,
-            status: 'zaleglosc',
-          };
+          {filteredPlayers.map((player: any) => {
+            const pName = getPlayerName(player);
+            const pYear = player.year || '2012';
+            const pay = payments[player.id] || {
+              playerId: player.id,
+              month: selectedMonth,
+              amountDue: DEFAULT_AMOUNT,
+              amountPaid: 0,
+              status: 'zaleglosc',
+            };
 
-          return (
-            <View key={player.id} style={styles.card}>
-              <View style={styles.cardMainRow}>
-                <View style={styles.avatarCircle}>
-                  <Text style={styles.avatarText}>#{player.number || player.id}</Text>
-                </View>
+            return (
+              <View key={player.id} style={styles.card}>
+                <View style={styles.cardMainRow}>
+                  <View style={styles.avatarCircle}>
+                    <Text style={styles.avatarText}>#{player.number || player.id.slice(0, 2)}</Text>
+                  </View>
 
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={styles.playerName}>{pName}</Text>
-                  <Text style={styles.playerMeta}>Rocznik {pYear} | Składka: 180 zł</Text>
-                </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.playerName}>{pName}</Text>
+                    <Text style={styles.playerMeta}>Rocznik {pYear} | Składka: {DEFAULT_AMOUNT} zł</Text>
+                  </View>
 
-                <TouchableOpacity
-                  style={[
-                    styles.statusBadge,
-                    pay.status === 'oplacone' && styles.statusBadgeGreen,
-                    pay.status === 'zaleglosc' && styles.statusBadgeRed,
-                    pay.status === 'czesciowo' && styles.statusBadgeYellow,
-                  ]}
-                  onPress={() => togglePaymentStatus(player.id)}
-                >
-                  <Text style={styles.statusBadgeText}>
-                    {pay.status === 'oplacone' ? 'Opłacone' : pay.status === 'zaleglosc' ? 'Zaległość' : 'Częściowo'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* STOPKA KARTY Z AKCJĄ WYSYŁANIA MONITU */}
-              {pay.status !== 'oplacone' && (
-                <View style={styles.cardFooter}>
-                  <Text style={styles.footerInfoText}>
-                    Wpłacono: {pay.amountPaid} zł / 180 zł
-                  </Text>
                   <TouchableOpacity
-                    style={styles.remindBtn}
-                    onPress={() => openReminderModal(player)}
+                    style={[
+                      styles.statusBadge,
+                      pay.status === 'oplacone' && styles.statusBadgeGreen,
+                      pay.status === 'zaleglosc' && styles.statusBadgeRed,
+                      pay.status === 'czesciowo' && styles.statusBadgeYellow,
+                    ]}
+                    onPress={() => togglePaymentStatus(player.id)}
                   >
-                    <Ionicons name="logo-whatsapp" size={13} color="#25d366" />
-                    <Text style={styles.remindBtnText}>Przypomnij rodzicowi</Text>
+                    <Text style={styles.statusBadgeText}>
+                      {pay.status === 'oplacone' ? 'Opłacone' : pay.status === 'zaleglosc' ? 'Zaległość' : 'Częściowo'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
-              )}
-            </View>
-          );
-        })}
 
-        <View style={{ height: 40 }} />
-      </ScrollView>
+                {/* STOPKA KARTY Z AKCJĄ WYSYŁANIA MONITU */}
+                {pay.status !== 'oplacone' && (
+                  <View style={styles.cardFooter}>
+                    <Text style={styles.footerInfoText}>
+                      Wpłacono: {pay.amountPaid} zł / {DEFAULT_AMOUNT} zł
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.remindBtn}
+                      onPress={() => openReminderModal(player)}
+                    >
+                      <Ionicons name="logo-whatsapp" size={13} color="#25d366" />
+                      <Text style={styles.remindBtnText}>Przypomnij rodzicowi</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      )}
 
       {/* MODAL: PRZYPOMNIENIE O SKŁADCE */}
       <Modal animationType="slide" transparent={true} visible={reminderModalVisible}>
@@ -273,7 +354,7 @@ export default function FinanseScreen() {
                   {selectedPlayerForReminder ? getPlayerName(selectedPlayerForReminder) : ''}
                 </Text>
                 .{'\n\n'}
-                Kwota do zapłaty: 180 zł.{'\n'}
+                Kwota do zapłaty: {DEFAULT_AMOUNT} zł.{'\n'}
                 Prosimy o wykonanie przelewu na konto klubu. Dziękujemy!
               </Text>
             </View>
@@ -290,7 +371,7 @@ export default function FinanseScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
+  container: { flex: 1, backgroundColor: '#f8fafc', paddingTop: 20 },
 
   header: {
     backgroundColor: '#fff',
@@ -355,6 +436,7 @@ const styles = StyleSheet.create({
 
   content: { padding: 16 },
   sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#334155', marginBottom: 12 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   card: {
     backgroundColor: '#fff',

@@ -8,21 +8,14 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { usePlayers } from './PlayersContext';
-
-interface OrderItem {
-  playerId: string;
-  playerName: string;
-  size: string;
-  number: string;
-}
 
 export default function StrojePanelScreen() {
   const { players } = usePlayers();
   
-  // Stan przechowujący zamówienia (w docelowej wersji spięte z bazą/AsyncStorage)
+  // Stan przechowujący zamówienia (klucz to ID zawodnika, wartość to rozmiar)
   const [orders, setOrders] = useState<Record<string, string>>({
-    // Przykładowo pierwszy zawodnik ma już wybrany rozmiar
     [players[0]?.id || '1']: '140',
   });
 
@@ -54,6 +47,27 @@ export default function StrojePanelScreen() {
   const summary = getSummary();
   const totalOrdered = Object.keys(orders).length;
 
+  // Funkcja kopiująca szczegółowy raport do schowka
+  const handleCopyReport = async () => {
+    let reportText = `⚽ RAPORT ZAMÓWIENIA STROJÓW\nŁącznie zamówiono: ${totalOrdered} / ${players.length}\n\nPodział na rozmiary:\n`;
+    
+    Object.entries(summary).forEach(([size, count]) => {
+      reportText += `• Rozmiar ${size}: ${count} szt.\n`;
+    });
+
+    reportText += `\nSzczegóły zawodników:\n`;
+    players.forEach((player: any) => {
+      const cleanName = (player.name || `${player.firstName || ''} ${player.lastName || ''}`).replace(/\s*\(\d{4}\)/g, '');
+      const chosenSize = orders[player.id];
+      if (chosenSize) {
+        reportText += `- ${cleanName}: ${chosenSize}\n`;
+      }
+    });
+
+    await Clipboard.setStringAsync(reportText);
+    Alert.alert('Skopiowano raport! 📋', 'Podsumowanie zamówienia zostało skopiowane do schowka i jest gotowe do wysłania.');
+  };
+
   return (
     <View style={styles.container}>
       {/* NAGŁÓWEK */}
@@ -70,7 +84,7 @@ export default function StrojePanelScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
           {players.map((player: any) => {
             const isSelected = String(player.id) === String(selectedPlayerId);
-            const cleanName = (player.name || `${player.firstName} ${player.lastName}`).replace(/\s*\(\d{4}\)/g, '');
+            const cleanName = (player.name || `${player.firstName || ''} ${player.lastName || ''}`).replace(/\s*\(\d{4}\)/g, '');
             const hasOrdered = orders[player.id];
 
             return (
@@ -90,7 +104,7 @@ export default function StrojePanelScreen() {
         {currentPlayer && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>
-              Rozmiar koszulki dla: {currentPlayer.name || `${currentPlayer.firstName} ${currentPlayer.lastName}`}
+              Rozmiar koszulki dla: {currentPlayer.name || `${currentPlayer.firstName || ''} ${currentPlayer.lastName || ''}`}
             </Text>
             <Text style={styles.cardSub}>
               Aktualnie wybrany rozmiar: <Text style={{ color: '#2563eb', fontWeight: 'bold' }}>{orders[currentPlayer.id] || 'Brak wyboru'}</Text>
@@ -137,7 +151,7 @@ export default function StrojePanelScreen() {
 
           <TouchableOpacity
             style={styles.exportBtn}
-            onPress={() => Alert.alert('Eksport raportu', 'Podsumowanie zostało skopiowane do schowka / wysłane do producenta!')}
+            onPress={handleCopyReport}
           >
             <Ionicons name="share-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
             <Text style={styles.exportBtnText}>Skopiuj raport dla hurtowni / na grupę</Text>

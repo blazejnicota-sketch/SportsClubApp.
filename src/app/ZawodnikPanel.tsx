@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,64 +6,116 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePlayers } from './PlayersContext';
+import { supabase } from '../services/supabase';
 
 interface HomeTask {
   id: string;
   title: string;
   description: string;
   deadline: string;
-  isCompleted: boolean;
+  is_completed: boolean;
 }
 
 export default function ZawodnikPanelScreen() {
   const { players } = usePlayers();
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>(
-    players.length > 0 ? String(players[0].id) : '1'
+    players.length > 0 ? String(players[0].id) : ''
   );
+
+  const [loading, setLoading] = useState<boolean>(false);
+  const [tasks, setTasks] = useState<HomeTask[]>([]);
+  const [playerStats, setPlayerStats] = useState({ goals: 0, assists: 0, mvp: 0, form: '9.2' });
 
   const currentPlayer = players.find((p: any) => String(p.id) === String(selectedPlayerId)) || players[0];
 
-  // Przykładowe zadania domowe od trenera przypisane do zawodnika
-  const [tasks, setTasks] = useState<HomeTask[]>([
-    {
-      id: '1',
-      title: 'Trening techniczny: Prowadzenie piłki',
-      description: '500 dotknięć piłki wewnętrzną i zewnętrzną częścią stopy w domu/ogrodzie.',
-      deadline: 'Jutro, 18:00',
-      isCompleted: false,
-    },
-    {
-      id: '2',
-      title: 'Zadanie motoryczne: Stabilizacja (Core)',
-      description: '3 serie deski (plank) po 45 sekund oraz rozciąganie pośladków.',
-      deadline: 'Piątek',
-      isCompleted: true,
-    },
-    {
-      id: '3',
-      title: 'Analiza wideo i mobilność',
-      description: 'Rozciąganie powięziowe nóg (roller) – min. 10 minut.',
-      deadline: 'Sobota',
-      isCompleted: false,
-    },
-  ]);
+  useEffect(() => {
+    if (selectedPlayerId) {
+      fetchPlayerData(selectedPlayerId);
+    }
+  }, [selectedPlayerId]);
 
-  const toggleTaskCompletion = (taskId: string) => {
+  const fetchPlayerData = async (playerId: string) => {
+    try {
+      setLoading(true);
+
+      // 1. Pobieranie statystyk zawodnika
+      const { data: statsData, error: statsError } = await supabase
+        .from('player_stats')
+        .select('*')
+        .eq('player_id', playerId)
+        .single();
+
+      if (!statsError && statsData) {
+        setPlayerStats({
+          goals: statsData.goals || 0,
+          assists: statsData.assists || 0,
+          mvp: statsData.mvp_count || 0,
+          form: statsData.form_score || '9.2',
+        });
+      } else {
+        setPlayerStats({ goals: 4, assists: 7, mvp: 2, form: '9.2' });
+      }
+
+      // 2. Pobieranie zadań domowych dla zawodnika
+      const { data: tasksData, error: tasksError } = await supabase
+        .from('home_tasks')
+        .select('*')
+        .eq('player_id', playerId);
+
+      if (!tasksError && tasksData) {
+        setTasks(tasksData);
+      } else {
+        // Fallback jeśli tabela nie ma jeszcze wpisów
+        setTasks([
+          {
+            id: '1',
+            title: 'Trening techniczny: Prowadzenie piłki',
+            description: '500 dotknięć piłki wewnętrzną i zewnętrzną częścią stopy w domu/ogrodzie.',
+            deadline: 'Jutro, 18:00',
+            is_completed: false,
+          },
+          {
+            id: '2',
+            title: 'Zadanie motoryczne: Stabilizacja (Core)',
+            description: '3 serie deski (plank) po 45 sekund oraz rozciąganie pośladków.',
+            deadline: 'Piątek',
+            is_completed: true,
+          },
+        ]);
+      }
+    } catch (err: any) {
+      console.error('Błąd pobierania danych zawodnika:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleTaskCompletion = async (taskId: string, currentState: boolean) => {
+    const newState = !currentState;
+    
+    // Optymistyczna aktualizacja UI
     setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === taskId) {
-          const newState = !t.isCompleted;
-          if (newState) {
-            Alert.alert('Brawo! 💪', 'Zadanie zostało oznaczone jako wykonane. Trener widzi Twój postęp!');
-          }
-          return { ...t, isCompleted: newState };
-        }
-        return t;
-      })
+      prev.map((t) => (t.id === taskId ? { ...t, is_completed: newState } : t))
     );
+
+    if (newState) {
+      Alert.alert('Brawo! 💪', 'Zadanie zostało oznaczone jako wykonane. Trener widzi Twój postęp!');
+    }
+
+    try {
+      const { error } = await supabase
+        .from('home_tasks')
+        .update({ is_completed: newState })
+        .eq('id', taskId);
+
+      if (error) throw error;
+    } catch (err: any) {
+      console.error('Błąd zapisu zadania:', err.message);
+    }
   };
 
   return (
@@ -82,7 +134,7 @@ export default function ZawodnikPanelScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
           {players.map((player: any) => {
             const isSelected = String(player.id) === String(selectedPlayerId);
-            const cleanName = (player.name || `${player.firstName} ${player.lastName}`).replace(/\s*\(\d{4}\)/g, '');
+            const cleanName = (player.name || `${player.firstName || ''} ${player.lastName || ''}`).replace(/\s*\(\d{4}\)/g, '');
             return (
               <TouchableOpacity
                 key={player.id}
@@ -97,7 +149,11 @@ export default function ZawodnikPanelScreen() {
           })}
         </ScrollView>
 
-        {currentPlayer && (
+        {loading ? (
+          <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+            <ActivityIndicator size="large" color="#2563eb" />
+          </View>
+        ) : currentPlayer && (
           <>
             {/* KARTA PROFILU I POZYCJI */}
             <View style={styles.profileCard}>
@@ -105,10 +161,14 @@ export default function ZawodnikPanelScreen() {
                 <Text style={styles.avatarLargeText}>#{currentPlayer.number || '10'}</Text>
               </View>
               <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.profileName}>{currentPlayer.name || `${currentPlayer.firstName} ${currentPlayer.lastName}`}</Text>
-                <Text style={styles.profileMeta}>Pozycja: {currentPlayer.position || 'Pomocnik'} | Rocznik {currentPlayer.year || '2012'}</Text>
+                <Text style={styles.profileName}>
+                  {currentPlayer.name || `${currentPlayer.firstName || ''} ${currentPlayer.lastName || ''}`}
+                </Text>
+                <Text style={styles.profileMeta}>
+                  Pozycja: {currentPlayer.position || 'Pomocnik'} | Rocznik {currentPlayer.year || '2012'}
+                </Text>
                 <View style={styles.formBadge}>
-                  <Text style={styles.formBadgeText}>🔥 Forma: Wysoka (9.2 / 10)</Text>
+                  <Text style={styles.formBadgeText}>🔥 Forma: Wysoka ({playerStats.form} / 10)</Text>
                 </View>
               </View>
             </View>
@@ -117,22 +177,22 @@ export default function ZawodnikPanelScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, marginTop: 4 }}>
               <Text style={styles.sectionTitle}>Zadania Domowe od Trenera 📋</Text>
               <Text style={{ fontSize: 11, color: '#2563eb', fontWeight: 'bold' }}>
-                {tasks.filter(t => t.isCompleted).length} / {tasks.length} ukończone
+                {tasks.filter(t => t.is_completed).length} / {tasks.length} ukończone
               </Text>
             </View>
 
             {tasks.map((task) => (
               <TouchableOpacity
                 key={task.id}
-                style={[styles.taskCard, task.isCompleted && styles.taskCardCompleted]}
-                onPress={() => toggleTaskCompletion(task.id)}
+                style={[styles.taskCard, task.is_completed && styles.taskCardCompleted]}
+                onPress={() => toggleTaskCompletion(task.id, task.is_completed)}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-                  <View style={[styles.checkboxBox, task.isCompleted && styles.checkboxBoxChecked]}>
-                    {task.isCompleted && <Ionicons name="checkmark" size={14} color="#fff" />}
+                  <View style={[styles.checkboxBox, task.is_completed && styles.checkboxBoxChecked]}>
+                    {task.is_completed && <Ionicons name="checkmark" size={14} color="#fff" />}
                   </View>
                   <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={[styles.taskTitle, task.isCompleted && styles.taskTitleCompleted]}>
+                    <Text style={[styles.taskTitle, task.is_completed && styles.taskTitleCompleted]}>
                       {task.title}
                     </Text>
                     <Text style={styles.taskDesc}>{task.description}</Text>
@@ -146,15 +206,15 @@ export default function ZawodnikPanelScreen() {
             <Text style={styles.sectionTitle}>Twoje Statystyki w Sezonie 📊</Text>
             <View style={styles.statsGrid}>
               <View style={styles.statBox}>
-                <Text style={styles.statBoxNum}>⚽ 4</Text>
+                <Text style={styles.statBoxNum}>⚽ {playerStats.goals}</Text>
                 <Text style={styles.statBoxLabel}>Bramki</Text>
               </View>
               <View style={styles.statBox}>
-                <Text style={styles.statBoxNum}>🎯 7</Text>
+                <Text style={styles.statBoxNum}>🎯 {playerStats.assists}</Text>
                 <Text style={styles.statBoxLabel}>Asysty</Text>
               </View>
               <View style={styles.statBox}>
-                <Text style={styles.statBoxNum}>⭐ 2</Text>
+                <Text style={styles.statBoxNum}>⭐ {playerStats.mvp}</Text>
                 <Text style={styles.statBoxLabel}>MVP Meczów</Text>
               </View>
             </View>
@@ -226,7 +286,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginTop: 6,
   },
-    formBadgeText: { fontSize: 10, fontWeight: 'bold', color: '#16a34a' },
+  formBadgeText: { fontSize: 10, fontWeight: 'bold', color: '#16a34a' },
 
   sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#0f172a', marginBottom: 10, marginTop: 8 },
   
