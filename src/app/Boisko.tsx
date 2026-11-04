@@ -10,7 +10,7 @@ import {
   TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { usePlayers, Player } from './PlayersContext';
+import { usePlayers, Player } from '../components/PlayersContext';
 
 type GameFormat = '5v5' | '7v7' | '9v9' | '11v11';
 type ActiveTab = 'pitch' | 'matchLive';

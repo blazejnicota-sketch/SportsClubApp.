@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { MOCK_100_PLAYERS, Player } from './data/mockPlayers';
+import { MOCK_100_PLAYERS, Player } from '../data/mockPlayers';
 
 export default function TestyScreen() {
   const [playersList, setPlayersList] = useState<Player[]>(MOCK_100_PLAYERS);

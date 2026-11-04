@@ -9,7 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { notificationService } from './notificationService';
+import { notificationService } from '../services/notificationService';
 
 export default function UstawieniaScreen() {
   const [pushEnabled, setPushEnabled] = useState<boolean>(true);

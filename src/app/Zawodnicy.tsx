@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { usePlayers, Player } from './PlayersContext'; // Pobieramy ze wspólnego kontekstu
+import { usePlayers, Player } from '../components/PlayersContext'; // Pobieramy ze wspólnego kontekstu
 
 const MOTORMETIC_TESTS = [
   'Bieg na 30m (s)',

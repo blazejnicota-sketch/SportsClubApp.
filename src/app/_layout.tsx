@@ -2,7 +2,7 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet } from 'react-native';
-import { PlayersProvider } from './PlayersContext';
+import { PlayersProvider } from '../components/PlayersContext';
 
 export default function RootLayout() {
   return (

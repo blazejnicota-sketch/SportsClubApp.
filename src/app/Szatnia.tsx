@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { usePlayers, Player } from './PlayersContext';
+import { usePlayers, Player } from '../components/PlayersContext';
 
 type SubTab = 'motoryka' | 'zdrowie' | 'notatki';
 type PositionFilter = 'WSZYSTKIE' | 'Bramkarz' | 'Obrońca' | 'Pomocnik' | 'Napastnik';

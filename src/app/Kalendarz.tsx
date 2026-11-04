@@ -14,8 +14,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { usePlayers } from './PlayersContext';
-import { notificationService } from './notificationService';
+import { usePlayers } from '../components/PlayersContext';
+import { notificationService } from '../services/notificationService';
 
 type ViewMode = 'miesiac' | 'tydzien' | 'lista';
 type AttendanceStatus = 'present' | 'pending' | 'absent';
