@@ -14,6 +14,8 @@ export interface Player {
   preferredFoot?: 'Lewa' | 'Prawa' | 'Obie';
   healthStatus?: 'Zdrowy' | 'Kontuzja' | 'Rehabilitacja' | 'Chory';
   parentPhone?: string;
+  inviteCode?: string;      // 🔑 Kod zaproszenia dla rodzica
+  parentId?: string | null; // 🔗 ID powiązanego konta rodzica w Supabase
   sprint30m: string;
   jumpCm: number;
   beepTest: string;
@@ -52,7 +54,7 @@ export function PlayersProvider({ children }: { children: React.ReactNode }) {
         const { data: remoteData, error } = await supabase.from('players').select('*');
 
         if (!error && remoteData && remoteData.length > 0) {
-          // Mapowanie danych z bazy (jeśli kolumny w bazie różnią się nieco nazwą)
+          // Mapowanie danych z bazy z uwzględnieniem pól zaproszeń i powiązań rodzica
           const formattedRemote: Player[] = remoteData.map((p: any) => ({
             id: String(p.id),
             firstName: p.first_name || p.firstName || '',
@@ -64,6 +66,8 @@ export function PlayersProvider({ children }: { children: React.ReactNode }) {
             preferredFoot: p.preferred_foot || 'Prawa',
             healthStatus: p.health_status || 'Zdrowy',
             parentPhone: p.parent_phone || '',
+            inviteCode: p.invite_code || p.inviteCode || undefined,
+            parentId: p.parent_id || p.parentId || null,
             sprint30m: p.sprint_30m || '4.50',
             jumpCm: p.jump_cm || 200,
             beepTest: p.beep_test || '7.0',
@@ -101,6 +105,8 @@ export function PlayersProvider({ children }: { children: React.ReactNode }) {
             preferredFoot: 'Prawa',
             healthStatus: 'Zdrowy',
             parentPhone: '+48 500 600 70',
+            inviteCode: undefined,
+            parentId: null,
             sprint30m: '4.50',
             jumpCm: 200,
             beepTest: '7.0',
@@ -129,7 +135,7 @@ export function PlayersProvider({ children }: { children: React.ReactNode }) {
     loadPlayers();
   }, []);
 
-  // Pomocnicza funkcja zapisu lokalnego
+  // Pomocnicza funkcja zapisu lokalnego i zdalnego (z obsługą invite_code i parent_id)
   const saveToLocalAndRemote = async (updatedPlayers: Player[], actionType: 'add' | 'update' | 'remove', targetPlayer?: Player) => {
     setPlayers(updatedPlayers);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedPlayers));
@@ -147,6 +153,8 @@ export function PlayersProvider({ children }: { children: React.ReactNode }) {
           position: targetPlayer.position,
           health_status: targetPlayer.healthStatus,
           parent_phone: targetPlayer.parentPhone,
+          invite_code: targetPlayer.inviteCode,
+          parent_id: targetPlayer.parentId,
         }]);
       } else if (actionType === 'update' && targetPlayer) {
         await supabase.from('players').update({
@@ -158,6 +166,8 @@ export function PlayersProvider({ children }: { children: React.ReactNode }) {
           position: targetPlayer.position,
           health_status: targetPlayer.healthStatus,
           parent_phone: targetPlayer.parentPhone,
+          invite_code: targetPlayer.inviteCode,
+          parent_id: targetPlayer.parentId,
         }).eq('id', targetPlayer.id);
       } else if (actionType === 'remove' && targetPlayer) {
         await supabase.from('players').delete().eq('id', targetPlayer.id);
@@ -179,6 +189,8 @@ export function PlayersProvider({ children }: { children: React.ReactNode }) {
       preferredFoot: 'Prawa',
       healthStatus: 'Zdrowy',
       parentPhone: '+48 500 000 00',
+      inviteCode: undefined,
+      parentId: null,
       sprint30m: '4.50',
       jumpCm: 200,
       beepTest: '7.0',
