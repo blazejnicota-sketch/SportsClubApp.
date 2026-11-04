@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,9 @@ import {
   Alert,
   ScrollView,
   SafeAreaView,
-  FlatList,
+  ActivityIndicator,
 } from 'react-native';
+import { supabase } from '../services/supabase';
 
 interface RodzicPanelProps {
   onBack?: () => void;
@@ -42,22 +43,62 @@ const MOCK_NOTICES: Notice[] = [
 
 export const RodzicPanel: React.FC<RodzicPanelProps> = ({ onBack }) => {
   const [inviteCode, setInviteCode] = useState('');
-  const [isConnected, setIsConnected] = useState(true); // Domyślnie połączony na start
+  const [loading, setLoading] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'attendance' | 'payments' | 'gear'>('home');
 
   const [connectedPlayer, setConnectedPlayer] = useState<{
+    id: string;
     name: string;
     team: string;
     club: string;
     code: string;
-  }>({
-    name: 'Jan Kowalski',
-    team: 'Orliki (Rocznik 2014)',
-    club: 'WKS Wieluń',
-    code: 'ORLY-8492',
-  });
+  } | null>(null);
 
-  const handleVerifyCode = () => {
+  // Sprawdzanie przy starcie, czy rodzic ma już powiązanego zawodnika w Supabase
+  useEffect(() => {
+    checkLinkedPlayer();
+  }, []);
+
+  const checkLinkedPlayer = async () => {
+    setLoading(true);
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData?.user) {
+        setLoading(false);
+        return;
+      }
+
+      const parentId = authData.user.id;
+
+      // Szukamy w bazie zawodnika powiązanego z tym kontem rodzica
+      const { data: player, error: playerError } = await supabase
+        .from('players')
+        .select('*')
+        .eq('parent_id', parentId)
+        .maybeSingle();
+
+      if (!playerError && player) {
+        setIsConnected(true);
+        setConnectedPlayer({
+          id: player.id,
+          name: `${player.first_name || ''} ${player.last_name || ''}`.trim(),
+          team: `Rocznik ${player.year || '2012'}`,
+          club: 'WKS Wieluń',
+          code: player.invite_code || 'Brak kodu',
+        });
+      } else {
+        setIsConnected(false);
+        setConnectedPlayer(null);
+      }
+    } catch (err) {
+      console.error('Błąd pobierania powiązanego zawodnika:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async () => {
     const cleanCode = inviteCode.trim().toUpperCase();
 
     if (!cleanCode) {
@@ -65,21 +106,59 @@ export const RodzicPanel: React.FC<RodzicPanelProps> = ({ onBack }) => {
       return;
     }
 
-    if (cleanCode.length < 4) {
-      Alert.alert('Błąd', 'Wprowadzony kod zaproszenia jest zbyt krótki.');
-      return;
+    setLoading(true);
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData?.user) {
+        Alert.alert('Błąd', 'Musisz być zalogowany, aby powiązać konto.');
+        setLoading(false);
+        return;
+      }
+
+      const parentId = authData.user.id;
+
+      // 1. Sprawdzamy czy zawodnik z takim kodem istnieje w bazie
+      const { data: player, error: fetchError } = await supabase
+        .from('players')
+        .select('*')
+        .eq('invite_code', cleanCode)
+        .maybeSingle();
+
+      if (fetchError || !player) {
+        Alert.alert('Nie znaleziono', 'Podany kod zaproszenia jest nieprawidłowy lub nie istnieje w bazie.');
+        setLoading(false);
+        return;
+      }
+
+      // 2. Przypisujemy parent_id do rekordu zawodnika w Supabase
+      const { error: updateError } = await supabase
+        .from('players')
+        .update({ parent_id: parentId })
+        .eq('id', player.id);
+
+      if (updateError) {
+        Alert.alert('Błąd', 'Nie udało się powiązać konta w bazie danych.');
+        setLoading(false);
+        return;
+      }
+
+      setIsConnected(true);
+      setConnectedPlayer({
+        id: player.id,
+        name: `${player.first_name || ''} ${player.last_name || ''}`.trim(),
+        team: `Rocznik ${player.year || '2012'}`,
+        club: 'WKS Wieluń',
+        code: cleanCode,
+      });
+
+      Alert.alert('Sukces!', `Pomyślnie powiązano profil zawodnika: ${player.first_name} ${player.last_name}[cite: 1]`);
+      setInviteCode('');
+    } catch (err) {
+      console.error('Błąd weryfikacji kodu:', err);
+      Alert.alert('Błąd', 'Wystąpił błąd podczas łączenia z bazą.');
+    } finally {
+      setLoading(false);
     }
-
-    setIsConnected(true);
-    setConnectedPlayer({
-      name: 'Jan Kowalski',
-      team: 'Orliki (Rocznik 2014)',
-      club: 'WKS Wieluń',
-      code: cleanCode,
-    });
-
-    Alert.alert('Sukces!', `Pomyślnie powiązano profil zawodnika za pomocą kodu: ${cleanCode}`);
-    setInviteCode('');
   };
 
   const handleDisconnect = () => {
@@ -91,13 +170,43 @@ export const RodzicPanel: React.FC<RodzicPanelProps> = ({ onBack }) => {
         {
           text: 'Odłącz',
           style: 'destructive',
-          onPress: () => {
-            setIsConnected(false);
+          onPress: async () => {
+            if (!connectedPlayer) return;
+            setLoading(true);
+            try {
+              const { error } = await supabase
+                .from('players')
+                .update({ parent_id: null })
+                .eq('id', connectedPlayer.id);
+
+              if (!error) {
+                setIsConnected(false);
+                setConnectedPlayer(null);
+                Alert.alert('Rozłączono', 'Konto zostało pomyślnie odpięte od profilu dziecka.');
+              } else {
+                Alert.alert('Błąd', 'Nie udało się odłączyć profilu.');
+              }
+            } catch (err) {
+              console.error('Błąd rozłączania:', err);
+            } finally {
+              setLoading(false);
+            }
           },
         },
       ]
     );
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color="#3b82f6" />
+          <Text style={{ color: '#9ca3af', marginTop: 12 }}>Ładowanie strefy rodzica...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -120,17 +229,18 @@ export const RodzicPanel: React.FC<RodzicPanelProps> = ({ onBack }) => {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Dołącz do drużyny</Text>
             <Text style={styles.cardSubtitle}>
-              Wprowadź unikalny kod zaproszenia wygenerowany przez trenera w zakładce kadry, aby uzyskać dostęp do składu, obecności i opłat.
+              Wprowadź unikalny kod zaproszenia wygenerowany przez trenera w zakładce kadry, aby uzyskać dostęp do składu, obecności i opłat[cite: 1].
             </Text>
 
             <TextInput
               style={styles.input}
-              placeholder="np. ORLY-8492"
+              placeholder="np. K7X9PL"
               placeholderTextColor="#777777"
               value={inviteCode}
               onChangeText={setInviteCode}
               autoCapitalize="characters"
               autoCorrect={false}
+              maxLength={8}
             />
 
             <TouchableOpacity style={styles.primaryButton} onPress={handleVerifyCode}>
@@ -144,9 +254,9 @@ export const RodzicPanel: React.FC<RodzicPanelProps> = ({ onBack }) => {
             <View style={styles.playerCard}>
               <View style={styles.playerHeader}>
                 <View>
-                  <Text style={styles.playerName}>{connectedPlayer.name}</Text>
+                  <Text style={styles.playerName}>{connectedPlayer?.name}</Text>
                   <Text style={styles.playerDetails}>
-                    {connectedPlayer.club} • {connectedPlayer.team}
+                    {connectedPlayer?.club} • {connectedPlayer?.team}
                   </Text>
                 </View>
                 <View style={styles.badgeActive}>
@@ -156,7 +266,7 @@ export const RodzicPanel: React.FC<RodzicPanelProps> = ({ onBack }) => {
 
               <View style={styles.codeRow}>
                 <Text style={styles.codeRowLabel}>Kod przypisania:</Text>
-                <Text style={styles.codeRowValue}>{connectedPlayer.code}</Text>
+                <Text style={styles.codeRowValue}>{connectedPlayer?.code}</Text>
               </View>
 
               <TouchableOpacity style={styles.disconnectLink} onPress={handleDisconnect}>
@@ -254,6 +364,12 @@ export const RodzicPanel: React.FC<RodzicPanelProps> = ({ onBack }) => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    backgroundColor: '#121212',
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: '#121212',
   },
   container: {
@@ -527,5 +643,4 @@ const styles = StyleSheet.create({
   },
 });
 
-// EKSPORT DOMYŚLNY (Dzięki temu index.tsx od razu przestanie zgłaszać błąd ts(1192))
 export default RodzicPanel;
