@@ -16,6 +16,7 @@ import { supabase } from '../services/supabase';
 
 type PaymentStatus = 'oplacone' | 'zaleglosc' | 'czesciowo';
 type YearFilter = 'WSZYSTKIE' | '2012' | '2013' | '2014';
+type FinanseTab = 'skladki' | 'indywidualne';
 
 interface PaymentRecord {
   id?: string;
@@ -27,9 +28,18 @@ interface PaymentRecord {
   lastPaymentDate?: string;
 }
 
+interface IndividualPayment {
+  id: string;
+  playerName: string;
+  date: string;
+  amount: number;
+  status: 'Opłacone' | 'Oczekuje';
+}
+
 export default function FinanseScreen() {
   const { players } = usePlayers();
 
+  const [activeTab, setActiveTab] = useState<FinanseTab>('skladki');
   const [selectedYear, setSelectedYear] = useState<YearFilter>('WSZYSTKIE');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedMonth, setSelectedMonth] = useState<string>('Październik 2026');
@@ -39,8 +49,14 @@ export default function FinanseScreen() {
   const [reminderModalVisible, setReminderModalVisible] = useState<boolean>(false);
   const [selectedPlayerForReminder, setSelectedPlayerForReminder] = useState<any>(null);
 
-  // Stan płatności pobierany z Supabase (klucz to ID zawodnika)
+  // Stan płatności składek pobierany z Supabase (klucz to ID zawodnika)
   const [payments, setPayments] = useState<{ [playerId: string]: PaymentRecord }>({});
+
+  // Stan płatności za treningi indywidualne (1-on-1)
+  const [individualPayments, setIndividualPayments] = useState<IndividualPayment[]>([
+    { id: '1', playerName: 'Kuba Nowak (Spoza listy)', date: '05.11.2026', amount: 100, status: 'Opłacone' },
+    { id: '2', playerName: 'Michał Wiśniewski', date: '05.11.2026', amount: 100, status: 'Oczekuje' },
+  ]);
 
   const DEFAULT_AMOUNT = 180;
 
@@ -106,7 +122,7 @@ export default function FinanseScreen() {
     });
   }, [players, searchQuery, selectedYear]);
 
-  // Statystyki finansowe
+  // Statystyki finansowe składek
   const stats = useMemo(() => {
     let totalPaidCount = 0;
     let totalOverdueCount = 0;
@@ -126,7 +142,18 @@ export default function FinanseScreen() {
     return { totalPaidCount, totalOverdueCount, totalCollected, percent };
   }, [filteredPlayers, payments]);
 
-  // Zmiana statusu wpłaty i zapis w Supabase
+  // Statystyki treningów indywidualnych
+  const individualStats = useMemo(() => {
+    let collected = 0;
+    let pendingCount = 0;
+    individualPayments.forEach(item => {
+      if (item.status === 'Opłacone') collected += item.amount;
+      else pendingCount++;
+    });
+    return { collected, pendingCount };
+  }, [individualPayments]);
+
+  // Zmiana statusu wpłaty składki i zapis w Supabase
   const togglePaymentStatus = async (playerId: string) => {
     const current = payments[playerId] || { 
       playerId, 
@@ -187,6 +214,20 @@ export default function FinanseScreen() {
     }
   };
 
+  // Zmiana statusu płatności za trening indywidualny
+  const toggleIndividualStatus = (id: string) => {
+    setIndividualPayments(prev =>
+      prev.map(item => {
+        if (item.id === id) {
+          const newStatus = item.status === 'Opłacone' ? 'Oczekuje' : 'Opłacone';
+          Alert.alert('Status zmieniony', `Płatność dla ${item.playerName} oznaczona jako: ${newStatus}`);
+          return { ...item, status: newStatus };
+        }
+        return item;
+      })
+    );
+  };
+
   const openReminderModal = (player: any) => {
     setSelectedPlayerForReminder(player);
     setReminderModalVisible(true);
@@ -206,129 +247,193 @@ export default function FinanseScreen() {
       {/* NAGŁÓWEK */}
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Finanse i Składki Klubowe</Text>
+          <Text style={styles.headerTitle}>Finanse i Rozliczenia Akademii 💳</Text>
           <Text style={styles.headerSubtitle}>
-            Ewidencja wpłat miesięcznych za okres: {selectedMonth}
+            {activeTab === 'skladki' ? `Ewidencja wpłat miesięcznych: ${selectedMonth}` : 'Kontrola opłat za treningi 1-on-1'}
           </Text>
         </View>
+      </View>
+
+      {/* PRZEŁĄCZNIK ZAKŁADEK FINANSOWYCH */}
+      <View style={styles.tabRow}>
+        <TouchableOpacity
+          style={[styles.tabBtn, activeTab === 'skladki' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('skladki')}
+        >
+          <Text style={[styles.tabBtnText, activeTab === 'skladki' && styles.tabBtnTextActive]}>
+            Składki członkowskie
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabBtn, activeTab === 'indywidualne' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('indywidualne')}
+        >
+          <Text style={[styles.tabBtnText, activeTab === 'indywidualne' && styles.tabBtnTextActive]}>
+            Rozliczenia 1-on-1
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* KARTY STATYSTYK FINANSOWYCH */}
-      <View style={styles.statsCardRow}>
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Zebrane środki</Text>
-          <Text style={[styles.statValue, { color: '#16a34a' }]}>{stats.totalCollected} zł</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Opłacone</Text>
-          <Text style={[styles.statValue, { color: '#2563eb' }]}>{stats.percent}%</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Zaległości</Text>
-          <Text style={[styles.statValue, { color: '#dc2626' }]}>{stats.totalOverdueCount} os.</Text>
-        </View>
-      </View>
-
-      {/* FILTRY ROCZNIKÓW I WYSZUKIWARKA */}
-      <View style={styles.filtersSection}>
-        <View style={styles.searchBar}>
-          <Ionicons name="search-outline" size={16} color="#94a3b8" style={{ marginRight: 6 }} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Szukaj zawodnika..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholderTextColor="#94a3b8"
-          />
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-          <Text style={styles.filterGroupLabel}>Rocznik:</Text>
-          {(['WSZYSTKIE', '2012', '2013', '2014'] as YearFilter[]).map((yr) => (
-            <TouchableOpacity
-              key={yr}
-              style={[
-                styles.chipFilter,
-                selectedYear === yr && styles.chipFilterActive,
-              ]}
-              onPress={() => setSelectedYear(yr)}
-            >
-              <Text style={[styles.chipText, selectedYear === yr && styles.chipTextActive]}>
-                {yr}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      {/* LISTA SKŁADEK ZAWODNIKÓW */}
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563eb" />
+      {activeTab === 'skladki' ? (
+        <View style={styles.statsCardRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Zebrane środki</Text>
+            <Text style={[styles.statValue, { color: '#16a34a' }]}>{stats.totalCollected} zł</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Opłacone</Text>
+            <Text style={[styles.statValue, { color: '#2563eb' }]}>{stats.percent}%</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Zaległości</Text>
+            <Text style={[styles.statValue, { color: '#dc2626' }]}>{stats.totalOverdueCount} os.</Text>
+          </View>
         </View>
       ) : (
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          <Text style={styles.sectionTitle}>
-            Lista Zawodników ({filteredPlayers.length})
-          </Text>
+        <View style={styles.statsCardRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Przychody 1-on-1</Text>
+            <Text style={[styles.statValue, { color: '#16a34a' }]}>{individualStats.collected} zł</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Oczekujące płatności</Text>
+            <Text style={[styles.statValue, { color: '#f59e0b' }]}>{individualStats.pendingCount} os.</Text>
+          </View>
+        </View>
+      )}
 
-          {filteredPlayers.map((player: any) => {
-            const pName = getPlayerName(player);
-            const pYear = player.year || '2012';
-            const pay = payments[player.id] || {
-              playerId: player.id,
-              month: selectedMonth,
-              amountDue: DEFAULT_AMOUNT,
-              amountPaid: 0,
-              status: 'zaleglosc',
-            };
+      {/* FILTRY (TYLKO DLA SKŁADEK) */}
+      {activeTab === 'skladki' && (
+        <View style={styles.filtersSection}>
+          <View style={styles.searchBar}>
+            <Ionicons name="search-outline" size={16} color="#94a3b8" style={{ marginRight: 6 }} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Szukaj zawodnika..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholderTextColor="#94a3b8"
+            />
+          </View>
 
-            return (
-              <View key={player.id} style={styles.card}>
-                <View style={styles.cardMainRow}>
-                  <View style={styles.avatarCircle}>
-                    <Text style={styles.avatarText}>#{player.number || player.id.slice(0, 2)}</Text>
-                  </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+            <Text style={styles.filterGroupLabel}>Rocznik:</Text>
+            {(['WSZYSTKIE', '2012', '2013', '2014'] as YearFilter[]).map((yr) => (
+              <TouchableOpacity
+                key={yr}
+                style={[
+                  styles.chipFilter,
+                  selectedYear === yr && styles.chipFilterActive,
+                ]}
+                onPress={() => setSelectedYear(yr)}
+              >
+                <Text style={[styles.chipText, selectedYear === yr && styles.chipTextActive]}>
+                  {yr}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={styles.playerName}>{pName}</Text>
-                    <Text style={styles.playerMeta}>Rocznik {pYear} | Składka: {DEFAULT_AMOUNT} zł</Text>
-                  </View>
+      {/* ZAWARTOŚĆ GŁÓWNA */}
+      {activeTab === 'skladki' ? (
+        loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#2563eb" />
+          </View>
+        ) : (
+          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            <Text style={styles.sectionTitle}>
+              Lista Zawodników ({filteredPlayers.length})
+            </Text>
 
-                  <TouchableOpacity
-                    style={[
-                      styles.statusBadge,
-                      pay.status === 'oplacone' && styles.statusBadgeGreen,
-                      pay.status === 'zaleglosc' && styles.statusBadgeRed,
-                      pay.status === 'czesciowo' && styles.statusBadgeYellow,
-                    ]}
-                    onPress={() => togglePaymentStatus(player.id)}
-                  >
-                    <Text style={styles.statusBadgeText}>
-                      {pay.status === 'oplacone' ? 'Opłacone' : pay.status === 'zaleglosc' ? 'Zaległość' : 'Częściowo'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+            {filteredPlayers.map((player: any) => {
+              const pName = getPlayerName(player);
+              const pYear = player.year || '2012';
+              const pay = payments[player.id] || {
+                playerId: player.id,
+                month: selectedMonth,
+                amountDue: DEFAULT_AMOUNT,
+                amountPaid: 0,
+                status: 'zaleglosc',
+              };
 
-                {/* STOPKA KARTY Z AKCJĄ WYSYŁANIA MONITU */}
-                {pay.status !== 'oplacone' && (
-                  <View style={styles.cardFooter}>
-                    <Text style={styles.footerInfoText}>
-                      Wpłacono: {pay.amountPaid} zł / {DEFAULT_AMOUNT} zł
-                    </Text>
+              return (
+                <View key={player.id} style={styles.card}>
+                  <View style={styles.cardMainRow}>
+                    <View style={styles.avatarCircle}>
+                      <Text style={styles.avatarText}>#{player.number || player.id.slice(0, 2)}</Text>
+                    </View>
+
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={styles.playerName}>{pName}</Text>
+                      <Text style={styles.playerMeta}>Rocznik {pYear} | Składka: {DEFAULT_AMOUNT} zł</Text>
+                    </View>
+
                     <TouchableOpacity
-                      style={styles.remindBtn}
-                      onPress={() => openReminderModal(player)}
+                      style={[
+                        styles.statusBadge,
+                        pay.status === 'oplacone' && styles.statusBadgeGreen,
+                        pay.status === 'zaleglosc' && styles.statusBadgeRed,
+                        pay.status === 'czesciowo' && styles.statusBadgeYellow,
+                      ]}
+                      onPress={() => togglePaymentStatus(player.id)}
                     >
-                      <Ionicons name="logo-whatsapp" size={13} color="#25d366" />
-                      <Text style={styles.remindBtnText}>Przypomnij rodzicowi</Text>
+                      <Text style={styles.statusBadgeText}>
+                        {pay.status === 'oplacone' ? 'Opłacone' : pay.status === 'zaleglosc' ? 'Zaległość' : 'Częściowo'}
+                      </Text>
                     </TouchableOpacity>
                   </View>
-                )}
-              </View>
-            );
-          })}
 
+                  {pay.status !== 'oplacone' && (
+                    <View style={styles.cardFooter}>
+                      <Text style={styles.footerInfoText}>
+                        Wpłacono: {pay.amountPaid} zł / {DEFAULT_AMOUNT} zł
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.remindBtn}
+                        onPress={() => openReminderModal(player)}
+                      >
+                        <Ionicons name="logo-whatsapp" size={13} color="#25d366" />
+                        <Text style={styles.remindBtnText}>Przypomnij rodzicowi</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+            <View style={{ height: 40 }} />
+          </ScrollView>
+        )
+      ) : (
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <Text style={styles.sectionTitle}>Płatności za sesje prywatne 1-on-1</Text>
+
+          {individualPayments.map((item) => (
+            <View key={item.id} style={styles.card}>
+              <View style={styles.cardMainRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.playerName}>{item.playerName}</Text>
+                  <Text style={styles.playerMeta}>Data: {item.date} • Kwota: <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>{item.amount} PLN</Text></Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.statusBadge,
+                    item.status === 'Opłacone' ? styles.statusBadgeGreen : styles.statusBadgeYellow,
+                  ]}
+                  onPress={() => toggleIndividualStatus(item.id)}
+                >
+                  <Text style={styles.statusBadgeText}>
+                    {item.status} (Zmień)
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
           <View style={{ height: 40 }} />
         </ScrollView>
       )}
@@ -371,7 +476,7 @@ export default function FinanseScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc', paddingTop: 20 },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
 
   header: {
     backgroundColor: '#fff',
@@ -383,6 +488,25 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#0f172a' },
   headerSubtitle: { fontSize: 12, color: '#64748b', marginTop: 2 },
+
+  tabRow: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    marginHorizontal: 4,
+  },
+  tabBtnActive: { backgroundColor: '#2563eb' },
+  tabBtnText: { fontSize: 12, fontWeight: 'bold', color: '#475569' },
+  tabBtnTextActive: { color: '#fff' },
 
   statsCardRow: {
     flexDirection: 'row',
@@ -436,7 +560,7 @@ const styles = StyleSheet.create({
 
   content: { padding: 16 },
   sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#334155', marginBottom: 12 },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40 },
 
   card: {
     backgroundColor: '#fff',

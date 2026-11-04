@@ -2,364 +2,395 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
+  StyleSheet,
   SafeAreaView,
   Platform,
   StatusBar,
+  Modal,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
-// Importujemy panele ról oraz moduły z folderu components
+// Import wszystkich modułów i ekranów aplikacji
 import ZawodnikPanelScreen from '../components/ZawodnikPanel';
-import RodzicPanelScreen from '../components/RodzicPanel';
+import RodzicPanel from '../components/RodzicPanel';
 import StrojePanel from '../components/StrojePanel';
 import Finanse from '../components/Finanse';
 import Raporty from '../components/Raporty';
+import TreningiIndywidualnePanel from '../components/TreningiIndywidualne';
+import { usePlayers } from '../components/PlayersContext';
 
 type UserRole = 'trener' | 'zawodnik' | 'rodzic';
-type ActiveModule = 'home' | 'stroje' | 'finanse' | 'raporty';
+type ActiveModule = 'home' | 'boisko' | 'szatnia' | 'kalendarz' | 'zawodnicy' | 'stroje' | 'finanse' | 'raporty' | 'treningi';
+
+const { width } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { players } = usePlayers();
+
+  // Stany główne aplikacji
   const [currentRole, setCurrentRole] = useState<UserRole>('trener');
   const [activeModule, setActiveModule] = useState<ActiveModule>('home');
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  // Funkcja do powrotu do głównego Centrum Dowodzenia
-  const handleBackToHome = () => {
-    setActiveModule('home');
+  // Przykładowe statystyki do pulpitu głównego trenera
+  const teamStats = {
+    totalPlayers: players.length || 16,
+    upcomingMatches: 2,
+    unpaidFees: 3,
+    nextTraining: 'Czwartek, 18:30',
   };
 
   return (
-    <SafeAreaView style={styles.safeContainer}>
-      {/* GÓRNY PASEK WYBORU ROLI (Widoczny tylko gdy jesteśmy na głównym ekranie trenera lub zmieniamy role) */}
-      <View style={styles.roleSwitchContainer}>
-        <TouchableOpacity
-          style={[styles.roleTab, currentRole === 'trener' && styles.roleTabActive]}
-          onPress={() => {
-            setCurrentRole('trener');
-            setActiveModule('home');
-          }}
-        >
-          <Text style={[styles.roleTabText, currentRole === 'trener' && styles.roleTabTextActive]}>
-            Trener
-          </Text>
-        </TouchableOpacity>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
 
-        <TouchableOpacity
-          style={[styles.roleTab, currentRole === 'zawodnik' && styles.roleTabActive]}
-          onPress={() => {
-            setCurrentRole('zawodnik');
-            setActiveModule('home');
-          }}
-        >
-          <Text style={[styles.roleTabText, currentRole === 'zawodnik' && styles.roleTabTextActive]}>
-            Zawodnik
-          </Text>
-        </TouchableOpacity>
+      {/* GÓRNY PASEK NAWIGACYJNY / WYBÓR ROLI */}
+      <View style={styles.topBar}>
+        <View style={styles.brandContainer}>
+          <Ionicons name="shield-outline" size={24} color="#3b82f6" />
+          <Text style={styles.brandTitle}>SportsClub App</Text>
+        </View>
 
-        <TouchableOpacity
-          style={[styles.roleTab, currentRole === 'rodzic' && styles.roleTabActive]}
-          onPress={() => {
-            setCurrentRole('rodzic');
-            setActiveModule('home');
-          }}
-        >
-          <Text style={[styles.roleTabText, currentRole === 'rodzic' && styles.roleTabTextActive]}>
-            Rodzice
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.roleSelectorRow}>
+          <TouchableOpacity
+            style={[styles.roleChip, currentRole === 'trener' && styles.roleChipActive]}
+            onPress={() => {
+              setCurrentRole('trener');
+              setActiveModule('home');
+            }}
+          >
+            <Text style={[styles.roleChipText, currentRole === 'trener' && styles.roleChipTextActive]}>
+              Trener
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.roleChip, currentRole === 'rodzic' && styles.roleChipActive]}
+            onPress={() => {
+              setCurrentRole('rodzic');
+              setActiveModule('home');
+            }}
+          >
+            <Text style={[styles.roleChipText, currentRole === 'rodzic' && styles.roleChipTextActive]}>
+              Rodzic
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* RENDEROWANIE ZAWARTOŚCI DLA ROLI TRENERA Z UWZGLĘDNIENIEM AKTYWNEGO MODUŁU */}
-      {currentRole === 'trener' && activeModule === 'home' && (
-        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-          {/* NAGŁÓWEK Z BANNEREM POWITALNYM */}
-          <View style={styles.headerBanner}>
-            <View style={styles.headerTextGroup}>
-              <Text style={styles.welcomeSubtitle}>Witaj ponownie 👋</Text>
-              <Text style={styles.welcomeTitle}>Trenerze Macieju</Text>
-              <Text style={styles.teamTag}>UKS Sparta • Rocznik 2012/2013</Text>
-            </View>
-            <View style={styles.headerIconBox}>
-              <Ionicons name="football" size={28} color="#2563eb" />
-            </View>
+      {/* GŁÓWNA ZAWARTOŚĆ W ZALEŻNOŚCI OD ROLI */}
+      {currentRole === 'rodzic' ? (
+        <RodzicPanel />
+      ) : (
+        <View style={styles.mainContainer}>
+          {/* PASSE-PARTOUT MENU MODUŁÓW TRENERA */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.moduleNavScroll}
+            contentContainerStyle={styles.moduleNavContent}
+          >
+            <TouchableOpacity
+              style={[styles.moduleTab, activeModule === 'home' && styles.moduleTabActive]}
+              onPress={() => setActiveModule('home')}
+            >
+              <Ionicons name="home-outline" size={16} color={activeModule === 'home' ? '#fff' : '#64748b'} />
+              <Text style={[styles.moduleTabText, activeModule === 'home' && styles.moduleTabTextActive]}>Start</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.moduleTab, activeModule === 'treningi' && styles.moduleTabActive]}
+              onPress={() => setActiveModule('treningi')}
+            >
+              <Ionicons name="fitness-outline" size={16} color={activeModule === 'treningi' ? '#fff' : '#64748b'} />
+              <Text style={[styles.moduleTabText, activeModule === 'treningi' && styles.moduleTabTextActive]}>1-on-1</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.moduleTab, activeModule === 'stroje' && styles.moduleTabActive]}
+              onPress={() => setActiveModule('stroje')}
+            >
+              <Ionicons name="shirt-outline" size={16} color={activeModule === 'stroje' ? '#fff' : '#64748b'} />
+              <Text style={[styles.moduleTabText, activeModule === 'stroje' && styles.moduleTabTextActive]}>Stroje</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.moduleTab, activeModule === 'finanse' && styles.moduleTabActive]}
+              onPress={() => setActiveModule('finanse')}
+            >
+              <Ionicons name="wallet-outline" size={16} color={activeModule === 'finanse' ? '#fff' : '#64748b'} />
+              <Text style={[styles.moduleTabText, activeModule === 'finanse' && styles.moduleTabTextActive]}>Finanse</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.moduleTab, activeModule === 'raporty' && styles.moduleTabActive]}
+              onPress={() => setActiveModule('raporty')}
+            >
+              <Ionicons name="bar-chart-outline" size={16} color={activeModule === 'raporty' ? '#fff' : '#64748b'} />
+              <Text style={[styles.moduleTabText, activeModule === 'raporty' && styles.moduleTabTextActive]}>Raporty</Text>
+            </TouchableOpacity>
+          </ScrollView>
+
+          {/* RENDEROWANIE WIDOKU TRENERA */}
+          <View style={styles.moduleContentView}>
+            {activeModule === 'home' && (
+              <ScrollView contentContainerStyle={styles.dashboardScroll}>
+                <View style={styles.welcomeCard}>
+                  <Text style={styles.welcomeTitle}>Witaj, Trenerze! ⚽</Text>
+                  <Text style={styles.welcomeSubtitle}>
+                    Platforma zarządzania akademią działa stabilnie. Wszystkie moduły są gotowe do pracy.
+                  </Text>
+                </View>
+
+                <View style={styles.statsGrid}>
+                  <View style={styles.statBox}>
+                    <Ionicons name="people-outline" size={24} color="#3b82f6" />
+                    <Text style={styles.statNumber}>{teamStats.totalPlayers}</Text>
+                    <Text style={styles.statLabel}>Zawodników w kadrze</Text>
+                  </View>
+
+                  <View style={styles.statBox}>
+                    <Ionicons name="calendar-outline" size={24} color="#10b981" />
+                    <Text style={styles.statNumber}>{teamStats.upcomingMatches}</Text>
+                    <Text style={styles.statLabel}>Nadchodzące mecze</Text>
+                  </View>
+
+                  <View style={styles.statBox}>
+                    <Ionicons name="alert-circle-outline" size={24} color="#f59e0b" />
+                    <Text style={styles.statNumber}>{teamStats.unpaidFees}</Text>
+                    <Text style={styles.statLabel}>Zaległe składki</Text>
+                  </View>
+
+                  <View style={styles.statBox}>
+                    <Ionicons name="time-outline" size={24} color="#8b5cf6" />
+                    <Text style={styles.statNumberText}>{teamStats.nextTraining}</Text>
+                    <Text style={styles.statLabel}>Najbliższy trening</Text>
+                  </View>
+                </View>
+
+                <View style={styles.quickActionSection}>
+                  <Text style={styles.sectionHeaderTitle}>Szybkie skróty operacyjne</Text>
+                  
+                  <TouchableOpacity
+                    style={styles.quickActionBtn}
+                    onPress={() => setActiveModule('treningi')}
+                  >
+                    <Ionicons name="fitness" size={20} color="#3b82f6" style={{ marginRight: 10 }} />
+                    <Text style={styles.quickActionText}>Zarządzaj treningami indywidualnymi (1-on-1)</Text>
+                    <Ionicons name="chevron-forward" size={16} color="#64748b" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.quickActionBtn}
+                    onPress={() => setActiveModule('stroje')}
+                  >
+                    <Ionicons name="shirt" size={20} color="#10b981" style={{ marginRight: 10 }} />
+                    <Text style={styles.quickActionText}>Sprawdź zamówienia strojów i wizualizacje</Text>
+                    <Ionicons name="chevron-forward" size={16} color="#64748b" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.quickActionBtn}
+                    onPress={() => setActiveModule('finanse')}
+                  >
+                    <Ionicons name="wallet" size={20} color="#f59e0b" style={{ marginRight: 10 }} />
+                    <Text style={styles.quickActionText}>Przejdź do rozliczeń i wpłat członkowskich</Text>
+                    <Ionicons name="chevron-forward" size={16} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            )}
+
+            {activeModule === 'treningi' && <TreningiIndywidualnePanel />}
+            {activeModule === 'stroje' && <StrojePanel />}
+            {activeModule === 'finanse' && <Finanse />}
+            {activeModule === 'raporty' && <Raporty />}
           </View>
-
-          <View style={styles.content}>
-            {/* KARTA STATUSU ZESPOŁU */}
-            <View style={styles.statusCard}>
-              <Text style={styles.statusCardTitle}>Kondycja Zespołu (Październik)</Text>
-              <View style={styles.statusGrid}>
-                <View style={styles.statusItem}>
-                  <Text style={styles.statusValue}>18 / 20</Text>
-                  <Text style={styles.statusLabel}>Zdrowych graczy</Text>
-                </View>
-                <View style={styles.statusDivider} />
-                <View style={styles.statusItem}>
-                  <Text style={[styles.statusValue, { color: '#16a34a' }]}>92%</Text>
-                  <Text style={styles.statusLabel}>Frekwencja</Text>
-                </View>
-                <View style={styles.statusDivider} />
-                <View style={styles.statusItem}>
-                  <Text style={[styles.statusValue, { color: '#d97706' }]}>2.msc</Text>
-                  <Text style={styles.statusLabel}>W lidze</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* ALERTY I POWIADOMIENIA */}
-            <Text style={styles.sectionTitle}>Szybkie Alerty</Text>
-            <View style={styles.alertBox}>
-              <Ionicons name="alert-circle" size={20} color="#d97706" style={{ marginRight: 10 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.alertTitle}>Mecz Ligowy w Sobotę!</Text>
-                <Text style={styles.alertSub}>3 rodziców nie potwierdziło jeszcze obecności dziecka.</Text>
-              </View>
-              <TouchableOpacity
-                style={styles.alertActionBtn}
-                onPress={() => router.push('/Kalendarz' as any)}
-              >
-                <Text style={styles.alertActionText}>Sprawdź</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* SZYBKIE SKRÓTY DO MODUŁÓW */}
-            <Text style={styles.sectionTitle}>Centrum Dowodzenia</Text>
-            
-            <View style={styles.shortcutsGrid}>
-              <TouchableOpacity
-                style={styles.shortcutCard}
-                onPress={() => router.push('/Boisko' as any)}
-              >
-                <View style={[styles.iconCircle, { backgroundColor: '#eff6ff' }]}>
-                  <Ionicons name="football" size={22} color="#2563eb" />
-                </View>
-                <Text style={styles.shortcutTitle}>Tablica & Mecz</Text>
-                <Text style={styles.shortcutDesc}>Ustawienie i protokół</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.shortcutCard}
-                onPress={() => router.push('/Kalendarz' as any)}
-              >
-                <View style={[styles.iconCircle, { backgroundColor: '#f0fdf4' }]}>
-                  <Ionicons name="calendar" size={22} color="#16a34a" />
-                </View>
-                <Text style={styles.shortcutTitle}>Kalendarz</Text>
-                <Text style={styles.shortcutDesc}>Terminarz i obecność</Text>
-              </TouchableOpacity>
-
-              {/* MODUŁ STROJE - OTWIERANY LOKALNIE */}
-              <TouchableOpacity
-                style={styles.shortcutCard}
-                onPress={() => setActiveModule('stroje')}
-              >
-                <View style={[styles.iconCircle, { backgroundColor: '#fdf4ff' }]}>
-                  <Ionicons name="shirt" size={22} color="#9333ea" />
-                </View>
-                <Text style={styles.shortcutTitle}>Stroje i Sprzęt</Text>
-                <Text style={styles.shortcutDesc}>Zamówienia i raporty</Text>
-              </TouchableOpacity>
-
-              {/* MODUŁ FINANSE - OTWIERANY LOKALNIE */}
-              <TouchableOpacity
-                style={styles.shortcutCard}
-                onPress={() => setActiveModule('finanse')}
-              >
-                <View style={[styles.iconCircle, { backgroundColor: '#fef2f2' }]}>
-                  <Ionicons name="wallet" size={22} color="#dc2626" />
-                </View>
-                <Text style={styles.shortcutTitle}>Finanse</Text>
-                <Text style={styles.shortcutDesc}>Składki i opłaty</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.shortcutCard}
-                onPress={() => router.push('/Szatnia' as any)}
-              >
-                <View style={[styles.iconCircle, { backgroundColor: '#ecfdf5' }]}>
-                  <Ionicons name="fitness" size={22} color="#059669" />
-                </View>
-                <Text style={styles.shortcutTitle}>Szatnia & Testy</Text>
-                <Text style={styles.shortcutDesc}>Zdrowie i notatki</Text>
-              </TouchableOpacity>
-
-              {/* MODUŁ RAPORTY - OTWIERANY LOKALNIE */}
-              <TouchableOpacity
-                style={styles.shortcutCard}
-                onPress={() => setActiveModule('raporty')}
-              >
-                <View style={[styles.iconCircle, { backgroundColor: '#fff7ed' }]}>
-                  <Ionicons name="stats-chart" size={22} color="#ea580c" />
-                </View>
-                <Text style={styles.shortcutTitle}>Raporty & Kary</Text>
-                <Text style={styles.shortcutDesc}>Statystyki i eksport</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </ScrollView>
-      )}
-
-      {/* WIDOKI POMOCNICZE DLA TRENERA (Z PRZYCISKIEM POWROTU) */}
-      {currentRole === 'trener' && activeModule === 'stroje' && (
-        <View style={styles.subModuleContainer}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBackToHome}>
-            <Ionicons name="arrow-back" size={20} color="#2563eb" />
-            <Text style={styles.backButtonText}>Wróć do Centrum Dowodzenia</Text>
-          </TouchableOpacity>
-          <StrojePanel />
         </View>
       )}
-
-      {currentRole === 'trener' && activeModule === 'finanse' && (
-        <View style={styles.subModuleContainer}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBackToHome}>
-            <Ionicons name="arrow-back" size={20} color="#2563eb" />
-            <Text style={styles.backButtonText}>Wróć do Centrum Dowodzenia</Text>
-          </TouchableOpacity>
-          <Finanse />
-        </View>
-      )}
-
-      {currentRole === 'trener' && activeModule === 'raporty' && (
-        <View style={styles.subModuleContainer}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBackToHome}>
-            <Ionicons name="arrow-back" size={20} color="#2563eb" />
-            <Text style={styles.backButtonText}>Wróć do Centrum Dowodzenia</Text>
-          </TouchableOpacity>
-          <Raporty />
-        </View>
-      )}
-
-      {/* POZOSTAŁE ROLE */}
-      {currentRole === 'zawodnik' && <ZawodnikPanelScreen />}
-      {currentRole === 'rodzic' && <RodzicPanelScreen />}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeContainer: {
+  safeArea: {
     flex: 1,
     backgroundColor: '#0f172a',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
   },
-  container: { flex: 1, backgroundColor: '#f8fafc' },
-  subModuleContainer: { flex: 1, backgroundColor: '#f8fafc' },
-  
-  backButton: {
+  topBar: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#fff',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  backButtonText: {
-    marginLeft: 8,
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#2563eb',
-  },
-
-  roleSwitchContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#0f172a',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
-  },
-  roleTab: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 8,
-    marginHorizontal: 4,
     backgroundColor: '#1e293b',
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
   },
-  roleTabActive: { backgroundColor: '#2563eb' },
-  roleTabText: { color: '#94a3b8', fontSize: 13, fontWeight: 'bold' },
-  roleTabTextActive: { color: '#fff' },
-
-  headerBanner: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 18,
+  brandContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  brandTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8,
+  },
+  roleSelectorRow: {
+    flexDirection: 'row',
+  },
+  roleChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#334155',
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  roleChipActive: {
+    backgroundColor: '#3b82f6',
+  },
+  roleChipText: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  roleChipTextActive: {
+    color: '#ffffff',
+  },
+  mainContainer: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  moduleNavScrollObj: {
+    maxHeight: 56,
+  },
+  moduleNavScroll: {
+    backgroundColor: '#ffffff',
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
+    maxHeight: 56,
   },
-  headerTextGroup: { flex: 1 },
-  welcomeSubtitle: { fontSize: 12, color: '#64748b', fontWeight: '500' },
-  welcomeTitle: { fontSize: 20, fontWeight: 'bold', color: '#0f172a', marginTop: 2 },
-  teamTag: { fontSize: 11, color: '#2563eb', fontWeight: 'bold', marginTop: 4 },
-  headerIconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#eff6ff',
-    justifyContent: 'center',
+  moduleNavContent: {
+    paddingHorizontal: 12,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
+    height: 55,
   },
-
-  content: { padding: 16 },
-
-  statusCard: {
-    backgroundColor: '#fff',
+  moduleTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 8,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  moduleTabActive: {
+    backgroundColor: '#2563eb',
+    borderColor: '#2563eb',
+  },
+  moduleTabText: {
+    color: '#475569',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginLeft: 6,
+  },
+  moduleTabTextActive: {
+    color: '#ffffff',
+  },
+  moduleContentView: {
+    flex: 1,
+  },
+  dashboardScroll: {
+    padding: 16,
+  },
+  welcomeCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 16,
+  },
+  welcomeTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    marginBottom: 6,
+  },
+  welcomeSubtitle: {
+    fontSize: 13,
+    color: '#64748b',
+    lineHeight: 18,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  statBox: {
+    width: '48%',
+    backgroundColor: '#ffffff',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 20,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    elevation: 2,
+    marginBottom: 12,
+    alignItems: 'flex-start',
   },
-  statusCardTitle: { fontSize: 12, fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', marginBottom: 12 },
-  statusGrid: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
-  statusItem: { alignItems: 'center' },
-  statusValue: { fontSize: 16, fontWeight: 'bold', color: '#0f172a' },
-  statusLabel: { fontSize: 10, color: '#64748b', marginTop: 2 },
-  statusDivider: { width: 1, height: 26, backgroundColor: '#e2e8f0' },
-
-  sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#334155', marginBottom: 12 },
-
-  alertBox: {
-    backgroundColor: '#fffbeb',
-    borderRadius: 10,
-    padding: 12,
+  statNumber: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    marginTop: 8,
+  },
+  statNumberText: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  quickActionSection: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  sectionHeaderTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    marginBottom: 12,
+  },
+  quickActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#fde68a',
-    marginBottom: 20,
-  },
-  alertTitle: { fontSize: 13, fontWeight: 'bold', color: '#92400e' },
-  alertSub: { fontSize: 11, color: '#b45309', marginTop: 2 },
-  alertActionBtn: { backgroundColor: '#d97706', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, marginLeft: 8 },
-  alertActionText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
-
-  shortcutsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  shortcutCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
-    width: '48%',
-    marginBottom: 12,
+    backgroundColor: '#f8fafc',
+    padding: 12,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    elevation: 1,
+    marginBottom: 8,
   },
-  iconCircle: { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
-  shortcutTitle: { fontSize: 13, fontWeight: 'bold', color: '#0f172a' },
-  shortcutDesc: { fontSize: 10, color: '#64748b', marginTop: 2 },
+  quickActionText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
+  },
 });
