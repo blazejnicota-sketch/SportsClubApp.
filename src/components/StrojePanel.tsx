@@ -6,6 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  TextInput,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -23,7 +25,12 @@ export default function StrojePanelScreen() {
     players.length > 0 ? String(players[0].id) : '1'
   );
 
-  const availableSizes = ['116', '128', '140', '152', 'S', 'M'];
+  // Rozszerzona rozmiarówka (dziecięce wzrosty + dorosłe)
+  const availableSizes = ['116', '128', '140', '152', '164', 'XS', 'S', 'M', 'L', 'XL', 'XXL'];
+
+  // Stan na link do wizualizacji / tabeli rozmiarów od producenta
+  const [imageUrlInput, setImageUrlInput] = useState('');
+  const [manufacturerImage, setManufacturerImage] = useState<string | null>(null);
 
   const currentPlayer = players.find((p: any) => String(p.id) === String(selectedPlayerId)) || players[0];
 
@@ -33,6 +40,16 @@ export default function StrojePanelScreen() {
       [selectedPlayerId]: size,
     }));
     Alert.alert('Zapisano rozmiar! 👕', `Wybrano rozmiar ${size} dla zawodnika.`);
+  };
+
+  const handleSaveImage = () => {
+    if (!imageUrlInput.trim()) {
+      Alert.alert('Błąd', 'Wprowadź poprawny adres URL do grafiki lub tabeli.');
+      return;
+    }
+    setManufacturerImage(imageUrlInput.trim());
+    setImageUrlInput('');
+    Alert.alert('Sukces! 🖼️', 'Wizualizacja została zaktualizowana.');
   };
 
   // Generowanie raportu zbiorczego dla trenera
@@ -65,7 +82,7 @@ export default function StrojePanelScreen() {
     });
 
     await Clipboard.setStringAsync(reportText);
-    Alert.alert('Skopiowano raport! 📋', 'Podsumowanie zamówienia zostało skopiowane do schowka i jest gotowe do wysłania.');
+    Alert.alert('Skopiowano raport! 📋', 'Podsumowanie zamówienia zostało skopiowane do schowka.');
   };
 
   return (
@@ -74,11 +91,46 @@ export default function StrojePanelScreen() {
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Zamówienie strojów meczowych ⚽👕</Text>
-          <Text style={styles.headerSubtitle}>Wybór rozmiarów i raport zbiorczy dla trenera</Text>
+          <Text style={styles.headerSubtitle}>Wybór rozmiarów, wizualizacje producenta i raport zbiorczy</Text>
         </View>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        
+        {/* SEKCJA WIZUALIZACJI / TABELI OD PRODUCENTA */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Wizualizacja i Tabela Rozmiarów (Producent)</Text>
+          <Text style={styles.cardSub}>Wklej link do grafiki / tabeli od producenta:</Text>
+
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.imageUrlInput}
+              placeholder="https://example.com/tabela.jpg"
+              placeholderTextColor="#888"
+              value={imageUrlInput}
+              onChangeText={setImageUrlInput}
+              autoCapitalize="none"
+            />
+            <TouchableOpacity style={styles.saveImgBtn} onPress={handleSaveImage}>
+              <Text style={styles.saveImgBtnText}>Dodaj</Text>
+            </TouchableOpacity>
+          </View>
+
+          {manufacturerImage ? (
+            <View style={styles.imagePreviewContainer}>
+              <Image source={{ uri: manufacturerImage }} style={styles.manufacturerImage} resizeMode="contain" />
+              <TouchableOpacity style={styles.removeImageBtn} onPress={() => setManufacturerImage(null)}>
+                <Text style={styles.removeImageText}>Usuń zdjęcie</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.placeholderBox}>
+              <Ionicons name="shirt-outline" size={36} color="#94a3b8" />
+              <Text style={styles.placeholderText}>Tutaj pojawi się podgląd wzoru stroju i tabeli wymiarów</Text>
+            </View>
+          )}
+        </View>
+
         {/* SEKCJA DLA RODZICA / WYBÓR ROZMIARU DZIECKA */}
         <Text style={styles.sectionLabel}>Wybierz zawodnika, aby wskazać rozmiar:</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
@@ -201,12 +253,68 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   cardTitle: { fontSize: 14, fontWeight: 'bold', color: '#0f172a' },
-  cardSub: { fontSize: 12, color: '#64748b', marginTop: 4, marginBottom: 14 },
+  cardSub: { fontSize: 12, color: '#64748b', marginTop: 4, marginBottom: 10 },
+
+  inputRow: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  imageUrlInput: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#0f172a',
+    marginRight: 8,
+  },
+  saveImgBtn: {
+    backgroundColor: '#2563eb',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  saveImgBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
+
+  placeholderBox: {
+    height: 120,
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#cbd5e1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  placeholderText: { fontSize: 12, color: '#94a3b8', marginTop: 6, textAlign: 'center', paddingHorizontal: 20 },
+
+  imagePreviewContainer: {
+    marginTop: 4,
+    alignItems: 'center',
+  },
+  manufacturerImage: {
+    width: '100%',
+    height: 160,
+    borderRadius: 8,
+    backgroundColor: '#000',
+  },
+  removeImageBtn: {
+    marginTop: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    backgroundColor: '#fee2e2',
+    borderRadius: 4,
+  },
+  removeImageText: { fontSize: 11, fontWeight: 'bold', color: '#dc2626' },
 
   sizesGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   sizeBtn: {
-    width: '30%',
-    paddingVertical: 12,
+    width: '22%',
+    paddingVertical: 10,
     backgroundColor: '#f1f5f9',
     borderRadius: 8,
     alignItems: 'center',
@@ -215,7 +323,7 @@ const styles = StyleSheet.create({
     borderColor: '#cbd5e1',
   },
   sizeBtnActive: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
-  sizeBtnText: { fontSize: 14, fontWeight: 'bold', color: '#334155' },
+  sizeBtnText: { fontSize: 13, fontWeight: 'bold', color: '#334155' },
   sizeBtnTextActive: { color: '#fff' },
 
   trainerReportBox: {
