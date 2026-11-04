@@ -60,8 +60,12 @@ export default function KalendarzScreen() {
   const { players: availablePlayers, updatePlayer } = usePlayers();
   const [viewMode, setViewMode] = useState<ViewMode>('miesiac');
   
-  const [currentMonthDate, setCurrentMonthDate] = useState<Date>(new Date(2026, 9, 1)); // Październik 2026
-  const [selectedDate, setSelectedDate] = useState<string>('2026-10-25');
+  // DYNAMICZNA DATA SYSTEMOWA (Automatycznie pobiera dzisiejszy dzień, miesiąc i rok)
+  const today = new Date();
+  const [currentMonthDate, setCurrentMonthDate] = useState<Date>(new Date(today.getFullYear(), today.getMonth(), 1));
+  const [selectedDate, setSelectedDate] = useState<string>(
+    `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  );
 
   const curYear = currentMonthDate.getFullYear();
   const curMonth = currentMonthDate.getMonth();
@@ -74,8 +78,8 @@ export default function KalendarzScreen() {
     {
       id: '1',
       title: 'Mecz Godynice Szkoła Podstawowa',
-      startDate: '2026-10-25',
-      endDate: '2026-10-25',
+      startDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`,
+      endDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`,
       meetingTime: '07:05',
       meetingLocation: 'Klub Sportowy, ul. Sportowa 1 (Szatnia)',
       startTime: '08:30',
@@ -88,8 +92,8 @@ export default function KalendarzScreen() {
     {
       id: '2',
       title: 'Trening Cykliczny Drużyny',
-      startDate: '2026-10-26',
-      endDate: '2026-10-26',
+      startDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`,
+      endDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`,
       meetingTime: '17:15',
       meetingLocation: 'Orlik ul. Szkolna 5',
       startTime: '17:30',
@@ -109,11 +113,11 @@ export default function KalendarzScreen() {
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [eventTitle, setEventTitle] = useState<string>('');
   
-  const [startDateObj, setStartDateObj] = useState<Date>(new Date(2026, 9, 25));
-  const [endDateObj, setEndDateObj] = useState<Date>(new Date(2026, 9, 25));
-  const [meetingTimeObj, setMeetingTimeObj] = useState<Date>(new Date(2026, 9, 25, 7, 5));
-  const [startTimeObj, setStartTimeObj] = useState<Date>(new Date(2026, 9, 25, 8, 30));
-  const [endTimeObj, setEndTimeObj] = useState<Date>(new Date(2026, 9, 25, 10, 0));
+  const [startDateObj, setStartDateObj] = useState<Date>(new Date());
+  const [endDateObj, setEndDateObj] = useState<Date>(new Date());
+  const [meetingTimeObj, setMeetingTimeObj] = useState<Date>(new Date(today.setHours(7, 5)));
+  const [startTimeObj, setStartTimeObj] = useState<Date>(new Date(today.setHours(8, 30)));
+  const [endTimeObj, setEndTimeObj] = useState<Date>(new Date(today.setHours(10, 0)));
 
   const [eventLocation, setEventLocation] = useState<string>('');
   const [meetingLocation, setMeetingLocation] = useState<string>('');
@@ -528,13 +532,13 @@ export default function KalendarzScreen() {
           <View style={styles.cardBox}>
             <Text style={styles.monthTitle}>Wybrany Tydzień</Text>
             {[
-              { day: 'Poniedziałek', date: '2026-10-26' },
-              { day: 'Wtorek', date: '2026-10-27' },
-              { day: 'Środa', date: '2026-10-28' },
-              { day: 'Czwartek', date: '2026-10-29' },
-              { day: 'Piątek', date: '2026-10-30' },
-              { day: 'Sobota', date: '2026-10-31' },
-              { day: 'Niedziela', date: '2026-11-01' },
+              { day: 'Poniedziałek', date: `${curYear}-${String(curMonth + 1).padStart(2, '0')}-26` },
+              { day: 'Wtorek', date: `${curYear}-${String(curMonth + 1).padStart(2, '0')}-27` },
+              { day: 'Środa', date: `${curYear}-${String(curMonth + 1).padStart(2, '0')}-28` },
+              { day: 'Czwartek', date: `${curYear}-${String(curMonth + 1).padStart(2, '0')}-29` },
+              { day: 'Piątek', date: `${curYear}-${String(curMonth + 1).padStart(2, '0')}-30` },
+              { day: 'Sobota', date: `${curYear}-${String(curMonth + 1).padStart(2, '0')}-31` },
+              { day: 'Niedziela', date: `${curYear}-${String(curMonth + 1).padStart(2, '0')}-01` },
             ].map((dayObj) => {
               const dEvents = events.filter((ev) => isEventOnDate(ev, dayObj.date));
 
@@ -742,7 +746,7 @@ export default function KalendarzScreen() {
                             );
                           })
                         ) : (
-                          <Text style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic' }}>Brak powołanej kadry</Text>
+                          <Text style={styles.noEventText}>Brak powołanych zawodników do sprawdzenia obecności.</Text>
                         )}
                       </View>
                     </View>
@@ -761,22 +765,24 @@ export default function KalendarzScreen() {
         </View>
       </Modal>
 
-      {/* MODAL 2: FORMULARZ TWORZENIA / EDYCJI WYDARZENIA */}
+      {/* MODAL 2: FORMULARZ DODAWANIA / EDYCJI WYDARZENIA */}
       <Modal animationType="slide" transparent={true} visible={formModalVisible}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContainer, { maxHeight: '90%' }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{editingEventId ? 'Edytuj Wydarzenie ✏️' : 'Nowe Wydarzenie ⚽'}</Text>
+              <Text style={styles.modalTitle}>
+                {editingEventId ? 'Edytuj Wydarzenie ✏️' : 'Nowe Wydarzenie ⚽'}
+              </Text>
               <TouchableOpacity onPress={() => setFormModalVisible(false)}>
                 <Ionicons name="close" size={22} color="#64748b" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 520 }}>
               {!editingEventId && (
-                <View style={{ marginBottom: 10 }}>
-                  <Text style={styles.inputLabel}>Szybkie Szablony:</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={styles.inputLabel}>⚡ Szybkie szablony:</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
                     <TouchableOpacity style={styles.templateChip} onPress={() => applyTemplate('mecz')}>
                       <Text style={styles.templateChipText}>⚽ Mecz Ligowy</Text>
                     </TouchableOpacity>
@@ -790,48 +796,57 @@ export default function KalendarzScreen() {
                 </View>
               )}
 
-              <Text style={styles.inputLabel}>Nazwa Wydarzenia</Text>
+              <Text style={styles.inputLabel}>Nazwa wydarzenia:</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="np. Mecz z Wartą Sieradz"
+                placeholder="np. Mecz Ligowy vs Orły / Trening"
                 value={eventTitle}
                 onChangeText={setEventTitle}
+                placeholderTextColor="#94a3b8"
               />
 
-              <Text style={styles.inputLabel}>Typ Wydarzenia</Text>
+              <Text style={styles.inputLabel}>Typ wydarzenia:</Text>
               <View style={{ flexDirection: 'row', marginBottom: 8 }}>
-                {(['Mecz', 'Trening', 'Inne'] as const).map((t) => (
+                {(['Mecz', 'Trening', 'Inne'] as ('Mecz' | 'Trening' | 'Inne')[]).map((t) => (
                   <TouchableOpacity
                     key={t}
-                    style={[styles.typeOptionBtn, eventType === t && { backgroundColor: '#dbeafe', borderColor: '#2563eb' }]}
+                    style={[
+                      styles.typeOptionBtn,
+                      eventType === t && { backgroundColor: '#2563eb', borderColor: '#2563eb' },
+                    ]}
                     onPress={() => setEventType(t)}
                   >
-                    <Text style={[styles.typeOptionText, eventType === t && { color: '#2563eb', fontWeight: 'bold' }]}>{t}</Text>
+                    <Text style={[styles.typeOptionText, eventType === t && { color: '#fff', fontWeight: 'bold' }]}>{t}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
-              <Text style={styles.inputLabel}>Miejsce / Adres Główny</Text>
+              <Text style={styles.inputLabel}>Lokalizacja wydarzenia (Adres):</Text>
               <TextInput
                 style={styles.modalInput}
                 placeholder="np. Stadion Miejski, ul. Sportowa 1"
                 value={eventLocation}
                 onChangeText={setEventLocation}
+                placeholderTextColor="#94a3b8"
               />
-              <TouchableOpacity onPress={() => openMapLocation(eventLocation)} style={styles.quickMapLinkRow}>
+
+              <TouchableOpacity
+                onPress={() => openMapLocation(eventLocation)}
+                style={styles.quickMapLinkRow}
+              >
                 <Ionicons name="navigate" size={13} color="#2563eb" style={{ marginRight: 4 }} />
-                <Text style={styles.quickMapLinkText}>Sprawdź trasę główną w Google Maps 🗺️</Text>
+                <Text style={styles.quickMapLinkText}>Sprawdź trasę w Google Maps 🗺️</Text>
               </TouchableOpacity>
 
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
-                <View style={{ flex: 1, marginRight: 6 }}>
-                  <Text style={styles.inputLabel}>Data Od 📅</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginVertical: 6 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Data od:</Text>
                   <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowStartDatePicker(true)}>
                     <Text style={styles.pickerBoxBtnText}>{formattedStartDate}</Text>
                   </TouchableOpacity>
                 </View>
-                <View style={{ flex: 1, marginLeft: 6 }}>
-                  <Text style={styles.inputLabel}>Data Do 📅</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Data do:</Text>
                   <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowEndDatePicker(true)}>
                     <Text style={styles.pickerBoxBtnText}>{formattedEndDate}</Text>
                   </TouchableOpacity>
@@ -843,9 +858,12 @@ export default function KalendarzScreen() {
                   value={startDateObj}
                   mode="date"
                   display="default"
-                  onChange={(event, selected) => {
+                  onChange={(_, date) => {
                     setShowStartDatePicker(false);
-                    if (selected) setStartDateObj(selected);
+                    if (date) {
+                      setStartDateObj(date);
+                      setEndDateObj(date);
+                    }
                   }}
                 />
               )}
@@ -855,24 +873,24 @@ export default function KalendarzScreen() {
                   value={endDateObj}
                   mode="date"
                   display="default"
-                  onChange={(event, selected) => {
+                  onChange={(_, date) => {
                     setShowEndDatePicker(false);
-                    if (selected) setEndDateObj(selected);
+                    if (date) setEndDateObj(date);
                   }}
                 />
               )}
 
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
-                <View style={{ flex: 1, marginRight: 6 }}>
-                  <Text style={styles.inputLabel}>Start 🚀</Text>
+              <View style={{ flexDirection: 'row', gap: 6, marginVertical: 6 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Start:</Text>
                   <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowStartTimePicker(true)}>
-                    <Text style={[styles.pickerBoxBtnText, { color: '#2563eb', fontWeight: 'bold' }]}>{formattedStartTime}</Text>
+                    <Text style={styles.pickerBoxBtnText}>{formattedStartTime}</Text>
                   </TouchableOpacity>
                 </View>
-                <View style={{ flex: 1, marginLeft: 6 }}>
-                  <Text style={styles.inputLabel}>Koniec 🏁</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Koniec:</Text>
                   <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowEndTimePicker(true)}>
-                    <Text style={[styles.pickerBoxBtnText, { color: '#64748b', fontWeight: 'bold' }]}>{formattedEndTime}</Text>
+                    <Text style={styles.pickerBoxBtnText}>{formattedEndTime}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -883,9 +901,9 @@ export default function KalendarzScreen() {
                   mode="time"
                   is24Hour={true}
                   display="default"
-                  onChange={(event, selected) => {
+                  onChange={(_, date) => {
                     setShowStartTimePicker(false);
-                    if (selected) setStartTimeObj(selected);
+                    if (date) setStartTimeObj(date);
                   }}
                 />
               )}
@@ -896,9 +914,9 @@ export default function KalendarzScreen() {
                   mode="time"
                   is24Hour={true}
                   display="default"
-                  onChange={(event, selected) => {
+                  onChange={(_, date) => {
                     setShowEndTimePicker(false);
-                    if (selected) setEndTimeObj(selected);
+                    if (date) setEndTimeObj(date);
                   }}
                 />
               )}
@@ -919,9 +937,9 @@ export default function KalendarzScreen() {
                     mode="time"
                     is24Hour={true}
                     display="default"
-                    onChange={(event, selected) => {
+                    onChange={(_, date) => {
                       setShowMeetingTimePicker(false);
-                      if (selected) setMeetingTimeObj(selected);
+                      if (date) setMeetingTimeObj(date);
                     }}
                   />
                 )}
