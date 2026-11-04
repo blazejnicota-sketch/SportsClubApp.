@@ -86,8 +86,8 @@ export default function KalendarzScreen() {
       endTime: '10:15',
       location: 'Stadion Miejski, ul. Sportowa 1',
       type: 'Mecz',
-      squadIds: ['1', '2', '3', '4', '5'],
-      attendance: { '1': 'present', '2': 'present', '3': 'pending', '4': 'absent', '5': 'present' },
+      squadIds: [],
+      attendance: {},
     },
     {
       id: '2',
@@ -102,8 +102,8 @@ export default function KalendarzScreen() {
       type: 'Trening',
       isRecurring: true,
       recurringDayOfWeek: 1,
-      squadIds: ['1', '2', '3', '4', '5', '6', '7', '8'],
-      attendance: { '1': 'present', '2': 'present' },
+      squadIds: [],
+      attendance: {},
     },
   ]);
 
@@ -115,9 +115,9 @@ export default function KalendarzScreen() {
   
   const [startDateObj, setStartDateObj] = useState<Date>(new Date());
   const [endDateObj, setEndDateObj] = useState<Date>(new Date());
-  const [meetingTimeObj, setMeetingTimeObj] = useState<Date>(new Date(today.setHours(7, 5)));
-  const [startTimeObj, setStartTimeObj] = useState<Date>(new Date(today.setHours(8, 30)));
-  const [endTimeObj, setEndTimeObj] = useState<Date>(new Date(today.setHours(10, 0)));
+  const [meetingTimeObj, setMeetingTimeObj] = useState<Date>(new Date());
+  const [startTimeObj, setStartTimeObj] = useState<Date>(new Date());
+  const [endTimeObj, setEndTimeObj] = useState<Date>(new Date());
 
   const [eventLocation, setEventLocation] = useState<string>('');
   const [meetingLocation, setMeetingLocation] = useState<string>('');
@@ -381,6 +381,18 @@ export default function KalendarzScreen() {
         if (ev.id === eventId) {
           const updatedAttendance = { ...ev.attendance, [playerId]: status };
           return { ...ev, attendance: updatedAttendance };
+        }
+        return ev;
+      })
+    );
+  };
+
+  // Masowe ustawienie obecności dla całego składu jednym przyciskiem
+  const handleQuickAttendanceBatch = (eventId: string, newAttendanceMap: Record<string, AttendanceStatus>) => {
+    setEvents((prevEvents) =>
+      prevEvents.map((ev) => {
+        if (ev.id === eventId) {
+          return { ...ev, attendance: newAttendanceMap };
         }
         return ev;
       })
@@ -668,10 +680,10 @@ export default function KalendarzScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* MODAL 1: ZARZĄDZANIE DNIEM + SZYBKA OBECNOŚĆ TRENERA */}
+      {/* MODAL 1: ZARZĄDZANIE DNIEM + MASOWA SZYBKA OBECNOŚĆ TRENERA */}
       <Modal animationType="fade" transparent={true} visible={dayModalVisible}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContainer, { maxHeight: '85%' }]}>
+          <View style={[styles.modalContainer, { maxHeight: '90%' }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Wydarzenia dla: {selectedDate}</Text>
               <TouchableOpacity onPress={() => setDayModalVisible(false)}>
@@ -680,11 +692,11 @@ export default function KalendarzScreen() {
             </View>
 
             {dayEvents.length > 0 ? (
-              <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+              <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false}>
                 {dayEvents.map((ev) => {
                   const cfg = getEventTypeConfig(ev.type);
                   return (
-                    <View key={ev.id} style={[styles.dayEventItemBox, { borderLeftColor: cfg.text, borderLeftWidth: 4, flexDirection: 'column', alignItems: 'stretch' }]}>
+                    <View key={ev.id} style={[styles.dayEventItemBox, { borderLeftColor: cfg.text, borderLeftWidth: 4 }]}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.dayEventTitle}>{ev.title}</Text>
@@ -708,43 +720,72 @@ export default function KalendarzScreen() {
                         </TouchableOpacity>
                       </View>
 
-                      {/* SEKCJA SZYBKIEJ OBECNOŚCI DLA TRENERA */}
-                      <View style={styles.quickAttendanceBox}>
-                        <Text style={styles.quickAttendanceHeader}>⚡ Szybka obecność trenera na zajęciach:</Text>
-                        {ev.squadIds.length > 0 ? (
-                          ev.squadIds.map((pId) => {
-                            const playerObj = availablePlayers.find((p: any) => String(p.id) === String(pId));
-                            if (!playerObj) return null;
-                            const status = ev.attendance?.[pId] || 'pending';
-                            const cleanFirst = (playerObj.firstName || '').replace(/\s*\(\d{4}\)/g, '');
-                            const cleanLast = (playerObj.lastName || '').replace(/\s*\(\d{4}\)/g, '');
+                      {/* NOWY, ROZBUDOWANY PANEL MASOWEJ SZYBKIEJ OBECNOŚCI */}
+                      <View style={styles.massAttendanceContainer}>
+                        <View style={styles.massHeaderRow}>
+                          <Text style={styles.massTitle}>⚡ Masowa Szybka Obecność</Text>
+                          <TouchableOpacity 
+                            style={styles.massActionAllBtn} 
+                            onPress={() => {
+                              const updated: Record<string, AttendanceStatus> = {};
+                              ev.squadIds.forEach(pId => { updated[pId] = 'present'; });
+                              handleQuickAttendanceBatch(ev.id, updated);
+                            }}
+                          >
+                            <Text style={styles.massActionAllText}>Wszyscy Obecni</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <Text style={styles.massSubtitle}>Duże przyciski do obsługi jedną ręką:</Text>
 
-                            return (
-                              <View key={pId} style={styles.quickAttendanceRow}>
-                                <Text style={styles.quickAttendancePlayerName}>{cleanFirst} {cleanLast}</Text>
-                                <View style={styles.statusButtonsRow}>
-                                  <TouchableOpacity
-                                    style={[styles.statusBtn, status === 'present' && { backgroundColor: '#16a34a' }]}
-                                    onPress={() => handleQuickAttendanceChange(ev.id, pId, 'present')}
-                                  >
-                                    <Text style={[styles.statusBtnText, status === 'present' && { color: '#fff' }]}>Tak</Text>
-                                  </TouchableOpacity>
-                                  <TouchableOpacity
-                                    style={[styles.statusBtn, status === 'pending' && { backgroundColor: '#ca8a04' }]}
-                                    onPress={() => handleQuickAttendanceChange(ev.id, pId, 'pending')}
-                                  >
-                                    <Text style={[styles.statusBtnText, status === 'pending' && { color: '#fff' }]}>?</Text>
-                                  </TouchableOpacity>
-                                  <TouchableOpacity
-                                    style={[styles.statusBtn, status === 'absent' && { backgroundColor: '#dc2626' }]}
-                                    onPress={() => handleQuickAttendanceChange(ev.id, pId, 'absent')}
-                                  >
-                                    <Text style={[styles.statusBtnText, status === 'absent' && { color: '#fff' }]}>Nie</Text>
-                                  </TouchableOpacity>
+                        {ev.squadIds.length > 0 ? (
+                          <View style={{ marginTop: 4 }}>
+                            {ev.squadIds.map((pId) => {
+                              const playerObj = availablePlayers.find((p: any) => String(p.id) === String(pId));
+                              if (!playerObj) return null;
+                              const status = ev.attendance?.[pId] || 'pending';
+                              const cleanFirst = (playerObj.firstName || '').replace(/\s*\(\d{4}\)/g, '');
+                              const cleanLast = (playerObj.lastName || '').replace(/\s*\(\d{4}\)/g, '');
+
+                              return (
+                                <View key={pId} style={styles.massPlayerCard}>
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={styles.massPlayerName}>
+                                      #{playerObj.number || '•'} {cleanFirst} {cleanLast}
+                                    </Text>
+                                    <Text style={styles.massPlayerSub}>Rocznik: {playerObj.year || '2012'}</Text>
+                                  </View>
+
+                                  <View style={styles.massStatusRow}>
+                                    <TouchableOpacity
+                                      style={[
+                                        styles.massStatusBtn,
+                                        styles.massStatusPresent,
+                                        status === 'present' && styles.massStatusPresentActive,
+                                      ]}
+                                      onPress={() => handleQuickAttendanceChange(ev.id, pId, 'present')}
+                                    >
+                                      <Text style={[styles.massStatusText, status === 'present' && styles.massStatusTextActive]}>
+                                        Tak
+                                      </Text>
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                      style={[
+                                        styles.massStatusBtn,
+                                        styles.massStatusAbsent,
+                                        status === 'absent' && styles.massStatusAbsentActive,
+                                      ]}
+                                      onPress={() => handleQuickAttendanceChange(ev.id, pId, 'absent')}
+                                    >
+                                      <Text style={[styles.massStatusText, status === 'absent' && styles.massStatusTextActive]}>
+                                        Nie
+                                      </Text>
+                                    </TouchableOpacity>
+                                  </View>
                                 </View>
-                              </View>
-                            );
-                          })
+                              );
+                            })}
+                          </View>
                         ) : (
                           <Text style={styles.noEventText}>Brak powołanych zawodników do sprawdzenia obecności.</Text>
                         )}
@@ -1351,31 +1392,63 @@ const styles = StyleSheet.create({
     color: '#2563eb',
     fontWeight: 'bold',
   },
-  quickAttendanceBox: {
-    marginTop: 10,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
+  
+  /* STYLES DLA MASOWEJ SZYBKIEJ OBECNOŚCI */
+  massAttendanceContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  quickAttendanceHeader: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    color: '#1e293b',
-    marginBottom: 6,
+  massHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
   },
-  quickAttendanceRow: {
+  massTitle: { fontSize: 12, fontWeight: 'bold', color: '#0f172a' },
+  massSubtitle: { fontSize: 10, color: '#64748b', marginBottom: 6 },
+  massActionAllBtn: {
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  massActionAllText: { fontSize: 9, fontWeight: 'bold', color: '#15803d' },
+  massPlayerCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    backgroundColor: '#f8fafc',
+    borderRadius: 6,
+    padding: 6,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  quickAttendancePlayerName: {
-    fontSize: 11,
-    color: '#334155',
-    fontWeight: '500',
+  massPlayerName: { fontSize: 11, fontWeight: 'bold', color: '#0f172a' },
+  massPlayerSub: { fontSize: 9, color: '#64748b' },
+  massStatusRow: { flexDirection: 'row', gap: 4 },
+  massStatusBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    minWidth: 50,
+    alignItems: 'center',
   },
+  massStatusPresent: { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' },
+  massStatusPresentActive: { backgroundColor: '#16a34a', borderColor: '#16a34a' },
+  massStatusAbsent: { backgroundColor: '#fef2f2', borderColor: '#fecaca' },
+  massStatusAbsentActive: { backgroundColor: '#dc2626', borderColor: '#dc2626' },
+  massStatusText: { fontSize: 10, fontWeight: 'bold', color: '#475569' },
+  massStatusTextActive: { color: '#fff' },
+
   noEventsDayText: {
     fontSize: 12,
     color: '#64748b',
