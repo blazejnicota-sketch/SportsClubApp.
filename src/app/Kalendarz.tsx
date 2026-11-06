@@ -10,12 +10,18 @@ import {
   Alert,
   Linking,
   Switch,
+  SafeAreaView,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { usePlayers } from '../components/PlayersContext';
 import { notificationService } from '../services/notificationService';
+
+// Dynamiczny, bezpieczny margines górny
+const SAFE_TOP_PADDING = Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 10 : 50;
 
 type ViewMode = 'miesiac' | 'tydzien' | 'lista';
 type AttendanceStatus = 'present' | 'pending' | 'absent';
@@ -60,7 +66,9 @@ export default function KalendarzScreen() {
   const { players: availablePlayers, updatePlayer } = usePlayers();
   const [viewMode, setViewMode] = useState<ViewMode>('miesiac');
   
-  // DYNAMICZNA DATA SYSTEMOWA (Automatycznie pobiera dzisiejszy dzień, miesiąc i rok)
+  // Stan filtru typu wydarzenia na głównym ekranie
+  const [filterType, setFilterType] = useState<string>('Wszystkie');
+  
   const today = new Date();
   const [currentMonthDate, setCurrentMonthDate] = useState<Date>(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState<string>(
@@ -387,7 +395,6 @@ export default function KalendarzScreen() {
     );
   };
 
-  // Masowe ustawienie obecności dla całego składu jednym przyciskiem
   const handleQuickAttendanceBatch = (eventId: string, newAttendanceMap: Record<string, AttendanceStatus>) => {
     setEvents((prevEvents) =>
       prevEvents.map((ev) => {
@@ -446,10 +453,12 @@ export default function KalendarzScreen() {
     return String(p.year) === String(squadYearFilter);
   });
 
-  const dayEvents = events.filter((ev) => isEventOnDate(ev, selectedDate));
+  const dayEvents = events.filter((ev) => isEventOnDate(ev, selectedDate) && (filterType === 'Wszystkie' || ev.type === filterType));
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={[styles.container, { paddingTop: SAFE_TOP_PADDING }]}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
+      
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Kalendarz Drużyny</Text>
@@ -459,6 +468,21 @@ export default function KalendarzScreen() {
           <Ionicons name="add" size={16} color="#fff" />
           <Text style={styles.addBtnText}>Dodaj</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Pasek Filtrów nad Kalendarzem */}
+      <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+          {['Wszystkie', 'Mecz', 'Trening', 'Inne'].map(ft => (
+            <TouchableOpacity 
+              key={ft} 
+              style={[styles.mainFilterChip, filterType === ft && styles.mainFilterChipActive]} 
+              onPress={() => setFilterType(ft)}
+            >
+              <Text style={[styles.mainFilterText, filterType === ft && styles.mainFilterTextActive]}>{ft}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       <View style={styles.viewToggleRow}>
@@ -514,7 +538,7 @@ export default function KalendarzScreen() {
 
               {Array.from({ length: daysInCurrentMonth }, (_, i) => i + 1).map((dayNum) => {
                 const dayStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${dayNum < 10 ? '0' + dayNum : dayNum}`;
-                const dayEvs = events.filter((ev) => isEventOnDate(ev, dayStr));
+                const dayEvs = events.filter((ev) => isEventOnDate(ev, dayStr) && (filterType === 'Wszystkie' || ev.type === filterType));
                 const hasEvent = dayEvs.length > 0;
                 const isSelected = selectedDate === dayStr;
 
@@ -552,7 +576,7 @@ export default function KalendarzScreen() {
               { day: 'Sobota', date: `${curYear}-${String(curMonth + 1).padStart(2, '0')}-31` },
               { day: 'Niedziela', date: `${curYear}-${String(curMonth + 1).padStart(2, '0')}-01` },
             ].map((dayObj) => {
-              const dEvents = events.filter((ev) => isEventOnDate(ev, dayObj.date));
+              const dEvents = events.filter((ev) => isEventOnDate(ev, dayObj.date) && (filterType === 'Wszystkie' || ev.type === filterType));
 
               return (
                 <TouchableOpacity
@@ -619,8 +643,17 @@ export default function KalendarzScreen() {
         {viewMode === 'lista' && (
           <View>
             <Text style={styles.sectionTitle}>Nadchodzące Wydarzenia</Text>
-            {events.map((ev) => {
+            {events
+              .filter(ev => filterType === 'Wszystkie' || ev.type === filterType)
+              .map((ev) => {
               const cfg = getEventTypeConfig(ev.type);
+              
+              // Obliczenia paska frekwencji
+              const presentCount = Object.values(ev.attendance).filter(status => status === 'present').length;
+              const totalSquad = ev.squadIds.length;
+              const attendancePercent = totalSquad > 0 ? (presentCount / totalSquad) * 100 : 0;
+              const barColor = attendancePercent >= 80 ? '#16a34a' : (attendancePercent >= 50 ? '#ca8a04' : '#dc2626');
+
               return (
                 <View key={ev.id} style={[styles.eventListCard, { borderLeftColor: cfg.text, borderLeftWidth: 5 }]}>
                   <View style={{ flex: 1 }}>
@@ -663,9 +696,14 @@ export default function KalendarzScreen() {
                       </Text>
                     )}
 
-                    <Text style={[styles.eventMetaText, { marginTop: 4 }]}>
-                      👥 Powołana kadra: {ev.squadIds.length} zawodników
-                    </Text>
+                    {/* Pasek frekwencji */}
+                    <View style={styles.progressSection}>
+                      <Text style={styles.progressText}>Frekwencja: {presentCount}/{totalSquad} obecnych</Text>
+                      <View style={styles.progressBarContainer}>
+                        <View style={[styles.progressBarFill, { width: `${attendancePercent}%`, backgroundColor: barColor }]} />
+                      </View>
+                    </View>
+
                   </View>
 
                   <TouchableOpacity style={styles.listEditBtn} onPress={() => handleOpenEditModal(ev)}>
@@ -692,9 +730,10 @@ export default function KalendarzScreen() {
             </View>
 
             {dayEvents.length > 0 ? (
-              <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false}>
+              <ScrollView style={{ maxHeight: 550 }} showsVerticalScrollIndicator={false}>
                 {dayEvents.map((ev) => {
                   const cfg = getEventTypeConfig(ev.type);
+                  
                   return (
                     <View key={ev.id} style={[styles.dayEventItemBox, { borderLeftColor: cfg.text, borderLeftWidth: 4 }]}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -720,10 +759,25 @@ export default function KalendarzScreen() {
                         </TouchableOpacity>
                       </View>
 
-                      {/* NOWY, ROZBUDOWANY PANEL MASOWEJ SZYBKIEJ OBECNOŚCI */}
+                      {/* Integracja Nawigacji do Płyty Boiska */}
+                      <TouchableOpacity 
+                        style={styles.quickAttendanceRouteBtn} 
+                        onPress={() => {
+                          setDayModalVisible(false);
+                          Alert.alert(
+                            "Integracja Nawigacji", 
+                            "Tutaj użyjemy routera by przenieść Cię na płytę boiska! Np.\n\nrouter.push('/QuickAttendance')"
+                          );
+                        }}
+                      >
+                        <Ionicons name="football-outline" size={16} color="#fff" style={{marginRight: 6}} />
+                        <Text style={styles.quickAttendanceRouteBtnText}>Otwórz Pełny Ekran: Płyta Boiska ⚡</Text>
+                      </TouchableOpacity>
+
+                      {/* MASOWA OBECNOŚĆ */}
                       <View style={styles.massAttendanceContainer}>
                         <View style={styles.massHeaderRow}>
-                          <Text style={styles.massTitle}>⚡ Masowa Szybka Obecność</Text>
+                          <Text style={styles.massTitle}>⚡ Masowa Szybka Obecność (Mini)</Text>
                           <TouchableOpacity 
                             style={styles.massActionAllBtn} 
                             onPress={() => {
@@ -735,7 +789,7 @@ export default function KalendarzScreen() {
                             <Text style={styles.massActionAllText}>Wszyscy Obecni</Text>
                           </TouchableOpacity>
                         </View>
-                        <Text style={styles.massSubtitle}>Duże przyciski do obsługi jedną ręką:</Text>
+                        <Text style={styles.massSubtitle}>Sprawdź szybko bez wchodzenia w pełny tryb:</Text>
 
                         {ev.squadIds.length > 0 ? (
                           <View style={{ marginTop: 4 }}>
@@ -1105,7 +1159,7 @@ export default function KalendarzScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -1113,7 +1167,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
-    paddingTop: 20,
   },
   header: {
     flexDirection: 'row',
@@ -1143,6 +1196,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 12,
     marginLeft: 4,
+  },
+  mainFilterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 20,
+  },
+  mainFilterChipActive: {
+    backgroundColor: '#2563eb',
+  },
+  mainFilterText: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: 'bold',
+  },
+  mainFilterTextActive: {
+    color: '#fff',
   },
   viewToggleRow: {
     flexDirection: 'row',
@@ -1335,6 +1405,28 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#475569',
   },
+  progressSection: {
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9'
+  },
+  progressText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#64748b',
+    marginBottom: 4,
+  },
+  progressBarContainer: {
+    height: 6,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
   listEditBtn: {
     padding: 8,
     backgroundColor: '#eff6ff',
@@ -1392,8 +1484,21 @@ const styles = StyleSheet.create({
     color: '#2563eb',
     fontWeight: 'bold',
   },
-  
-  /* STYLES DLA MASOWEJ SZYBKIEJ OBECNOŚCI */
+  quickAttendanceRouteBtn: {
+    backgroundColor: '#0f172a',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  quickAttendanceRouteBtnText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
   massAttendanceContainer: {
     backgroundColor: '#fff',
     borderRadius: 8,

@@ -53,7 +53,7 @@ export default function RootLayout() {
           }}
         />
 
-        {/* UKRYTE EKRANY POMOCNICZE I MODUŁY (DOSTĘPNE PRZEZ ROUTER) */}
+        {/* UKRYTE EKRANY POMOCNICZE (DOSTĘPNE PRZEZ ROUTER) */}
         <Tabs.Screen name="Finanse" options={{ href: null }} />
         <Tabs.Screen name="Auth" options={{ href: null }} />
         <Tabs.Screen name="testy" options={{ href: null }} />
@@ -63,6 +63,12 @@ export default function RootLayout() {
         <Tabs.Screen name="RodzicPanel" options={{ href: null }} />
         <Tabs.Screen name="ZadaniaDomowe" options={{ href: null }} />
         <Tabs.Screen name="ZawodnikPanel" options={{ href: null }} />
+        
+        {/* NOWE ZAAWANSOWANE MODUŁY SYSTEMU */}
+        <Tabs.Screen name="QuickAttendance" options={{ href: null }} />
+        <Tabs.Screen name="AiVideoAnalysis" options={{ href: null }} />
+        <Tabs.Screen name="MatchOptimizer" options={{ href: null }} />
+        <Tabs.Screen name="SklepKlubowy" options={{ href: null }} />
       </Tabs>
     </PlayersProvider>
   );

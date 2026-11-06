@@ -8,9 +8,15 @@ import {
   Modal,
   Alert,
   TextInput,
+  SafeAreaView,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePlayers, Player } from '../components/PlayersContext';
+
+// Dynamiczny, bezpieczny margines górny
+const SAFE_TOP_PADDING = Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 10 : 50;
 
 type GameFormat = '5v5' | '7v7' | '9v9' | '11v11';
 type ActiveTab = 'pitch' | 'matchLive';
@@ -180,7 +186,9 @@ export default function BoiskoScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={[styles.container, { paddingTop: SAFE_TOP_PADDING }]}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
+
       {/* NAGŁÓWEK */}
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
@@ -443,7 +451,7 @@ export default function BoiskoScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -451,12 +459,10 @@ const styles = StyleSheet.create({
   container: { 
     flex: 1, 
     backgroundColor: '#f8fafc',
-    paddingTop: 20, // Poprawiony margines górny (oddech od paska systemowego)
   },
   header: {
     backgroundColor: '#fff',
     paddingHorizontal: 16,
-    paddingTop: 16,
     paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',

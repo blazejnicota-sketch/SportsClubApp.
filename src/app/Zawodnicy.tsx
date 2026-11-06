@@ -8,9 +8,15 @@ import {
   TextInput,
   Modal,
   Alert,
+  SafeAreaView,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { usePlayers, Player } from '../components/PlayersContext'; // Pobieramy ze wspólnego kontekstu
+import { usePlayers, Player } from '../components/PlayersContext';
+
+// Dynamiczny, bezpieczny margines górny
+const SAFE_TOP_PADDING = Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 10 : 50;
 
 const MOTORMETIC_TESTS = [
   'Bieg na 30m (s)',
@@ -24,8 +30,8 @@ const MOTORMETIC_TESTS = [
 export default function ZawodnicyScreen() {
   const { players, updatePlayer, availableYears } = usePlayers();
 
-const [selectedYearFilter, setSelectedYearFilter] = useState<string>('Wszyscy');
-const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedYearFilter, setSelectedYearFilter] = useState<string>('Wszyscy');
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Stany modali
   const [profileModalVisible, setProfileModalVisible] = useState<boolean>(false);
@@ -87,7 +93,8 @@ const [searchQuery, setSearchQuery] = useState<string>('');
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={[styles.container, { paddingTop: SAFE_TOP_PADDING }]}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
       {/* Nagłówek */}
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
@@ -111,20 +118,20 @@ const [searchQuery, setSearchQuery] = useState<string>('');
         />
       </View>
 
-      {/* Dynamiczne filtry roczników pobierane z kontekstu */}
-<ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxHeight: 40, marginBottom: 12 }}>
-  {['Wszyscy', ...availableYears].map((yr) => (
-    <TouchableOpacity
-      key={yr}
-      style={[styles.yearChip, selectedYearFilter === yr && styles.yearChipActive]}
-      onPress={() => setSelectedYearFilter(yr)}
-    >
-      <Text style={[styles.yearChipText, selectedYearFilter === yr && styles.yearChipTextActive]}>
-        {yr}
-      </Text>
-    </TouchableOpacity>
-  ))}
-</ScrollView>
+      {/* Dynamiczne filtry roczników */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxHeight: 40, marginBottom: 12 }}>
+        {['Wszyscy', ...availableYears].map((yr) => (
+          <TouchableOpacity
+            key={yr}
+            style={[styles.yearChip, selectedYearFilter === yr && styles.yearChipActive]}
+            onPress={() => setSelectedYearFilter(yr)}
+          >
+            <Text style={[styles.yearChipText, selectedYearFilter === yr && styles.yearChipTextActive]}>
+              {yr}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
 
       {/* Lista zawodników */}
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
@@ -212,7 +219,7 @@ const [searchQuery, setSearchQuery] = useState<string>('');
         </View>
       </Modal>
 
-      {/* MODAL 2: INDYWIDUALNY PROFIL ZAWODNIKA ZE STATYSTYKAMI */}
+      {/* MODAL 2: INDYWIDUALNY PROFIL ZAWODNIKA */}
       <Modal animationType="fade" transparent={true} visible={profileModalVisible}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
@@ -315,12 +322,12 @@ const [searchQuery, setSearchQuery] = useState<string>('');
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc', paddingHorizontal: 16, paddingTop: 40 },
+  container: { flex: 1, backgroundColor: '#f8fafc', paddingHorizontal: 16 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#1e293b' },
   headerSubtitle: { fontSize: 12, color: '#64748b' },

@@ -1,302 +1,429 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  SafeAreaView,
+  Platform,
+  StatusBar,
+  TextInput,
   Modal,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { usePlayers, Player } from '../components/PlayersContext';
+
+// Dynamiczny, bezpieczny margines górny
+const SAFE_TOP_PADDING = Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 10 : 50;
+
+type TabType = 'wyzwania' | 'ranking';
+type ChallengeStatus = 'aktywne' | 'zakonczone';
 
 interface Challenge {
   id: string;
   title: string;
-  category: 'Technika' | 'Regeneracja' | 'Siła';
-  xp: number;
+  description: string;
+  xpReward: number;
   deadline: string;
-  completed: boolean;
+  status: ChallengeStatus;
+  completedBy: string[]; // Tablica ID zawodników
 }
 
-interface Badge {
-  id: string;
-  name: string;
-  icon: string;
-  description: string;
-  unlocked: boolean;
+// Interfejs rozszerzający na potrzeby lokalnego stanu XP (docelowo XP będzie w tabeli players w Supabase)
+interface PlayerWithXP extends Player {
+  xp: number;
 }
 
 export default function ZadaniaDomoweScreen() {
-  const [totalXP, setTotalXP] = useState(1250);
-  const [playerLevel, setPlayerLevel] = useState(4);
+  const router = useRouter();
+  const { players, updatePlayer } = usePlayers();
 
+  const [activeTab, setActiveTab] = useState<TabType>('wyzwania');
+  
+  // Przykładowe wyzwania (docelowo z tabeli challenges)
   const [challenges, setChallenges] = useState<Challenge[]>([
     {
       id: '1',
-      title: '300 podań o ścianę (lewa / prawa noga)',
-      category: 'Technika',
-      xp: 150,
-      deadline: '2026-10-25',
-      completed: false,
+      title: 'Mistrz Żonglerki (100 odbić)',
+      description: 'Nagraj wideo lub potwierdź wykonanie 100 odbić piłki bez upadku (tylko nogi).',
+      xpReward: 150,
+      deadline: 'Do końca tygodnia',
+      status: 'aktywne',
+      completedBy: [],
     },
     {
       id: '2',
-      title: '15 minut rolowania i mobilności stawów',
-      category: 'Regeneracja',
-      xp: 100,
-      deadline: '2026-10-26',
-      completed: true,
+      title: 'Bieg tlenowy (W weekend)',
+      description: 'Zrób 25 minut ciągłego biegu w wolnym tempie. Wyślij screen z aplikacji (np. Strava).',
+      xpReward: 100,
+      deadline: 'Niedziela, 20:00',
+      status: 'aktywne',
+      completedBy: [],
     },
     {
       id: '3',
-      title: 'Analiza wideo: pressing w 1 połowie',
-      category: 'Technika',
-      xp: 120,
-      deadline: '2026-10-27',
-      completed: false,
+      title: 'Rozciąganie po meczu',
+      description: 'Wykonaj pełny protokół rozciągania z naszego poradnika (15 minut).',
+      xpReward: 50,
+      deadline: 'Zakończone',
+      status: 'zakonczone',
+      completedBy: players.slice(0, 5).map(p => p.id), // Pierwszych 5 graczy
     },
   ]);
 
-  const [badges] = useState<Badge[]>([
-    { id: '1', name: 'Król Asyst', icon: 'flash', description: 'Wykonano 10 wyzwań technicznych', unlocked: true },
-    { id: '2', name: 'Żelazne Płuco', icon: 'heart', description: '100% frekwencji przez miesiąc', unlocked: true },
-    { id: '3', name: 'Master Treningu', icon: 'trophy', description: 'Zdobyto ponad 2000 punktów XP', unlocked: false },
-  ]);
+  // Stan Modali
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [verifyModalVisible, setVerifyModalVisible] = useState(false);
+  
+  // Formularz nowego wyzwania
+  const [newTitle, setNewTitle] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [newXP, setNewXP] = useState('100');
+  const [newDeadline, setNewDeadline] = useState('Do niedzieli');
 
-  const [modalVisible, setModalVisible] = useState(false);
+  // Weryfikacja wyzwania
+  const [selectedChallenge, setSelectedChallenge] = useState<Challenge | null>(null);
 
-  const handleCompleteChallenge = (id: string, xpReward: number) => {
-    setChallenges(
-      challenges.map((item) => {
-        if (item.id === id) {
-          if (!item.completed) {
-            setTotalXP((prev) => prev + xpReward);
-            Alert.alert('Gratulacje! 🎉', `Zdobyto +${xpReward} XP!`);
-          }
-          return { ...item, completed: !item.completed };
-        }
-        return item;
-      })
-    );
+  // Zintegruj XP do graczy (tymczasowo losujemy XP dla efektu, dopóki nie dodasz kolumny XP do Supabase)
+  const playersWithXP: PlayerWithXP[] = useMemo(() => {
+    return players.map((p, index) => {
+      // Jeśli zawodnik ukończył zakończone wyzwanie, dostaje 50 XP, reszta losowo dla demka
+      const baseXP = challenges[2].completedBy.includes(p.id) ? 50 : 0;
+      const demoXP = Math.floor(Math.random() * 800) + 100; 
+      return { ...p, xp: baseXP + demoXP };
+    }).sort((a, b) => b.xp - a.xp);
+  }, [players, challenges]);
+
+  const getRankInfo = (xp: number) => {
+    if (xp >= 800) return { title: 'Złota Piłka', color: '#eab308', icon: 'trophy' };
+    if (xp >= 500) return { title: 'Srebrny But', color: '#94a3b8', icon: 'medal' };
+    if (xp >= 200) return { title: 'Brązowy Talent', color: '#b45309', icon: 'star' };
+    return { title: 'Początkujący', color: '#64748b', icon: 'walk' };
+  };
+
+  const handleCreateChallenge = () => {
+    if (!newTitle || !newDesc) {
+      alert('Wypełnij tytuł i opis wyzwania.');
+      return;
+    }
+
+    const newChallenge: Challenge = {
+      id: Date.now().toString(),
+      title: newTitle,
+      description: newDesc,
+      xpReward: parseInt(newXP) || 50,
+      deadline: newDeadline,
+      status: 'aktywne',
+      completedBy: [],
+    };
+
+    setChallenges([newChallenge, ...challenges]);
+    setCreateModalVisible(false);
+    setNewTitle('');
+    setNewDesc('');
+  };
+
+  const toggleChallengeCompletion = (playerId: string) => {
+    if (!selectedChallenge) return;
+    
+    setChallenges(prev => prev.map(ch => {
+      if (ch.id === selectedChallenge.id) {
+        const isCompleted = ch.completedBy.includes(playerId);
+        const newCompletedBy = isCompleted 
+          ? ch.completedBy.filter(id => id !== playerId)
+          : [...ch.completedBy, playerId];
+        
+        return { ...ch, completedBy: newCompletedBy };
+      }
+      return ch;
+    }));
+
+    // Aktualizujemy lokalny stan wybranego wyzwania dla modalu
+    setSelectedChallenge(prev => {
+      if (!prev) return null;
+      const isCompleted = prev.completedBy.includes(playerId);
+      return {
+        ...prev,
+        completedBy: isCompleted 
+          ? prev.completedBy.filter(id => id !== playerId)
+          : [...prev.completedBy, playerId]
+      };
+    });
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* NAGłÓWEK GAMIFIKACJI */}
-      <View style={styles.heroCard}>
-        <View style={styles.heroTopRow}>
+    <SafeAreaView style={[styles.safeArea, { paddingTop: SAFE_TOP_PADDING }]}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
+
+      {/* NAGŁÓWEK */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <Ionicons name="chevron-back" size={24} color="#0f172a" />
+        </TouchableOpacity>
+        <View style={{ flex: 1, marginLeft: 10 }}>
+          <Text style={styles.headerTitle}>Grywalizacja & XP</Text>
+          <Text style={styles.headerSubtitle}>Zadania domowe dla akademii</Text>
+        </View>
+        <TouchableOpacity 
+          style={styles.addChallengeBtn} 
+          onPress={() => setCreateModalVisible(true)}
+        >
+          <Ionicons name="add" size={18} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
+      {/* PRZEŁĄCZNIK ZAKŁADEK */}
+      <View style={styles.tabRow}>
+        <TouchableOpacity
+          style={[styles.tabBtn, activeTab === 'wyzwania' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('wyzwania')}
+        >
+          <Ionicons name="game-controller-outline" size={16} color={activeTab === 'wyzwania' ? '#2563eb' : '#64748b'} style={{ marginRight: 6 }}/>
+          <Text style={[styles.tabBtnText, activeTab === 'wyzwania' && styles.tabBtnTextActive]}>Wyzwania (Questy)</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabBtn, activeTab === 'ranking' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('ranking')}
+        >
+          <Ionicons name="podium-outline" size={16} color={activeTab === 'ranking' ? '#2563eb' : '#64748b'} style={{ marginRight: 6 }}/>
+          <Text style={[styles.tabBtnText, activeTab === 'ranking' && styles.tabBtnTextActive]}>Tablica Liderów</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        
+        {activeTab === 'wyzwania' && (
           <View>
-            <Text style={styles.heroSubtitle}>Strefa Wyzwań i Rozwoju</Text>
-            <Text style={styles.heroTitle}>Poziom {playerLevel} Zawodnika</Text>
-          </View>
-          <View style={styles.xpBadge}>
-            <Ionicons name="star" size={16} color="#f59e0b" />
-            <Text style={styles.xpText}>{totalXP} XP</Text>
-          </View>
-        </View>
-
-        <View style={styles.progressContainer}>
-          <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: '65%' }]} />
-          </View>
-          <Text style={styles.progressLabel}>650 / 1000 XP do poziomu 5</Text>
-        </View>
-      </View>
-
-      {/* SEKCJA ODZNAK */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Zdobyte Odznaki</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.badgesRow}>
-          {badges.map((badge) => (
-            <View
-              key={badge.id}
-              style={[styles.badgeCard, !badge.unlocked && styles.badgeLocked]}
-            >
-              <View style={[styles.badgeIconCircle, badge.unlocked ? styles.iconUnlocked : styles.iconLocked]}>
-                <Ionicons
-                  name={badge.icon as any}
-                  size={20}
-                  color={badge.unlocked ? '#d97706' : '#9ca3af'}
-                />
+            <Text style={styles.sectionTitle}>Aktywne Wyzwania (Zadania Domowe)</Text>
+            {challenges.filter(c => c.status === 'aktywne').map((ch) => (
+              <View key={ch.id} style={styles.challengeCard}>
+                <View style={styles.challengeHeader}>
+                  <Text style={styles.challengeTitle}>{ch.title}</Text>
+                  <View style={styles.xpBadge}>
+                    <Text style={styles.xpBadgeText}>+{ch.xpReward} XP</Text>
+                  </View>
+                </View>
+                <Text style={styles.challengeDesc}>{ch.description}</Text>
+                
+                <View style={styles.challengeFooter}>
+                  <Text style={styles.challengeDeadline}>⏳ {ch.deadline}</Text>
+                  <TouchableOpacity 
+                    style={styles.verifyBtn}
+                    onPress={() => {
+                      setSelectedChallenge(ch);
+                      setVerifyModalVisible(true);
+                    }}
+                  >
+                    <Ionicons name="checkmark-done-circle" size={16} color="#fff" style={{ marginRight: 4 }} />
+                    <Text style={styles.verifyBtnText}>Weryfikuj ({ch.completedBy.length})</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <Text style={styles.badgeName}>{badge.name}</Text>
-              <Text style={styles.badgeDesc}>{badge.description}</Text>
-            </View>
-          ))}
-        </ScrollView>
-      </View>
+            ))}
 
-      {/* LISTA AKTYWNYCH WYZWAŃ */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Aktywne Wyzwania Domowe</Text>
-          <TouchableOpacity onPress={() => setModalVisible(true)}>
-            <Text style={styles.addBtnText}>+ Nowe wyzwanie</Text>
-          </TouchableOpacity>
-        </View>
-
-        {challenges.map((item) => (
-          <View key={item.id} style={styles.challengeCard}>
-            <View style={styles.challengeTop}>
-              <View
-                style={[
-                  styles.categoryTag,
-                  item.category === 'Technika'
-                    ? { backgroundColor: '#eff6ff' }
-                    : { backgroundColor: '#f0fdf4' },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.categoryTagText,
-                    item.category === 'Technika'
-                      ? { color: '#2563eb' }
-                      : { color: '#16a34a' },
-                  ]}
-                >
-                  {item.category}
-                </Text>
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Zakończone</Text>
+            {challenges.filter(c => c.status === 'zakonczone').map((ch) => (
+              <View key={ch.id} style={[styles.challengeCard, { opacity: 0.6 }]}>
+                <View style={styles.challengeHeader}>
+                  <Text style={styles.challengeTitle}>{ch.title}</Text>
+                  <Text style={styles.completedCountText}>{ch.completedBy.length} ukończyło</Text>
+                </View>
+                <Text style={styles.challengeDesc} numberOfLines={1}>{ch.description}</Text>
               </View>
-              <Text style={styles.deadlineText}>Termin: {item.deadline}</Text>
+            ))}
+          </View>
+        )}
+
+        {activeTab === 'ranking' && (
+          <View>
+            <View style={styles.podiumContainer}>
+              <Text style={styles.podiumTitle}>Top 3 Akademików 🏆</Text>
+              {playersWithXP.slice(0, 3).map((p, index) => {
+                const rank = getRankInfo(p.xp);
+                return (
+                  <View key={p.id} style={styles.topRankRow}>
+                    <View style={styles.rankPositionBox}>
+                      <Text style={styles.rankPositionText}>{index + 1}</Text>
+                    </View>
+                    <View style={[styles.rankAvatar, { borderColor: rank.color, borderWidth: 2 }]}>
+                      <Text style={styles.rankAvatarText}>#{p.number}</Text>
+                    </View>
+                    <View style={styles.rankInfo}>
+                      <Text style={styles.rankName}>{p.firstName} {p.lastName}</Text>
+                      <Text style={[styles.rankTitle, { color: rank.color }]}>{rank.title}</Text>
+                    </View>
+                    <View style={styles.rankXpBox}>
+                      <Text style={styles.rankXpText}>{p.xp} XP</Text>
+                    </View>
+                  </View>
+                );
+              })}
             </View>
 
-            <Text style={styles.challengeTitle}>{item.title}</Text>
-
-            <View style={styles.challengeFooter}>
-              <View style={styles.xpRewardBadge}>
-                <Ionicons name="flash" size={12} color="#d97706" />
-                <Text style={styles.xpRewardText}>+{item.xp} XP</Text>
+            <Text style={styles.sectionTitle}>Pełny Ranking (Leaderboard)</Text>
+            {playersWithXP.slice(3).map((p, index) => (
+              <View key={p.id} style={styles.normalRankRow}>
+                <Text style={styles.normalRankPos}>{index + 4}.</Text>
+                <Text style={styles.normalRankName} numberOfLines={1}>{p.firstName} {p.lastName}</Text>
+                <Text style={styles.normalRankXp}>{p.xp} XP</Text>
               </View>
-
-              <TouchableOpacity
-                style={[
-                  styles.statusBtn,
-                  item.completed ? styles.btnCompleted : styles.btnPending,
-                ]}
-                onPress={() => handleCompleteChallenge(item.id, item.xp)}
-              >
-                <Ionicons
-                  name={item.completed ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={16}
-                  color={item.completed ? '#16a34a' : '#4b5563'}
-                />
-                <Text
-                  style={[
-                    styles.statusBtnText,
-                    item.completed ? { color: '#16a34a' } : { color: '#4b5563' },
-                  ]}
-                >
-                  {item.completed ? 'Wykonane' : 'Zrób to'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            ))}
           </View>
-        ))}
-      </View>
+        )}
+        
+        <View style={{ height: 40 }} />
+      </ScrollView>
 
-      {/* MODAL */}
-      <Modal visible={modalVisible} animationType="slide" transparent>
+      {/* MODAL: KREATOR NOWEGO WYZWANIA */}
+      <Modal animationType="slide" transparent={true} visible={createModalVisible}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Dodaj Nowe Wyzwanie</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#374151" />
+              <Text style={styles.modalTitle}>Stwórz Nowe Zadanie 🎯</Text>
+              <TouchableOpacity onPress={() => setCreateModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#64748b" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.modalSub}>
-              Wyzwania domowe pozwalają zawodnikom zbierać punkty XP i podnosić swoje statystyki motoryczne.
-            </Text>
-            <TouchableOpacity
-              style={styles.saveModalBtn}
-              onPress={() => setModalVisible(false)}
-            >
-              <Text style={styles.saveModalBtnText}>Zamknij</Text>
+
+            <Text style={styles.inputLabel}>Tytuł (np. Mistrz Żonglerki)</Text>
+            <TextInput style={styles.modalInput} value={newTitle} onChangeText={setNewTitle} />
+
+            <Text style={styles.inputLabel}>Opis wyzwania i jak je zgłosić</Text>
+            <TextInput 
+              style={[styles.modalInput, { height: 80 }]} 
+              multiline 
+              value={newDesc} 
+              onChangeText={setNewDesc} 
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>Punkty XP (Nagroda)</Text>
+                <TextInput style={styles.modalInput} keyboardType="numeric" value={newXP} onChangeText={setNewXP} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>Termin (Deadline)</Text>
+                <TextInput style={styles.modalInput} value={newDeadline} onChangeText={setNewDeadline} />
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.saveBtn} onPress={handleCreateChallenge}>
+              <Text style={styles.saveBtnText}>Opublikuj Wyzwanie Drużynie</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
-    </ScrollView>
+
+      {/* MODAL: WERYFIKACJA WYZWANIA */}
+      <Modal animationType="slide" transparent={true} visible={verifyModalVisible}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { height: '80%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Weryfikuj: {selectedChallenge?.title}</Text>
+              <TouchableOpacity onPress={() => setVerifyModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.verifySubtext}>Zatwierdź zawodników, którzy poprawnie wykonali to zadanie. Otrzymają po +{selectedChallenge?.xpReward} XP.</Text>
+
+            <ScrollView style={{ flex: 1, marginTop: 10 }} showsVerticalScrollIndicator={false}>
+              {players.map(p => {
+                const isCompleted = selectedChallenge?.completedBy.includes(p.id);
+                return (
+                  <TouchableOpacity 
+                    key={p.id} 
+                    style={[styles.verifyPlayerRow, isCompleted && styles.verifyPlayerRowActive]}
+                    onPress={() => toggleChallengeCompletion(p.id)}
+                  >
+                    <View style={styles.verifyPlayerInfo}>
+                      <View style={styles.verifyAvatar}><Text style={styles.verifyAvatarText}>#{p.number}</Text></View>
+                      <Text style={styles.verifyPlayerName}>{p.firstName} {p.lastName}</Text>
+                    </View>
+                    <View style={[styles.verifyCheckbox, isCompleted && styles.verifyCheckboxActive]}>
+                      {isCompleted && <Ionicons name="checkmark" size={14} color="#fff" />}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <TouchableOpacity style={styles.saveBtn} onPress={() => setVerifyModalVisible(false)}>
+              <Text style={styles.saveBtnText}>Zatwierdź XP</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc', padding: 16 },
-  heroCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-    elevation: 3,
-  },
-  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  heroSubtitle: { fontSize: 12, color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600' },
-  heroTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff', marginTop: 2 },
-  xpBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(245, 158, 11, 0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  xpText: { color: '#f59e0b', fontWeight: 'bold', fontSize: 14, marginLeft: 4 },
-  progressContainer: { marginTop: 4 },
-  progressBarBg: { height: 8, backgroundColor: '#334155', borderRadius: 4, overflow: 'hidden' },
-  progressBarFill: { height: '100%', backgroundColor: '#3b82f6', borderRadius: 4 },
-  progressLabel: { fontSize: 11, color: '#94a3b8', marginTop: 6, textAlign: 'right' },
-
-  section: { marginBottom: 20 },
-  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#0f172a', marginBottom: 12 },
-  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  addBtnText: { fontSize: 13, fontWeight: 'bold', color: '#2563eb' },
-
-  badgesRow: { flexDirection: 'row', paddingBottom: 4 },
-  badgeCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
-    width: 130,
-    marginRight: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  badgeLocked: { opacity: 0.5 },
-  badgeIconCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-  iconUnlocked: { backgroundColor: '#fef3c7' },
-  iconLocked: { backgroundColor: '#f1f5f9' },
-  badgeName: { fontSize: 12, fontWeight: 'bold', color: '#0f172a', textAlign: 'center' },
-  badgeDesc: { fontSize: 10, color: '#64748b', textAlign: 'center', marginTop: 2 },
-
-  challengeCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    elevation: 1,
-  },
-  challengeTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  categoryTag: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  categoryTagText: { fontSize: 10, fontWeight: 'bold' },
-  deadlineText: { fontSize: 11, color: '#64748b' },
-  challengeTitle: { fontSize: 14, fontWeight: 'bold', color: '#1e293b', marginBottom: 12 },
+  safeArea: { flex: 1, backgroundColor: '#f8fafc' },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12, backgroundColor: '#f8fafc', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#f1f5f9', justifyContent: 'center', alignItems: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#0f172a' },
+  headerSubtitle: { fontSize: 12, color: '#f59e0b', fontWeight: 'bold' },
+  addChallengeBtn: { backgroundColor: '#f59e0b', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+  
+  tabRow: { flexDirection: 'row', backgroundColor: '#fff', padding: 10, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  tabBtn: { flex: 1, flexDirection: 'row', paddingVertical: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#f1f5f9', marginHorizontal: 4 },
+  tabBtnActive: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe' },
+  tabBtnText: { fontSize: 12, fontWeight: 'bold', color: '#475569' },
+  tabBtnTextActive: { color: '#2563eb' },
+  
+  content: { flex: 1, padding: 16 },
+  sectionTitle: { fontSize: 15, fontWeight: 'bold', color: '#334155', marginBottom: 12 },
+  
+  challengeCard: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#e2e8f0', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 4, elevation: 1 },
+  challengeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  challengeTitle: { fontSize: 15, fontWeight: 'bold', color: '#0f172a', flex: 1 },
+  xpBadge: { backgroundColor: '#fef3c7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: '#fde68a' },
+  xpBadgeText: { fontSize: 11, fontWeight: 'bold', color: '#d97706' },
+  challengeDesc: { fontSize: 13, color: '#475569', lineHeight: 18, marginBottom: 12 },
   challengeFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 10 },
-  xpRewardBadge: { flexDirection: 'row', alignItems: 'center' },
-  xpRewardText: { fontSize: 12, fontWeight: 'bold', color: '#d97706', marginLeft: 4 },
-  statusBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#f1f5f9' },
-  btnCompleted: { backgroundColor: '#f0fdf4' },
-  btnPending: { backgroundColor: '#f1f5f9' },
-  statusBtnText: { fontSize: 12, fontWeight: 'bold', marginLeft: 4 },
+  challengeDeadline: { fontSize: 12, color: '#94a3b8', fontWeight: 'bold' },
+  verifyBtn: { backgroundColor: '#2563eb', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  verifyBtnText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
+  completedCountText: { fontSize: 11, color: '#64748b', fontWeight: 'bold' },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  podiumContainer: { backgroundColor: '#1e293b', borderRadius: 16, padding: 16, marginBottom: 20 },
+  podiumTitle: { fontSize: 16, fontWeight: 'bold', color: '#fff', marginBottom: 16, textAlign: 'center' },
+  topRankRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', padding: 10, borderRadius: 12, marginBottom: 8 },
+  rankPositionBox: { width: 24, alignItems: 'center' },
+  rankPositionText: { fontSize: 16, fontWeight: 'bold', color: '#94a3b8' },
+  rankAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#f8fafc', justifyContent: 'center', alignItems: 'center', marginHorizontal: 10 },
+  rankAvatarText: { fontSize: 12, fontWeight: 'bold', color: '#0f172a' },
+  rankInfo: { flex: 1 },
+  rankName: { fontSize: 14, fontWeight: 'bold', color: '#f8fafc' },
+  rankTitle: { fontSize: 11, fontWeight: 'bold', marginTop: 2 },
+  rankXpBox: { backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  rankXpText: { fontSize: 12, fontWeight: 'bold', color: '#f8fafc' },
+
+  normalRankRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 12, borderRadius: 10, marginBottom: 6, borderWidth: 1, borderColor: '#e2e8f0' },
+  normalRankPos: { width: 30, fontSize: 13, fontWeight: 'bold', color: '#64748b' },
+  normalRankName: { flex: 1, fontSize: 14, fontWeight: '600', color: '#0f172a' },
+  normalRankXp: { fontSize: 13, fontWeight: 'bold', color: '#2563eb' },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.5)', justifyContent: 'center', padding: 16 },
+  modalContainer: { backgroundColor: '#fff', borderRadius: 16, padding: 20, elevation: 5 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   modalTitle: { fontSize: 16, fontWeight: 'bold', color: '#0f172a' },
-  modalSub: { fontSize: 13, color: '#64748b', marginBottom: 20, lineHeight: 18 },
-  saveModalBtn: { backgroundColor: '#2563eb', padding: 12, borderRadius: 8, alignItems: 'center' },
-  saveModalBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+  inputLabel: { fontSize: 11, fontWeight: '600', color: '#475569', marginBottom: 6, marginTop: 8 },
+  modalInput: { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: '#0f172a' },
+  saveBtn: { backgroundColor: '#2563eb', paddingVertical: 14, borderRadius: 10, alignItems: 'center', marginTop: 20 },
+  saveBtnText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
+
+  verifySubtext: { fontSize: 12, color: '#64748b', marginBottom: 10 },
+  verifyPlayerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  verifyPlayerRowActive: { backgroundColor: '#f0fdf4', borderRadius: 8, paddingHorizontal: 8 },
+  verifyPlayerInfo: { flexDirection: 'row', alignItems: 'center' },
+  verifyAvatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#eff6ff', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  verifyAvatarText: { fontSize: 10, fontWeight: 'bold', color: '#2563eb' },
+  verifyPlayerName: { fontSize: 13, fontWeight: '600', color: '#0f172a' },
+  verifyCheckbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1, borderColor: '#cbd5e1', justifyContent: 'center', alignItems: 'center' },
+  verifyCheckboxActive: { backgroundColor: '#16a34a', borderColor: '#16a34a' },
 });
