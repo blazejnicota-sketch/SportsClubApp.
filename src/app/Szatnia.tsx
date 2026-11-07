@@ -8,17 +8,24 @@ import {
   TextInput,
   Modal,
   Alert,
+  SafeAreaView,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePlayers, Player } from '../components/PlayersContext';
 
-type SubTab = 'motoryka' | 'zdrowie' | 'notatki';
+// Dynamiczny, bezpieczny margines górny
+const SAFE_TOP_PADDING = Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 10 : 50;
+
+type SubTab = 'zdrowie' | 'motoryka' | 'notatki';
 type PositionFilter = 'WSZYSTKIE' | 'Bramkarz' | 'Obrońca' | 'Pomocnik' | 'Napastnik';
 
 export default function SzatniaScreen() {
   const { players: playersData, addPlayer, updatePlayer, removePlayer, availableYears: contextYears } = usePlayers();
 
-  const [activeSubTab, setActiveSubTab] = useState<SubTab>('motoryka');
+  // Zmieniono domyślną na zdrowie, aby wyeksponować nowy profil BMI
+  const [activeSubTab, setActiveSubTab] = useState<SubTab>('zdrowie');
   const [selectedYear, setSelectedYear] = useState<string>('WSZYSTKIE');
   const [selectedPosition, setSelectedPosition] = useState<PositionFilter>('WSZYSTKIE');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -26,7 +33,14 @@ export default function SzatniaScreen() {
   // Modale
   const [testModalVisible, setTestModalVisible] = useState<boolean>(false);
   const [addPlayerModalVisible, setAddPlayerModalVisible] = useState<boolean>(false);
+  
+  // Stany dla edycji i rozwoju fizycznego
   const [editPlayerModalVisible, setEditPlayerModalVisible] = useState<boolean>(false);
+  const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+  const [editFirstName, setEditFirstName] = useState<string>('');
+  const [editLastName, setEditLastName] = useState<string>('');
+  const [editHeight, setEditHeight] = useState<string>('');
+  const [editWeight, setEditWeight] = useState<string>('');
 
   // Stan dla testu motorycznego
   const [selectedPlayerForTest, setSelectedPlayerForTest] = useState<Player | null>(null);
@@ -39,14 +53,6 @@ export default function SzatniaScreen() {
   const [newLastName, setNewLastName] = useState<string>('');
   const [newYear, setNewYear] = useState<string>('2016');
   const [newPosition, setNewPosition] = useState<string>('Pomocnik');
-
-  // Stan dla edycji istniejącego zawodnika
-  const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
-  const [editFirstName, setEditFirstName] = useState<string>('');
-  const [editLastName, setEditLastName] = useState<string>('');
-  const [editYear, setEditYear] = useState<string>('');
-  const [editPosition, setEditPosition] = useState<string>('');
-  const [editNumber, setEditNumber] = useState<string>('');
 
   const availableYears = useMemo(() => {
     return ['WSZYSTKIE', ...contextYears];
@@ -64,9 +70,11 @@ export default function SzatniaScreen() {
     });
   }, [playersData, searchQuery, selectedYear, selectedPosition]);
 
-  const injuredCount = useMemo(() => {
-    return playersData.filter((p: any) => p.injuryStatus && p.injuryStatus !== 'Zdrowy').length;
-  }, [playersData]);
+  const calculateBMI = (h?: number, w?: number) => {
+    if (!h || !w || h === 0) return 0;
+    const heightInMeters = h / 100;
+    return (w / (heightInMeters * heightInMeters)).toFixed(1);
+  };
 
   const handleSaveTest = () => {
     if (!selectedPlayerForTest) return;
@@ -109,6 +117,8 @@ export default function SzatniaScreen() {
       injuryStatus: 'Zdrowy',
       coachNote: 'Nowo dodany zawodnik do kadry.',
       tests: [],
+      height: 145,
+      weight: 38,
     });
 
     setNewFirstName('');
@@ -121,9 +131,8 @@ export default function SzatniaScreen() {
     setEditingPlayer(player);
     setEditFirstName(player.firstName || '');
     setEditLastName(player.lastName || '');
-    setEditYear(String(player.year || '2012'));
-    setEditPosition(player.position || 'Pomocnik');
-    setEditNumber(String(player.number || '10'));
+    setEditHeight(player.height ? String(player.height) : '');
+    setEditWeight(player.weight ? String(player.weight) : '');
     setEditPlayerModalVisible(true);
   };
 
@@ -133,12 +142,12 @@ export default function SzatniaScreen() {
       firstName: editFirstName,
       lastName: editLastName,
       name: `${editFirstName} ${editLastName}`,
-      year: editYear,
-      position: editPosition,
-      number: parseInt(editNumber) || editingPlayer.number,
+      height: parseInt(editHeight) || 0,
+      weight: parseFloat(editWeight) || 0,
+      lastMeasurementDate: new Date().toLocaleDateString('pl-PL'),
     });
     setEditPlayerModalVisible(false);
-    Alert.alert('Sukces', 'Dane zawodnika zostały zaktualizowane.');
+    Alert.alert('Sukces', 'Karta fizyczna zawodnika została zaktualizowana.');
   };
 
   const handleDeletePlayerPrompt = (player: Player) => {
@@ -147,11 +156,7 @@ export default function SzatniaScreen() {
       `Czy na pewno chcesz usunąć zawodnika ${player.name} z kadry?`,
       [
         { text: 'Anuluj', style: 'cancel' },
-        {
-          text: 'Usuń',
-          style: 'destructive',
-          onPress: () => removePlayer(player.id),
-        },
+        { text: 'Usuń', style: 'destructive', onPress: () => removePlayer(player.id) },
       ]
     );
   };
@@ -162,14 +167,14 @@ export default function SzatniaScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={[styles.container, { paddingTop: SAFE_TOP_PADDING }]}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
+      
       {/* NAGŁÓWEK Z PRZYCISKAMI AKCJI */}
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Szatnia & Centrum Motoryki</Text>
-          <Text style={styles.headerSubtitle}>
-            Zarządzanie kadrą, testy i kartoteka medyczna
-          </Text>
+          <Text style={styles.headerTitle}>Szatnia & Rozwój Fizyczny</Text>
+          <Text style={styles.headerSubtitle}>Zdrowie, waga, wzrost i motoryka</Text>
         </View>
 
         <View style={{ flexDirection: 'row' }}>
@@ -201,6 +206,21 @@ export default function SzatniaScreen() {
       {/* PODZAKŁADKI */}
       <View style={styles.subTabsRow}>
         <TouchableOpacity
+          style={[styles.subTabBtn, activeSubTab === 'zdrowie' && styles.subTabBtnActive]}
+          onPress={() => setActiveSubTab('zdrowie')}
+        >
+          <Ionicons
+            name="medkit-outline"
+            size={14}
+            color={activeSubTab === 'zdrowie' ? '#2563eb' : '#64748b'}
+            style={{ marginRight: 4 }}
+          />
+          <Text style={[styles.subTabText, activeSubTab === 'zdrowie' && styles.subTabTextActive]}>
+            Rozwój & Zdrowie
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.subTabBtn, activeSubTab === 'motoryka' && styles.subTabBtnActive]}
           onPress={() => setActiveSubTab('motoryka')}
         >
@@ -212,21 +232,6 @@ export default function SzatniaScreen() {
           />
           <Text style={[styles.subTabText, activeSubTab === 'motoryka' && styles.subTabTextActive]}>
             Motoryka
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.subTabBtn, activeSubTab === 'zdrowie' && styles.subTabBtnActive]}
-          onPress={() => setActiveSubTab('zdrowie')}
-        >
-          <Ionicons
-            name="medkit-outline"
-            size={14}
-            color={activeSubTab === 'zdrowie' ? '#dc2626' : '#64748b'}
-            style={{ marginRight: 4 }}
-          />
-          <Text style={[styles.subTabText, activeSubTab === 'zdrowie' && styles.subTabTextActive]}>
-            Zdrowie ({injuredCount})
           </Text>
         </TouchableOpacity>
 
@@ -272,32 +277,18 @@ export default function SzatniaScreen() {
               </Text>
             </TouchableOpacity>
           ))}
-
-          <View style={styles.filterDivider} />
-
-          <Text style={styles.filterGroupLabel}>Pozycja:</Text>
-          {(['WSZYSTKIE', 'Bramkarz', 'Obrońca', 'Pomocnik', 'Napastnik'] as PositionFilter[]).map((pos) => (
-            <TouchableOpacity
-              key={pos}
-              style={[styles.chipFilter, selectedPosition === pos && styles.chipFilterActive]}
-              onPress={() => setSelectedPosition(pos)}
-            >
-              <Text style={[styles.chipText, selectedPosition === pos && styles.chipTextActive]}>
-                {pos}
-              </Text>
-            </TouchableOpacity>
-          ))}
         </ScrollView>
       </View>
 
       {/* LISTA ZAWODNIKÓW */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionTitle}>
-          Zawodnicy ({filteredPlayers.length})
+          Karty Zawodników ({filteredPlayers.length})
         </Text>
 
         {filteredPlayers.map((player: any) => {
           const pName = player.name || `${player.firstName || ''} ${player.lastName || ''}`;
+          const bmi = calculateBMI(player.height, player.weight);
 
           return (
             <View key={player.id} style={styles.card}>
@@ -331,6 +322,47 @@ export default function SzatniaScreen() {
                 </View>
               </View>
 
+              {/* ZAKŁADKA: ROZWÓJ I ZDROWIE */}
+              {activeSubTab === 'zdrowie' && (
+                <>
+                  <View style={styles.physicalRow}>
+                    <View style={styles.physicalBox}>
+                      <Text style={styles.physicalLabel}>Wzrost</Text>
+                      <Text style={styles.physicalVal}>{player.height ? `${player.height} cm` : '---'}</Text>
+                    </View>
+                    <View style={styles.physicalBox}>
+                      <Text style={styles.physicalLabel}>Waga</Text>
+                      <Text style={styles.physicalVal}>{player.weight ? `${player.weight} kg` : '---'}</Text>
+                    </View>
+                    <View style={[styles.physicalBox, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
+                      <Text style={styles.physicalLabel}>BMI</Text>
+                      <Text style={[styles.physicalVal, { color: '#16a34a' }]}>{bmi || '---'}</Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.healthRow}>
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+                      onPress={() => toggleHealthStatus(player)}
+                    >
+                      <Ionicons
+                        name={player.injuryStatus === 'Zdrowy' ? 'checkmark-circle' : 'alert-circle'}
+                        size={18}
+                        color={player.injuryStatus === 'Zdrowy' ? '#16a34a' : '#dc2626'}
+                      />
+                      <Text
+                        style={[
+                          styles.healthText,
+                          { color: player.injuryStatus === 'Zdrowy' ? '#16a34a' : '#dc2626' },
+                        ]}
+                      >
+                        Status Zdrowia: {player.injuryStatus || 'Zdrowy'} (Kliknij)
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+
               {/* ZAKŁADKA: MOTORYKA */}
               {activeSubTab === 'motoryka' && (
                 <>
@@ -360,33 +392,9 @@ export default function SzatniaScreen() {
                     }}
                   >
                     <Ionicons name="speedometer-outline" size={13} color="#2563eb" style={{ marginRight: 4 }} />
-                    <Text style={styles.singleTestBtnText}>Wprowadź pomiar motoryczny</Text>
+                    <Text style={styles.singleTestBtnText}>Wprowadź nowy pomiar motoryczny</Text>
                   </TouchableOpacity>
                 </>
-              )}
-
-              {/* ZAKŁADKA: ZDROWIE */}
-              {activeSubTab === 'zdrowie' && (
-                <View style={styles.healthRow}>
-                  <TouchableOpacity
-                    style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
-                    onPress={() => toggleHealthStatus(player)}
-                  >
-                    <Ionicons
-                      name={player.injuryStatus === 'Zdrowy' ? 'checkmark-circle' : 'alert-circle'}
-                      size={18}
-                      color={player.injuryStatus === 'Zdrowy' ? '#16a34a' : '#dc2626'}
-                    />
-                    <Text
-                      style={[
-                        styles.healthText,
-                        { color: player.injuryStatus === 'Zdrowy' ? '#16a34a' : '#dc2626' },
-                      ]}
-                    >
-                      Status: {player.injuryStatus || 'Zdrowy'} (Kliknij, aby zmienić)
-                    </Text>
-                  </TouchableOpacity>
-                </View>
               )}
 
               {/* ZAKŁADKA: NOTATKI I HISTORIA TESTÓW */}
@@ -416,7 +424,50 @@ export default function SzatniaScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* MODAL 1: DODAWANIE NOWEGO ZAWODNIKA */}
+      {/* MODAL 1: EDYCJA WZROSTU I WAGI (NOWOŚĆ) */}
+      <Modal animationType="slide" transparent={true} visible={editPlayerModalVisible}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Aktualizuj Pomiary 📏</Text>
+              <TouchableOpacity onPress={() => setEditPlayerModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={styles.modalPlayerTitle}>{editFirstName} {editLastName}</Text>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>Wzrost (cm)</Text>
+                <TextInput 
+                  style={styles.modalInput} 
+                  keyboardType="numeric" 
+                  value={editHeight} 
+                  onChangeText={setEditHeight} 
+                  placeholder="np. 145" 
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>Waga (kg)</Text>
+                <TextInput 
+                  style={styles.modalInput} 
+                  keyboardType="numeric" 
+                  value={editWeight} 
+                  onChangeText={setEditWeight} 
+                  placeholder="np. 38.5" 
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEditedPlayer}>
+              <Text style={styles.saveBtnText}>Zapisz Dane Fizyczne</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL 2: DODAWANIE NOWEGO ZAWODNIKA */}
       <Modal animationType="slide" transparent={true} visible={addPlayerModalVisible}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
@@ -448,7 +499,7 @@ export default function SzatniaScreen() {
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setAddPlayerModalVisible(false)}>
                 <Text style={styles.cancelBtnText}>Anuluj</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleAddNewPlayer}>
+              <TouchableOpacity style={styles.saveBtnModal} onPress={handleAddNewPlayer}>
                 <Text style={styles.saveBtnText}>Zapisz Zawodnika</Text>
               </TouchableOpacity>
             </View>
@@ -456,50 +507,7 @@ export default function SzatniaScreen() {
         </View>
       </Modal>
 
-      {/* MODAL 2: EDYCJA DANYCH ZAWODNIKA */}
-      <Modal animationType="slide" transparent={true} visible={editPlayerModalVisible}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edytuj Dane Zawodnika ✏️</Text>
-              <TouchableOpacity onPress={() => setEditPlayerModalVisible(false)}>
-                <Ionicons name="close" size={22} color="#64748b" />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.inputLabel}>Imię</Text>
-            <TextInput style={styles.modalInput} value={editFirstName} onChangeText={setEditFirstName} />
-
-            <Text style={styles.inputLabel}>Nazwisko</Text>
-            <TextInput style={styles.modalInput} value={editLastName} onChangeText={setEditLastName} />
-
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <View style={{ flex: 1, marginRight: 6 }}>
-                <Text style={styles.inputLabel}>Rocznik</Text>
-                <TextInput style={styles.modalInput} value={editYear} onChangeText={setEditYear} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 6 }}>
-                <Text style={styles.inputLabel}>Numer na koszulce</Text>
-                <TextInput style={styles.modalInput} keyboardType="numeric" value={editNumber} onChangeText={setEditNumber} />
-              </View>
-            </View>
-
-            <Text style={styles.inputLabel}>Pozycja</Text>
-            <TextInput style={styles.modalInput} value={editPosition} onChangeText={setEditPosition} />
-
-            <View style={styles.modalButtonsRow}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditPlayerModalVisible(false)}>
-                <Text style={styles.cancelBtnText}>Anuluj</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEditedPlayer}>
-                <Text style={styles.saveBtnText}>Zapisz Zmiany</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* MODAL 3: WPISYWANIE WYNIKÓW TESTU */}
+      {/* MODAL 3: WPISYWANIE WYNIKÓW TESTU MOTORYCZNEGO */}
       <Modal animationType="slide" transparent={true} visible={testModalVisible}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
@@ -528,23 +536,19 @@ export default function SzatniaScreen() {
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setTestModalVisible(false)}>
                 <Text style={styles.cancelBtnText}>Anuluj</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveTest}>
-                <Text style={styles.saveBtnText}>Zapisz Pomiar & Dodaj do Historii</Text>
+              <TouchableOpacity style={styles.saveBtnModal} onPress={handleSaveTest}>
+                <Text style={styles.saveBtnText}>Zapisz Pomiar</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#f8fafc',
-    paddingTop: 20, // Poprawiony margines górny (oddech od paska systemowego)
-  },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
   header: {
     backgroundColor: '#fff',
     paddingHorizontal: 16,
@@ -579,6 +583,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   newEntryBtnText: { color: '#fff', fontSize: 11, fontWeight: 'bold', marginLeft: 4 },
+  
   subTabsRow: {
     flexDirection: 'row',
     backgroundColor: '#fff',
@@ -600,6 +605,7 @@ const styles = StyleSheet.create({
   subTabBtnActive: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe' },
   subTabText: { fontSize: 11, fontWeight: '600', color: '#64748b' },
   subTabTextActive: { color: '#2563eb', fontWeight: 'bold' },
+  
   filtersSection: {
     backgroundColor: '#fff',
     paddingHorizontal: 16,
@@ -627,9 +633,10 @@ const styles = StyleSheet.create({
   chipFilterActive: { backgroundColor: '#2563eb' },
   chipText: { fontSize: 10, color: '#64748b', fontWeight: '600' },
   chipTextActive: { color: '#fff', fontWeight: 'bold' },
-  filterDivider: { width: 1, height: 16, backgroundColor: '#cbd5e1', marginHorizontal: 8, alignSelf: 'center' },
+  
   content: { padding: 16 },
   sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#334155', marginBottom: 12 },
+  
   card: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -662,6 +669,40 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  
+  /* ROZWÓJ FIZYCZNY I ZDROWIE STYLES */
+  physicalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  physicalBox: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    padding: 8,
+    borderRadius: 8,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: '#e2e8f0'
+  },
+  physicalLabel: { fontSize: 10, color: '#64748b', fontWeight: 'bold' },
+  physicalVal: { fontSize: 14, fontWeight: 'bold', color: '#0f172a', marginTop: 4 },
+  
+  healthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  healthText: { fontSize: 12, fontWeight: '600', marginLeft: 6 },
+  
+  /* MOTORYKA STYLES */
   metricsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -685,15 +726,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   singleTestBtnText: { fontSize: 11, fontWeight: 'bold', color: '#2563eb' },
-  healthRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 10,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-  },
-  healthText: { fontSize: 12, fontWeight: '600', marginLeft: 6 },
+  
+  /* NOTATKI STYLES */
   noteBox: {
     marginTop: 10,
     paddingTop: 8,
@@ -703,11 +737,14 @@ const styles = StyleSheet.create({
   noteTitle: { fontSize: 11, fontWeight: 'bold', color: '#475569', marginBottom: 2 },
   noteText: { fontSize: 12, color: '#334155', fontStyle: 'italic' },
   historyItemText: { fontSize: 11, color: '#64748b', marginTop: 2 },
+  
+  /* MODALS */
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.5)', justifyContent: 'center', padding: 16 },
   modalContainer: { backgroundColor: '#fff', borderRadius: 16, padding: 20, elevation: 5 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   modalTitle: { fontSize: 15, fontWeight: 'bold', color: '#0f172a' },
-  inputLabel: { fontSize: 11, fontWeight: '600', color: '#475569', marginTop: 8, marginBottom: 4 },
+  modalPlayerTitle: { fontSize: 13, color: '#2563eb', fontWeight: 'bold', textAlign: 'center', marginBottom: 10 },
+  inputLabel: { fontSize: 11, fontWeight: '600', color: '#475569', marginBottom: 4, marginTop: 6 },
   selectedPlayerNameText: { fontSize: 12, fontWeight: 'bold', color: '#2563eb', marginBottom: 4 },
   modalInput: {
     backgroundColor: '#f8fafc',
@@ -715,13 +752,15 @@ const styles = StyleSheet.create({
     borderColor: '#cbd5e1',
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 7,
-    fontSize: 12,
+    paddingVertical: 8,
+    fontSize: 13,
     color: '#0f172a',
   },
+  saveBtn: { backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center', marginTop: 20 },
+  
   modalButtonsRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16 },
   cancelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, marginRight: 6 },
   cancelBtnText: { fontSize: 12, color: '#64748b', fontWeight: '600' },
-  saveBtn: { backgroundColor: '#2563eb', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
+  saveBtnModal: { backgroundColor: '#2563eb', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
 });

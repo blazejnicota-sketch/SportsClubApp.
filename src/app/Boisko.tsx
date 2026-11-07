@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ const SAFE_TOP_PADDING = Platform.OS === 'android' ? (StatusBar.currentHeight ||
 
 type GameFormat = '5v5' | '7v7' | '9v9' | '11v11';
 type ActiveTab = 'pitch' | 'matchLive';
+type MatchPhase = 'Przed meczem' | '1. Połowa' | 'Przerwa' | '2. Połowa' | 'Koniec meczu';
 
 interface PositionSlot {
   id: string;
@@ -33,7 +34,6 @@ interface MatchEvent {
   type: 'goal' | 'yellow' | 'red';
   player: Player;
   minute: string;
-  assistPlayer?: Player;
 }
 
 const FORMAT_FORMATIONS: Record<GameFormat, { name: string; slots: PositionSlot[] }[]> = {
@@ -121,7 +121,63 @@ export default function BoiskoScreen() {
   // Modal dodawania zdarzenia (bramka/kartka)
   const [eventModalVisible, setEventModalVisible] = useState<boolean>(false);
   const [selectedEventType, setSelectedEventType] = useState<'goal' | 'yellow' | 'red'>('goal');
-  const [eventMinute, setEventMinute] = useState<string>('15');
+  
+  // LOGIKA STOPERA MECZOWEGO
+  const [matchPhase, setMatchPhase] = useState<MatchPhase>('Przed meczem');
+  const [secondsElapsed, setSecondsElapsed] = useState<number>(0);
+  const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
+  const [halfDuration, setHalfDuration] = useState<string>('45'); // domyślnie 45 minut
+
+  // Odmierzanie czasu
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isTimerRunning) {
+      interval = setInterval(() => {
+        setSecondsElapsed((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isTimerRunning]);
+
+  const formatTime = (totalSeconds: number) => {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  const handlePhaseChange = () => {
+    if (matchPhase === 'Przed meczem') {
+      setMatchPhase('1. Połowa');
+      setIsTimerRunning(true);
+    } else if (matchPhase === '1. Połowa') {
+      setMatchPhase('Przerwa');
+      setIsTimerRunning(false);
+    } else if (matchPhase === 'Przerwa') {
+      setMatchPhase('2. Połowa');
+      // Przeskocz czas do początku 2. połowy
+      const startSecondHalf = parseInt(halfDuration) * 60;
+      setSecondsElapsed(startSecondHalf);
+      setIsTimerRunning(true);
+    } else if (matchPhase === '2. Połowa') {
+      setMatchPhase('Koniec meczu');
+      setIsTimerRunning(false);
+    } else {
+      // Reset
+      Alert.alert('Reset', 'Zresetować mecz i statystyki?', [
+        { text: 'Nie', style: 'cancel' },
+        { 
+          text: 'Tak', 
+          onPress: () => {
+            setMatchPhase('Przed meczem');
+            setSecondsElapsed(0);
+            setTeamScore(0);
+            setOpponentScore(0);
+            setMatchEvents([]);
+          }
+        }
+      ]);
+    }
+  };
 
   const availableFormations = FORMAT_FORMATIONS[selectedFormat];
   const currentFormation = availableFormations[formationIndex] || availableFormations[0];
@@ -163,18 +219,19 @@ export default function BoiskoScreen() {
     ]);
   };
 
-  // Dodawanie zdarzenia meczowego
   const handleOpenEventModal = (type: 'goal' | 'yellow' | 'red') => {
     setSelectedEventType(type);
     setEventModalVisible(true);
   };
 
   const handleAddEventSubmit = (player: Player) => {
+    const currentMinute = Math.floor(secondsElapsed / 60);
+    
     const newEvent: MatchEvent = {
       id: Date.now().toString(),
       type: selectedEventType,
       player,
-      minute: eventMinute || '1',
+      minute: String(currentMinute === 0 ? 1 : currentMinute), // jeśli <1 minuty, zapisz jako 1'
     };
 
     if (selectedEventType === 'goal') {
@@ -200,7 +257,7 @@ export default function BoiskoScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* PRZEŁĄCZNIK ZAKŁADEK (Boisko / Mecz na żywo) */}
+      {/* PRZEŁĄCZNIK ZAKŁADEK */}
       <View style={styles.mainTabRow}>
         <TouchableOpacity
           style={[styles.mainTabBtn, activeTab === 'pitch' && styles.mainTabBtnActive]}
@@ -215,7 +272,7 @@ export default function BoiskoScreen() {
           onPress={() => setActiveTab('matchLive')}
         >
           <Ionicons name="stats-chart-outline" size={15} color={activeTab === 'matchLive' ? '#2563eb' : '#64748b'} style={{ marginRight: 6 }} />
-          <Text style={[styles.mainTabText, activeTab === 'matchLive' && styles.mainTabTextActive]}>Tablica Wyników na Żywo 🔴</Text>
+          <Text style={[styles.mainTabText, activeTab === 'matchLive' && styles.mainTabTextActive]}>Tablica Wyników 🔴</Text>
         </TouchableOpacity>
       </View>
 
@@ -286,6 +343,49 @@ export default function BoiskoScreen() {
       ) : (
         /* TABLICA WYNIKÓW NA ŻYWO (MATCH LIVE) */
         <ScrollView style={styles.liveContainer} showsVerticalScrollIndicator={false}>
+          
+          {/* NOWOŚĆ: STOPER MECZOWY */}
+          <View style={styles.timerCard}>
+            <View style={styles.timerHeaderRow}>
+              <View>
+                <Text style={styles.timerPhaseText}>{matchPhase}</Text>
+                {matchPhase === 'Przed meczem' && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                    <Text style={{ fontSize: 11, color: '#64748b' }}>Czas połowy (min): </Text>
+                    <TextInput 
+                      style={styles.halfDurationInput} 
+                      value={halfDuration} 
+                      onChangeText={setHalfDuration} 
+                      keyboardType="numeric" 
+                    />
+                  </View>
+                )}
+              </View>
+              <Text style={styles.timerClockText}>{formatTime(secondsElapsed)}</Text>
+            </View>
+            
+            <TouchableOpacity 
+              style={[
+                styles.timerActionBtn, 
+                matchPhase === 'Koniec meczu' ? {backgroundColor: '#ef4444'} : {backgroundColor: '#2563eb'}
+              ]} 
+              onPress={handlePhaseChange}
+            >
+              <Ionicons 
+                name={matchPhase === 'Koniec meczu' ? 'refresh' : (isTimerRunning ? 'pause' : 'play')} 
+                size={18} 
+                color="#fff" 
+                style={{ marginRight: 6 }} 
+              />
+              <Text style={styles.timerActionBtnText}>
+                {matchPhase === 'Przed meczem' ? 'Rozpocznij Mecz' : 
+                 matchPhase === '1. Połowa' ? 'Zakończ 1. Połowę (Przerwa)' :
+                 matchPhase === 'Przerwa' ? 'Rozpocznij 2. Połowę' : 
+                 matchPhase === '2. Połowa' ? 'Zakończ Mecz' : 'Zresetuj Stoper'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           {/* WYNIK MECZU */}
           <View style={styles.scoreCard}>
             <View style={{ alignItems: 'center', flex: 1 }}>
@@ -320,7 +420,7 @@ export default function BoiskoScreen() {
           </View>
 
           {/* SZYBKIE AKCJE / ZDARZENIA */}
-          <Text style={styles.sectionHeader}>Dodaj zdarzenie w meczu:</Text>
+          <Text style={styles.sectionHeader}>Dodaj zdarzenie w meczu (minuta doda się sama):</Text>
           <View style={styles.actionsRow}>
             <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#16a34a' }]} onPress={() => handleOpenEventModal('goal')}>
               <Ionicons name="football" size={16} color="#fff" style={{ marginRight: 4 }} />
@@ -368,6 +468,7 @@ export default function BoiskoScreen() {
           ) : (
             <Text style={styles.noEventsText}>Brak zarejestrowanych zdarzeń w tym meczu.</Text>
           )}
+          <View style={{ height: 40 }} />
         </ScrollView>
       )}
 
@@ -410,22 +511,11 @@ export default function BoiskoScreen() {
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {selectedEventType === 'goal' ? '⚽ Kto strzelił bramkę?' : selectedEventType === 'yellow' ? '🟨 Żółta kartka dla:' : '🟥 Czerwona kartka dla:'}
+                {selectedEventType === 'goal' ? '⚽ Kto brał udział w akcji?' : selectedEventType === 'yellow' ? '🟨 Żółta kartka dla:' : '🟥 Czerwona kartka dla:'}
               </Text>
               <TouchableOpacity onPress={() => setEventModalVisible(false)}>
                 <Ionicons name="close" size={22} color="#64748b" />
               </TouchableOpacity>
-            </View>
-
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-              <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#334155', marginRight: 8 }}>Minuta meczu:</Text>
-              <TextInput
-                style={styles.minuteInput}
-                value={eventMinute}
-                onChangeText={setEventMinute}
-                keyboardType="numeric"
-                maxLength={3}
-              />
             </View>
 
             <Text style={styles.modalHint}>Wybierz z zawodników wystawionych w wyjściowym składzie lub z całej kadry:</Text>
@@ -591,6 +681,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     transform: [{ translateX: -24 }, { translateY: -24 }],
     width: 48,
+    zIndex: 10,
   },
   nodeAvatar: {
     width: 36,
@@ -620,6 +711,45 @@ const styles = StyleSheet.create({
 
   /* LIVE MATCH STYLES */
   liveContainer: { flex: 1, padding: 16 },
+  
+  /* STOPER MECZOWY */
+  timerCard: {
+    backgroundColor: '#0f172a',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  timerHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  timerPhaseText: { color: '#38bdf8', fontSize: 14, fontWeight: 'bold' },
+  timerClockText: { color: '#fff', fontSize: 32, fontWeight: 'bold', fontVariant: ['tabular-nums'] },
+  halfDurationInput: {
+    backgroundColor: '#1e293b',
+    color: '#fff',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    fontSize: 12,
+    width: 40,
+    textAlign: 'center'
+  },
+  timerActionBtn: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  timerActionBtnText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
+
   scoreCard: {
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -693,17 +823,6 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   modalTitle: { fontSize: 14, fontWeight: 'bold', color: '#0f172a' },
   modalHint: { fontSize: 11, color: '#64748b', marginBottom: 10 },
-  minuteInput: {
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    fontSize: 12,
-    width: 60,
-    textAlign: 'center',
-    backgroundColor: '#f8fafc',
-  },
   playerList: { maxHeight: 320 },
   playerSelectRow: {
     flexDirection: 'row',

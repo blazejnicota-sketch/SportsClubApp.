@@ -9,7 +9,6 @@ import {
   Platform,
   StatusBar,
   ActivityIndicator,
-  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -152,20 +151,39 @@ export default function AiVideoAnalysisScreen() {
           </View>
         )}
 
-        {/* EKRAN NAGRYWANIA I ANALIZY */}
+        {/* EKRAN NAGRYWANIA I ANALIZY Z POPRAWIONĄ RAMKĄ KAMERY */}
         {(analysisState === 'recording' || analysisState === 'analyzing') && (
           <View style={styles.activeProcessCard}>
-            <View style={styles.cameraViewMock}>
-              <Ionicons name="scan-outline" size={80} color={analysisState === 'recording' ? '#ef4444' : '#3b82f6'} />
-              <Text style={styles.cameraText}>
-                {analysisState === 'recording' ? 'Nagrywanie w toku...' : 'AI analizuje ruch...'}
-              </Text>
-              {analysisState === 'analyzing' && <ActivityIndicator size="large" color="#3b82f6" style={{ marginTop: 20 }} />}
+            
+            {/* WIZUALIZACJA WIZJERA KAMERY */}
+            <View style={styles.cameraViewport}>
+              <View style={[styles.cornerFrame, styles.cornerTopLeft]} />
+              <View style={[styles.cornerFrame, styles.cornerTopRight]} />
+              <View style={[styles.cornerFrame, styles.cornerBottomLeft]} />
+              <View style={[styles.cornerFrame, styles.cornerBottomRight]} />
+              
+              <View style={styles.cameraCenterContent}>
+                {analysisState === 'recording' ? (
+                  <>
+                    <View style={styles.recordingRedDotContainer}>
+                      <View style={styles.recordingRedDot} />
+                      <Text style={styles.recordingTimerText}>00:0{Math.floor(Math.random()*3)+1}</Text>
+                    </View>
+                    <Ionicons name="person-outline" size={80} color="rgba(255,255,255,0.4)" />
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="analytics" size={60} color="#3b82f6" />
+                    <ActivityIndicator size="large" color="#3b82f6" style={{ marginTop: 20 }} />
+                  </>
+                )}
+              </View>
             </View>
+
             <Text style={styles.processSubtext}>
               {analysisState === 'recording' 
                 ? 'Poproś zawodnika o wykonanie ćwiczenia. Trzymaj telefon stabilnie.' 
-                : 'Rozpoznawanie wzorców ruchowych i kątów ułożenia stawów...'}
+                : 'Analiza szkieletowa 3D w toku (MediaPipe Pose)...'}
             </Text>
           </View>
         )}
@@ -261,10 +279,21 @@ const styles = StyleSheet.create({
   startRecordBtnDisabled: { backgroundColor: '#fca5a5' },
   startRecordBtnText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
 
-  activeProcessCard: { backgroundColor: '#1e293b', borderRadius: 16, padding: 30, alignItems: 'center', justifyContent: 'center', height: 400 },
-  cameraViewMock: { alignItems: 'center', justifyContent: 'center', flex: 1 },
-  cameraText: { fontSize: 18, fontWeight: 'bold', color: '#fff', marginTop: 16 },
-  processSubtext: { fontSize: 13, color: '#94a3b8', textAlign: 'center', marginTop: 20, paddingHorizontal: 20 },
+  activeProcessCard: { backgroundColor: '#1e293b', borderRadius: 16, padding: 20, alignItems: 'center', justifyContent: 'center', height: 420 },
+  
+  /* RAMKA KAMERY */
+  cameraViewport: { width: '100%', height: 300, backgroundColor: '#0f172a', borderRadius: 12, position: 'relative', overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
+  cornerFrame: { position: 'absolute', width: 40, height: 40, borderColor: '#fff' },
+  cornerTopLeft: { top: 20, left: 20, borderTopWidth: 4, borderLeftWidth: 4 },
+  cornerTopRight: { top: 20, right: 20, borderTopWidth: 4, borderRightWidth: 4 },
+  cornerBottomLeft: { bottom: 20, left: 20, borderBottomWidth: 4, borderLeftWidth: 4 },
+  cornerBottomRight: { bottom: 20, right: 20, borderBottomWidth: 4, borderRightWidth: 4 },
+  cameraCenterContent: { alignItems: 'center', justifyContent: 'center' },
+  recordingRedDotContainer: { position: 'absolute', top: -80, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
+  recordingRedDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#ef4444', marginRight: 6 },
+  recordingTimerText: { color: '#fff', fontSize: 14, fontWeight: 'bold', fontVariant: ['tabular-nums'] },
+  
+  processSubtext: { fontSize: 13, color: '#94a3b8', textAlign: 'center', marginTop: 20, paddingHorizontal: 10 },
 
   resultsContainer: { backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#e2e8f0', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 3 },
   resultHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', marginBottom: 16 },

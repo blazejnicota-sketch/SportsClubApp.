@@ -19,6 +19,7 @@ import * as Clipboard from 'expo-clipboard';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { usePlayers } from '../components/PlayersContext';
 import { notificationService } from '../services/notificationService';
+import { useRouter } from 'expo-router';
 
 // Dynamiczny, bezpieczny margines górny
 const SAFE_TOP_PADDING = Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 10 : 50;
@@ -63,6 +64,7 @@ const getEventTypeConfig = (type: 'Mecz' | 'Trening' | 'Inne') => {
 };
 
 export default function KalendarzScreen() {
+  const router = useRouter();
   const { players: availablePlayers, updatePlayer } = usePlayers();
   const [viewMode, setViewMode] = useState<ViewMode>('miesiac');
   
@@ -412,7 +414,7 @@ export default function KalendarzScreen() {
     setSelectedSquad(newSquad);
   };
 
-  const handleCopySquadAndSendPush = async () => {
+const handleCopySquadAndSendPush = async () => {
     const nominatedNames = availablePlayers
       .filter((p: any) => selectedSquad.includes(String(p.id)))
       .map((p: any) => {
@@ -420,10 +422,20 @@ export default function KalendarzScreen() {
         const cleanLast = (p.lastName || '').replace(/\s*\(\d{4}\)/g, '');
         return `• ${cleanFirst} ${cleanLast}`;
       })
-      .join('\n');
+      .join('\n'); // <--- Tutaj naprawiono \n
 
     const dateStr = formattedStartDate === formattedEndDate ? formattedStartDate : `${formattedStartDate} do ${formattedEndDate}`;
-    const message = `📌 ${eventTitle}\n📅 Data: ${dateStr}\n⏰ Zbiórka: ${formattedMeetingTime} (${meetingLocation || 'Miejsce zbiórki'}) | Start: ${formattedStartTime} - ${formattedEndTime}\n📍 Miejsce wydarzenia: ${eventLocation}\n\nKADRA (${selectedSquad.length}):\n${nominatedNames}\n\nProśba o potwierdzenie obecności! 👍`;
+    
+    // Używamy backticków (`) do wielolinijkowego tekstu
+    const message = `📌 ${eventTitle}
+📅 Data: ${dateStr}
+⏰ Zbiórka: ${formattedMeetingTime} (${meetingLocation || 'Miejsce zbiórki'}) | Start: ${formattedStartTime} - ${formattedEndTime}
+📍 Miejsce wydarzenia: ${eventLocation}
+
+KADRA (${selectedSquad.length}):
+${nominatedNames}
+
+Prośba o potwierdzenie obecności! 👍`;
 
     await Clipboard.setStringAsync(message);
 
@@ -764,10 +776,7 @@ export default function KalendarzScreen() {
                         style={styles.quickAttendanceRouteBtn} 
                         onPress={() => {
                           setDayModalVisible(false);
-                          Alert.alert(
-                            "Integracja Nawigacji", 
-                            "Tutaj użyjemy routera by przenieść Cię na płytę boiska! Np.\n\nrouter.push('/QuickAttendance')"
-                          );
+                          router.push('/Boisko'); 
                         }}
                       >
                         <Ionicons name="football-outline" size={16} color="#fff" style={{marginRight: 6}} />

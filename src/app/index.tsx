@@ -23,7 +23,7 @@ import TreningiIndywidualnePanel from '../components/TreningiIndywidualne';
 import { usePlayers } from '../components/PlayersContext';
 
 type UserRole = 'trener' | 'zawodnik' | 'rodzic';
-type ActiveModule = 'home' | 'boisko' | 'szatnia' | 'kalendarz' | 'zawodnicy' | 'stroje' | 'finanse' | 'raporty' | 'treningi';
+type  ActiveModule = 'home' | 'boisko' | 'szatnia' | 'kalendarz' | 'zawodnicy' | 'stroje' | 'finanse' | 'raporty' | 'treningi' | 'ustawienia';
 
 const { width } = Dimensions.get('window');
 
@@ -117,6 +117,11 @@ export default function HomeScreen() {
               <Ionicons name="stats-chart-outline" size={16} color={activeModule === 'raporty' ? '#fff' : '#64748b'} />
               <Text style={[styles.moduleTabText, activeModule === 'raporty' && styles.moduleTabTextActive]}>Raporty AI</Text>
             </TouchableOpacity>
+            
+            <TouchableOpacity style={[styles.moduleTab, activeModule === 'ustawienia' && styles.moduleTabActive]} onPress={() => router.push('/Ustawienia')}>
+              <Ionicons name="settings-outline" size={16} color={activeModule === 'ustawienia' ? '#fff' : '#64748b'} />
+              <Text style={[styles.moduleTabText, activeModule === 'ustawienia' && styles.moduleTabTextActive]}>Ustawienia</Text>
+            </TouchableOpacity>
           </ScrollView>
 
           {/* WIDOK PULPITU TRENERA */}
@@ -201,6 +206,12 @@ export default function HomeScreen() {
                   <TouchableOpacity style={styles.quickActionBtn} onPress={() => router.push('/ZadaniaDomowe')}>
                     <Ionicons name="trophy" size={20} color="#f59e0b" style={{ marginRight: 10 }} />
                     <Text style={styles.quickActionText}>Zadania Domowe i Tablica Wyników (Grywalizacja)</Text>
+                    <Ionicons name="chevron-forward" size={16} color="#64748b" />
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity style={styles.quickActionBtn} onPress={() => router.push('/SklepKlubowy')}>
+                    <Ionicons name="cart" size={20} color="#10b981" style={{ marginRight: 10 }} />
+                    <Text style={styles.quickActionText}>Sklep Klubowy i Rozliczenia</Text>
                     <Ionicons name="chevron-forward" size={16} color="#64748b" />
                   </TouchableOpacity>
                 </View>
