@@ -18,21 +18,20 @@ export default function RootLayout() {
       setIsInitializing(false);
     });
 
-    supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
     if (isInitializing) return;
-
     const inAuthGroup = segments[0] === 'Auth';
 
     if (!session && !inAuthGroup) {
-      // Jeśli nie ma sesji, wyrzuć na ekran logowania
       router.replace('/Auth');
     } else if (session && inAuthGroup) {
-      // Jeśli jest sesja i jesteśmy na logowaniu, wpuść do apki
       router.replace('/');
     }
   }, [session, isInitializing, segments]);
@@ -45,38 +44,39 @@ export default function RootLayout() {
     );
   }
 
+  // Definiujemy, które ekrany mają być widoczne na dolnym pasku
+  const tabBarScreens = ['index', 'Kalendarz', 'Boisko', 'Szatnia', 'Zawodnicy'];
+
   return (
     <PlayersProvider>
       <Tabs
-        screenOptions={{
+        screenOptions={({ route }) => ({
           headerShown: false,
           tabBarActiveTintColor: '#2563eb',
           tabBarInactiveTintColor: '#64748b',
-          tabBarStyle: styles.tabBar,
+          tabBarStyle: tabBarScreens.includes(route.name) ? styles.tabBar : { display: 'none' }, // Ukrywa pasek dla ekranów dodatkowych
           tabBarLabelStyle: styles.tabLabel,
-        }}
+        })}
       >
+        {/* WIDOCZNE NA PASKU */}
         <Tabs.Screen name="index" options={{ title: 'Start', tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} /> }} />
         <Tabs.Screen name="Kalendarz" options={{ title: 'Kalendarz', tabBarIcon: ({ color, size }) => <Ionicons name="calendar-outline" size={size} color={color} /> }} />
         <Tabs.Screen name="Boisko" options={{ title: 'Boisko', tabBarIcon: ({ color, size }) => <Ionicons name="football-outline" size={size} color={color} /> }} />
         <Tabs.Screen name="Szatnia" options={{ title: 'Szatnia', tabBarIcon: ({ color, size }) => <Ionicons name="fitness-outline" size={size} color={color} /> }} />
         <Tabs.Screen name="Zawodnicy" options={{ title: 'Zawodnicy', tabBarIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} /> }} />
 
-        {/* UKRYTE EKRANY */}
-        <Tabs.Screen name="Auth" options={{ href: null, tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="Finanse" options={{ href: null }} />
-        <Tabs.Screen name="testy" options={{ href: null }} />
-        <Tabs.Screen name="Klub" options={{ href: null }} />
-        <Tabs.Screen name="Raporty" options={{ href: null }} />
-        <Tabs.Screen name="StrojePanel" options={{ href: null }} />
-        <Tabs.Screen name="RodzicPanel" options={{ href: null }} />
+        {/* UKRYTE EKRANY (Bezpośrednie przejścia) - href: null ukrywa je z paska Tabs */}
+        <Tabs.Screen name="Auth" options={{ href: null }} />
         <Tabs.Screen name="ZadaniaDomowe" options={{ href: null }} />
-        <Tabs.Screen name="ZawodnikPanel" options={{ href: null }} />
-        <Tabs.Screen name="QuickAttendance" options={{ href: null }} />
         <Tabs.Screen name="AiVideoAnalysis" options={{ href: null }} />
         <Tabs.Screen name="MatchOptimizer" options={{ href: null }} />
-        <Tabs.Screen name="SklepKlubowy" options={{ href: null }} />
+        <Tabs.Screen name="TreningiIndywidualne" options={{ href: null }} />
+        <Tabs.Screen name="StrojePanel" options={{ href: null }} />
+        <Tabs.Screen name="RodzicPanel" options={{ href: null }} />
         <Tabs.Screen name="Ustawienia" options={{ href: null }} />
+        <Tabs.Screen name="Finanse" options={{ href: null }} />
+        <Tabs.Screen name="Klub" options={{ href: null }} />
+        <Tabs.Screen name="Raporty" options={{ href: null }} />
       </Tabs>
     </PlayersProvider>
   );
