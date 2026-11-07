@@ -7,7 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '../services/supabase';
 import { useRouter } from 'expo-router';
 
 export default function AuthScreen() {

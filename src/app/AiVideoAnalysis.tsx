@@ -1,152 +1,292 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Platform, StatusBar, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  SafeAreaView,
+  Platform,
+  StatusBar,
+  ActivityIndicator,
+  Image,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { usePlayers, Player } from '../components/PlayersContext';
 
+// Dynamiczny, bezpieczny margines górny
 const SAFE_TOP_PADDING = Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 10 : 50;
 
-export default function AiVideoAnalysis() {
-  const router = useRouter();
-  const [status, setStatus] = useState<'wybor' | 'nagrywanie' | 'analiza' | 'raport'>('wybor');
+type AnalysisState = 'idle' | 'recording' | 'analyzing' | 'results';
 
-  const handleStart = () => {
-    setStatus('nagrywanie');
+interface AnalysisResult {
+  score: number;
+  strengths: string[];
+  improvements: string[];
+  recommendation: string;
+}
+
+export default function AiVideoAnalysisScreen() {
+  const router = useRouter();
+  const { players } = usePlayers();
+
+  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [drillType, setDrillType] = useState<string>('Strzał na bramkę');
+  const [analysisState, setAnalysisState] = useState<AnalysisState>('idle');
+  const [result, setResult] = useState<AnalysisResult | null>(null);
+
+  const startRecording = () => {
+    if (!selectedPlayer) {
+      alert('Wybierz najpierw zawodnika!');
+      return;
+    }
+    setAnalysisState('recording');
+    // Symulacja nagrywania trwającego 3 sekundy
     setTimeout(() => {
-      setStatus('analiza');
-      setTimeout(() => { setStatus('raport'); }, 3500);
-    }, 4000);
+      startAnalysis();
+    }, 3000);
+  };
+
+  const startAnalysis = () => {
+    setAnalysisState('analyzing');
+    // Symulacja analizy AI trwającej 2 sekundy
+    setTimeout(() => {
+      generateMockResults();
+      setAnalysisState('results');
+    }, 2500);
+  };
+
+  const generateMockResults = () => {
+    const mockResults: Record<string, AnalysisResult> = {
+      'Strzał na bramkę': {
+        score: 78,
+        strengths: ['Dobre ułożenie stopy postawnej', 'Płynny zamach nogi uderzającej'],
+        improvements: ['Ciało zbytnio odchylone do tyłu podczas kontaktu z piłką', 'Brak pełnego podążania za uderzeniem (follow-through)'],
+        recommendation: 'Skup się na pochyleniu tułowia nad piłką w momencie strzału, aby uniknąć posyłania piłki nad poprzeczką. Ćwiczenie: Strzały z piłki toczącej się z naciskiem na niską postawę.',
+      },
+      'Drybling': {
+        score: 85,
+        strengths: ['Niski środek ciężkości', 'Szybki kontakt z piłką obiema stopami'],
+        improvements: ['Wzrok zbyt często skierowany na piłkę zamiast na boisko', 'Zbyt długi krok przy zmianie kierunku'],
+        recommendation: 'Ćwicz prowadzenie piłki z głową w górze. Użyj pachołków i poproś asystenta o pokazywanie cyfr palcami, które musisz głośno czytać podczas dryblingu.',
+      },
+      'Podanie wewnętrzną częścią stopy': {
+        score: 92,
+        strengths: ['Idealne zablokowanie stawu skokowego', 'Bardzo dobra celność i siła'],
+        improvements: ['Stopa postawna mogłaby być odrobinę bliżej piłki'],
+        recommendation: 'Technika jest niemal perfekcyjna. Wprowadź teraz presję czasu i przeciwnika (gry na utrzymanie), aby zautomatyzować ten ruch w warunkach meczowych.',
+      },
+    };
+
+    setResult(mockResults[drillType] || mockResults['Strzał na bramkę']);
+  };
+
+  const resetAnalysis = () => {
+    setAnalysisState('idle');
+    setResult(null);
   };
 
   return (
-    <SafeAreaView style={[styles.container, { paddingTop: SAFE_TOP_PADDING }]}>
-      <StatusBar barStyle="light-content" backgroundColor="#020617" />
+    <SafeAreaView style={[styles.safeArea, { paddingTop: SAFE_TOP_PADDING }]}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
+
+      {/* NAGŁÓWEK */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Ionicons name="chevron-back" size={28} color="#fff" /></TouchableOpacity>
-        <Text style={styles.headerTitle}>MediaPipe AI Vision</Text>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <Ionicons name="chevron-back" size={24} color="#0f172a" />
+        </TouchableOpacity>
+        <View style={{ flex: 1, marginLeft: 10 }}>
+          <Text style={styles.headerTitle}>AI Analiza Wideo</Text>
+          <Text style={styles.headerSubtitle}>Biomechanika i technika</Text>
+        </View>
+        <View style={styles.betaBadge}>
+          <Text style={styles.betaBadgeText}>BETA</Text>
+        </View>
       </View>
 
-      <View style={styles.content}>
-        {status === 'wybor' && (
-          <View style={styles.box}>
-            <View style={styles.iconCircle}>
-              <Ionicons name="scan-outline" size={48} color="#3b82f6" />
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        
+        {/* KROK 1: WYBÓR ZAWODNIKA I ĆWICZENIA (Tylko gdy idle) */}
+        {analysisState === 'idle' && (
+          <View style={styles.setupCard}>
+            <Text style={styles.sectionLabel}>1. Wybierz zawodnika do analizy:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.playerScroll}>
+              {players.slice(0, 10).map(p => (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[styles.playerChip, selectedPlayer?.id === p.id && styles.playerChipActive]}
+                  onPress={() => setSelectedPlayer(p)}
+                >
+                  <View style={[styles.avatarMini, selectedPlayer?.id === p.id && styles.avatarMiniActive]}>
+                    <Text style={[styles.avatarMiniText, selectedPlayer?.id === p.id && { color: '#fff' }]}>#{p.number}</Text>
+                  </View>
+                  <Text style={[styles.playerChipName, selectedPlayer?.id === p.id && { color: '#2563eb', fontWeight: 'bold' }]}>
+                    {p.firstName}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <Text style={[styles.sectionLabel, { marginTop: 20 }]}>2. Wybierz element techniczny:</Text>
+            <View style={styles.drillTypeContainer}>
+              {['Strzał na bramkę', 'Drybling', 'Podanie wewnętrzną częścią stopy'].map(drill => (
+                <TouchableOpacity
+                  key={drill}
+                  style={[styles.drillBtn, drillType === drill && styles.drillBtnActive]}
+                  onPress={() => setDrillType(drill)}
+                >
+                  <Text style={[styles.drillBtnText, drillType === drill && styles.drillBtnTextActive]}>{drill}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
-            <Text style={styles.title}>Silnik AI Pose Lite</Text>
-            <Text style={styles.desc}>Uruchom kamerę, aby sztuczna inteligencja przeanalizowała sylwetkę 3D zawodnika, ułożenie stóp i dynamikę strzału w czasie rzeczywistym.</Text>
-            <TouchableOpacity style={styles.startBtn} onPress={handleStart}>
-              <Ionicons name="camera" size={20} color="#fff" style={{ marginRight: 10 }} />
-              <Text style={styles.startBtnText}>Uruchom Skaner Kamery</Text>
+
+            <TouchableOpacity 
+              style={[styles.startRecordBtn, !selectedPlayer && styles.startRecordBtnDisabled]}
+              onPress={startRecording}
+              disabled={!selectedPlayer}
+            >
+              <Ionicons name="videocam" size={20} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.startRecordBtnText}>Rozpocznij Nagrywanie</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {status === 'nagrywanie' && (
-          <View style={styles.cameraFrame}>
-            {/* Elementy siatki i UI kamery */}
-            <View style={styles.gridLineH} />
-            <View style={styles.gridLineV} />
-            <View style={styles.cornerTL} /><View style={styles.cornerTR} />
-            <View style={styles.cornerBL} /><View style={styles.cornerBR} />
-            
-            <View style={styles.recIndicator}>
-              <View style={styles.recDot} /><Text style={styles.recText}>REC 00:03</Text>
+        {/* EKRAN NAGRYWANIA I ANALIZY */}
+        {(analysisState === 'recording' || analysisState === 'analyzing') && (
+          <View style={styles.activeProcessCard}>
+            <View style={styles.cameraViewMock}>
+              <Ionicons name="scan-outline" size={80} color={analysisState === 'recording' ? '#ef4444' : '#3b82f6'} />
+              <Text style={styles.cameraText}>
+                {analysisState === 'recording' ? 'Nagrywanie w toku...' : 'AI analizuje ruch...'}
+              </Text>
+              {analysisState === 'analyzing' && <ActivityIndicator size="large" color="#3b82f6" style={{ marginTop: 20 }} />}
             </View>
-            
-            <Ionicons name="body-outline" size={160} color="rgba(59, 130, 246, 0.4)" style={styles.bodyWireframe} />
-            
-            <View style={styles.cameraHintBox}>
-              <Ionicons name="warning" size={16} color="#eab308" />
-              <Text style={styles.cameraHint}>Utrzymaj całą sylwetkę gracza w kadrze...</Text>
-            </View>
+            <Text style={styles.processSubtext}>
+              {analysisState === 'recording' 
+                ? 'Poproś zawodnika o wykonanie ćwiczenia. Trzymaj telefon stabilnie.' 
+                : 'Rozpoznawanie wzorców ruchowych i kątów ułożenia stawów...'}
+            </Text>
           </View>
         )}
 
-        {status === 'analiza' && (
-          <View style={styles.box}>
-            <ActivityIndicator size="large" color="#3b82f6" style={{ transform: [{ scale: 1.5 }] }} />
-            <Text style={[styles.title, { marginTop: 32 }]}>Ekstrakcja Wektorów 3D</Text>
-            <Text style={styles.desc}>Przetwarzanie 33 punktów orientacyjnych szkieletu i generowanie modelu biomechanicznego...</Text>
-          </View>
-        )}
-
-        {status === 'raport' && (
-          <View style={styles.reportBox}>
-            <View style={styles.scoreHeader}>
+        {/* WYNIKI ANALIZY */}
+        {analysisState === 'results' && result && (
+          <View style={styles.resultsContainer}>
+            <View style={styles.resultHeader}>
+              <View>
+                <Text style={styles.resultTitle}>Raport Techniczny AI</Text>
+                <Text style={styles.resultSubTitle}>{selectedPlayer?.firstName} {selectedPlayer?.lastName} • {drillType}</Text>
+              </View>
               <View style={styles.scoreCircle}>
-                <Text style={styles.scoreNum}>82</Text>
-                <Text style={styles.scoreSub}>/100</Text>
-              </View>
-              <View style={{ flex: 1, marginLeft: 20 }}>
-                <Text style={styles.title}>Raport Techniki</Text>
-                <Text style={styles.scoreVerdict}>Bardzo dobra mechanika</Text>
-              </View>
-            </View>
-            
-            <View style={styles.divider} />
-            
-            <View style={styles.reportItem}>
-              <Ionicons name="checkmark-circle" size={24} color="#16a34a" />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.reportItemTitle}>Balans Ciała</Text>
-                <Text style={styles.descSmall}>Środek ciężkości idealnie obniżony przed strzałem.</Text>
-              </View>
-            </View>
-            
-            <View style={styles.reportItem}>
-              <Ionicons name="close-circle" size={24} color="#dc2626" />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.reportItemTitle}>Kąt Nogi Postawnej</Text>
-                <Text style={styles.descSmall}>Stopa postawna odchylona o 15° za bardzo na zewnątrz, co powoduje utratę precyzji.</Text>
+                <Text style={styles.scoreText}>{result.score}</Text>
+                <Text style={styles.scoreLabel}>/100</Text>
               </View>
             </View>
 
-            <TouchableOpacity style={styles.saveBtn} onPress={() => setStatus('wybor')}>
-              <Text style={styles.startBtnText}>Zapisz w kartotece gracza</Text>
-            </TouchableOpacity>
+            <View style={styles.feedbackSection}>
+              <View style={styles.feedbackHeaderRow}>
+                <Ionicons name="checkmark-circle" size={18} color="#16a34a" style={{ marginRight: 6 }} />
+                <Text style={styles.feedbackTitleGreen}>Mocne strony (Strengths)</Text>
+              </View>
+              {result.strengths.map((str, idx) => (
+                <Text key={idx} style={styles.feedbackItem}>• {str}</Text>
+              ))}
+            </View>
+
+            <View style={styles.feedbackSection}>
+              <View style={styles.feedbackHeaderRow}>
+                <Ionicons name="construct" size={18} color="#ea580c" style={{ marginRight: 6 }} />
+                <Text style={styles.feedbackTitleOrange}>Do poprawy (Improvements)</Text>
+              </View>
+              {result.improvements.map((imp, idx) => (
+                <Text key={idx} style={styles.feedbackItem}>• {imp}</Text>
+              ))}
+            </View>
+
+            <View style={styles.recommendationBox}>
+              <Text style={styles.recommendationTitle}>🧠 Rekomendacja AI Trenera:</Text>
+              <Text style={styles.recommendationText}>{result.recommendation}</Text>
+            </View>
+
+            <View style={styles.actionButtonsRow}>
+              <TouchableOpacity style={styles.saveReportBtn} onPress={() => alert('Raport zapisany w profilu zawodnika!')}>
+                <Ionicons name="save-outline" size={18} color="#2563eb" style={{ marginRight: 6 }} />
+                <Text style={styles.saveReportBtnText}>Zapisz w Karcie</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.newAnalysisBtn} onPress={resetAnalysis}>
+                <Ionicons name="refresh" size={18} color="#64748b" style={{ marginRight: 6 }} />
+                <Text style={styles.newAnalysisBtnText}>Nowa Analiza</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
-      </View>
+        
+        <View style={{ height: 40 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#020617' },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#0f172a', borderBottomWidth: 1, borderBottomColor: '#1e293b' },
-  backBtn: { padding: 4, marginRight: 8 },
-  headerTitle: { fontSize: 20, fontWeight: '900', color: '#fff', letterSpacing: 1 },
-  content: { flex: 1, padding: 16, justifyContent: 'center' },
+  safeArea: { flex: 1, backgroundColor: '#f8fafc' },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12, backgroundColor: '#f8fafc', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#f1f5f9', justifyContent: 'center', alignItems: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#0f172a' },
+  headerSubtitle: { fontSize: 12, color: '#3b82f6', fontWeight: 'bold' },
+  betaBadge: { backgroundColor: '#dbeafe', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#bfdbfe' },
+  betaBadgeText: { fontSize: 10, fontWeight: 'bold', color: '#1d4ed8' },
   
-  box: { backgroundColor: '#0f172a', padding: 32, borderRadius: 24, alignItems: 'center', borderWidth: 1, borderColor: '#1e293b', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 20 },
-  iconCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(59,130,246,0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 24, borderWidth: 1, borderColor: '#3b82f6' },
-  title: { fontSize: 22, fontWeight: '900', color: '#f8fafc', marginBottom: 12, textAlign: 'center' },
-  desc: { fontSize: 14, color: '#94a3b8', textAlign: 'center', marginBottom: 32, lineHeight: 22, fontWeight: '500' },
-  startBtn: { flexDirection: 'row', backgroundColor: '#2563eb', paddingVertical: 16, paddingHorizontal: 32, borderRadius: 16, width: '100%', alignItems: 'center', justifyContent: 'center' },
-  startBtnText: { color: '#fff', fontWeight: '900', fontSize: 16 },
+  content: { flex: 1, padding: 16 },
+  
+  setupCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#e2e8f0', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 6, elevation: 2 },
+  sectionLabel: { fontSize: 14, fontWeight: 'bold', color: '#334155', marginBottom: 12 },
+  
+  playerScroll: { flexDirection: 'row', marginBottom: 10 },
+  playerChip: { alignItems: 'center', marginRight: 12, width: 60 },
+  playerChipActive: { opacity: 1 },
+  avatarMini: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#f1f5f9', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'transparent', marginBottom: 6 },
+  avatarMiniActive: { backgroundColor: '#3b82f6', borderColor: '#bfdbfe' },
+  avatarMiniText: { fontSize: 13, fontWeight: 'bold', color: '#64748b' },
+  playerChipName: { fontSize: 11, color: '#475569', textAlign: 'center' },
+  
+  drillTypeContainer: { gap: 8, marginBottom: 24 },
+  drillBtn: { backgroundColor: '#f8fafc', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0' },
+  drillBtnActive: { backgroundColor: '#eff6ff', borderColor: '#3b82f6' },
+  drillBtnText: { fontSize: 13, fontWeight: '600', color: '#475569' },
+  drillBtnTextActive: { color: '#1d4ed8', fontWeight: 'bold' },
+  
+  startRecordBtn: { backgroundColor: '#ef4444', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 16, borderRadius: 12 },
+  startRecordBtnDisabled: { backgroundColor: '#fca5a5' },
+  startRecordBtnText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
 
-  cameraFrame: { flex: 1, backgroundColor: '#000', borderRadius: 24, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-  gridLineH: { position: 'absolute', top: '50%', width: '100%', height: 1, backgroundColor: 'rgba(255,255,255,0.1)' },
-  gridLineV: { position: 'absolute', left: '50%', height: '100%', width: 1, backgroundColor: 'rgba(255,255,255,0.1)' },
-  cornerTL: { position: 'absolute', top: 30, left: 30, width: 40, height: 40, borderTopWidth: 5, borderLeftWidth: 5, borderColor: '#3b82f6', borderRadius: 4 },
-  cornerTR: { position: 'absolute', top: 30, right: 30, width: 40, height: 40, borderTopWidth: 5, borderRightWidth: 5, borderColor: '#3b82f6', borderRadius: 4 },
-  cornerBL: { position: 'absolute', bottom: 30, left: 30, width: 40, height: 40, borderBottomWidth: 5, borderLeftWidth: 5, borderColor: '#3b82f6', borderRadius: 4 },
-  cornerBR: { position: 'absolute', bottom: 30, right: 30, width: 40, height: 40, borderBottomWidth: 5, borderRightWidth: 5, borderColor: '#3b82f6', borderRadius: 4 },
-  recIndicator: { position: 'absolute', top: 40, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  recDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#ef4444', marginRight: 8 },
-  recText: { color: '#fff', fontWeight: '900', letterSpacing: 1 },
-  bodyWireframe: { position: 'absolute' },
-  cameraHintBox: { position: 'absolute', bottom: 50, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, alignItems: 'center' },
-  cameraHint: { color: '#facc15', fontSize: 13, fontWeight: '700', marginLeft: 8 },
+  activeProcessCard: { backgroundColor: '#1e293b', borderRadius: 16, padding: 30, alignItems: 'center', justifyContent: 'center', height: 400 },
+  cameraViewMock: { alignItems: 'center', justifyContent: 'center', flex: 1 },
+  cameraText: { fontSize: 18, fontWeight: 'bold', color: '#fff', marginTop: 16 },
+  processSubtext: { fontSize: 13, color: '#94a3b8', textAlign: 'center', marginTop: 20, paddingHorizontal: 20 },
 
-  reportBox: { backgroundColor: '#0f172a', padding: 24, borderRadius: 24, borderWidth: 1, borderColor: '#1e293b' },
-  scoreHeader: { flexDirection: 'row', alignItems: 'center' },
-  scoreCircle: { width: 90, height: 90, borderRadius: 45, borderWidth: 6, borderColor: '#3b82f6', justifyContent: 'center', alignItems: 'center', backgroundColor: '#020617' },
-  scoreNum: { fontSize: 32, fontWeight: '900', color: '#fff' },
-  scoreSub: { fontSize: 12, color: '#94a3b8', fontWeight: '700' },
-  scoreVerdict: { color: '#16a34a', fontWeight: '800', fontSize: 14, marginTop: 4, textTransform: 'uppercase' },
-  divider: { height: 1, backgroundColor: '#1e293b', marginVertical: 24 },
-  reportItem: { flexDirection: 'row', marginBottom: 20 },
-  reportItemTitle: { color: '#f8fafc', fontSize: 15, fontWeight: '800', marginBottom: 4 },
-  descSmall: { color: '#94a3b8', fontSize: 13, lineHeight: 20 },
-  saveBtn: { backgroundColor: '#2563eb', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 10 }
+  resultsContainer: { backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#e2e8f0', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 3 },
+  resultHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', marginBottom: 16 },
+  resultTitle: { fontSize: 18, fontWeight: 'bold', color: '#0f172a' },
+  resultSubTitle: { fontSize: 13, color: '#64748b', marginTop: 2 },
+  scoreCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#eff6ff', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#3b82f6' },
+  scoreText: { fontSize: 18, fontWeight: 'bold', color: '#1d4ed8' },
+  scoreLabel: { fontSize: 10, color: '#64748b', marginTop: -2 },
+
+  feedbackSection: { marginBottom: 16 },
+  feedbackHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  feedbackTitleGreen: { fontSize: 14, fontWeight: 'bold', color: '#16a34a' },
+  feedbackTitleOrange: { fontSize: 14, fontWeight: 'bold', color: '#ea580c' },
+  feedbackItem: { fontSize: 13, color: '#334155', marginLeft: 24, marginBottom: 4, lineHeight: 18 },
+
+  recommendationBox: { backgroundColor: '#f0fdf4', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#bbf7d0', marginTop: 8, marginBottom: 20 },
+  recommendationTitle: { fontSize: 13, fontWeight: 'bold', color: '#166534', marginBottom: 6 },
+  recommendationText: { fontSize: 13, color: '#15803d', lineHeight: 18, fontStyle: 'italic' },
+
+  actionButtonsRow: { flexDirection: 'row', gap: 12 },
+  saveReportBtn: { flex: 2, backgroundColor: '#eff6ff', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: '#bfdbfe' },
+  saveReportBtnText: { color: '#1d4ed8', fontSize: 13, fontWeight: 'bold' },
+  newAnalysisBtn: { flex: 1, backgroundColor: '#f1f5f9', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0' },
+  newAnalysisBtnText: { color: '#475569', fontSize: 12, fontWeight: 'bold' },
 });

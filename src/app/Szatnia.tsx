@@ -1,249 +1,727 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, Alert, SafeAreaView, Platform, StatusBar, Linking } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Modal,
+  Alert,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePlayers, Player } from '../components/PlayersContext';
-import * as Clipboard from 'expo-clipboard';
 
-const SAFE_TOP_PADDING = Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 10 : 50;
-type SubTab = 'zdrowie' | 'motoryka' | 'rodzice';
+type SubTab = 'motoryka' | 'zdrowie' | 'notatki';
+type PositionFilter = 'WSZYSTKIE' | 'Bramkarz' | 'Obrońca' | 'Pomocnik' | 'Napastnik';
 
 export default function SzatniaScreen() {
-  const { players, addPlayer, updatePlayer, removePlayer } = usePlayers();
-  const [activeSubTab, setActiveSubTab] = useState<SubTab>('zdrowie');
-  
+  const { players: playersData, addPlayer, updatePlayer, removePlayer, availableYears: contextYears } = usePlayers();
+
+  const [activeSubTab, setActiveSubTab] = useState<SubTab>('motoryka');
+  const [selectedYear, setSelectedYear] = useState<string>('WSZYSTKIE');
+  const [selectedPosition, setSelectedPosition] = useState<PositionFilter>('WSZYSTKIE');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
   // Modale
-  const [addPlayerVisible, setAddPlayerVisible] = useState(false);
-  const [newFirstName, setNewFirstName] = useState('');
-  const [newLastName, setNewLastName] = useState('');
-  const [newYear, setNewYear] = useState('2014');
-  
-  const [inviteModalVisible, setInviteModalVisible] = useState(false);
-  const [activePlayer, setActivePlayer] = useState<Player | null>(null);
+  const [testModalVisible, setTestModalVisible] = useState<boolean>(false);
+  const [addPlayerModalVisible, setAddPlayerModalVisible] = useState<boolean>(false);
+  const [editPlayerModalVisible, setEditPlayerModalVisible] = useState<boolean>(false);
 
-  const calculateBMI = (h?: number, w?: number) => {
-    if (!h || !w || h === 0) return 0;
-    return (w / Math.pow(h / 100, 2)).toFixed(1);
-  };
+  // Stan dla testu motorycznego
+  const [selectedPlayerForTest, setSelectedPlayerForTest] = useState<Player | null>(null);
+  const [sprintTime, setSprintTime] = useState<string>('4.5');
+  const [jumpDist, setJumpDist] = useState<string>('210');
+  const [beepLevel, setBeepLevel] = useState<string>('8.5');
 
-  const getBMICategory = (bmi: number) => {
-    if (bmi === 0) return { text: 'Brak danych', color: '#94a3b8' };
-    if (bmi < 15) return { text: 'Niedowaga', color: '#eab308' };
-    if (bmi > 22) return { text: 'Nadwaga', color: '#ef4444' };
-    return { text: 'Prawidłowe', color: '#16a34a' };
-  };
+  // Stan dla nowego zawodnika
+  const [newFirstName, setNewFirstName] = useState<string>('');
+  const [newLastName, setNewLastName] = useState<string>('');
+  const [newYear, setNewYear] = useState<string>('2016');
+  const [newPosition, setNewPosition] = useState<string>('Pomocnik');
 
-  const handleAddPlayer = async () => {
-    if (!newFirstName || !newLastName) return Alert.alert('Błąd', 'Wpisz imię i nazwisko');
-    await addPlayer({
-      firstName: newFirstName, lastName: newLastName, name: `${newFirstName} ${newLastName}`,
-      number: Math.floor(Math.random() * 99) + 1, year: newYear, position: 'Brak', height: 145, weight: 38, parentPhone: '+48 600 000 000'
+  // Stan dla edycji istniejącego zawodnika
+  const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+  const [editFirstName, setEditFirstName] = useState<string>('');
+  const [editLastName, setEditLastName] = useState<string>('');
+  const [editYear, setEditYear] = useState<string>('');
+  const [editPosition, setEditPosition] = useState<string>('');
+  const [editNumber, setEditNumber] = useState<string>('');
+
+  const availableYears = useMemo(() => {
+    return ['WSZYSTKIE', ...contextYears];
+  }, [contextYears]);
+
+  // Filtrowanie zawodników
+  const filteredPlayers = useMemo(() => {
+    return playersData.filter((p: any) => {
+      const pName = (p.name || `${p.firstName || ''} ${p.lastName || ''}`).toLowerCase();
+      const matchesSearch = pName.includes(searchQuery.toLowerCase());
+      const matchesYear = selectedYear === 'WSZYSTKIE' || String(p.year) === selectedYear;
+      const matchesPos = selectedPosition === 'WSZYSTKIE' || p.position === selectedPosition;
+
+      return matchesSearch && matchesYear && matchesPos;
     });
-    setAddPlayerVisible(false); setNewFirstName(''); setNewLastName('');
+  }, [playersData, searchQuery, selectedYear, selectedPosition]);
+
+  const injuredCount = useMemo(() => {
+    return playersData.filter((p: any) => p.injuryStatus && p.injuryStatus !== 'Zdrowy').length;
+  }, [playersData]);
+
+  const handleSaveTest = () => {
+    if (!selectedPlayerForTest) return;
+    const currentDate = new Date().toLocaleDateString('pl-PL');
+    const newTestEntry = {
+      testName: 'Testy Ogólne (Sprint / Skok / Beep)',
+      result: `Sprint: ${sprintTime}s, Skok: ${jumpDist}cm, Beep: ${beepLevel}`,
+      date: currentDate,
+    };
+
+    const existingTests = selectedPlayerForTest.tests || [];
+
+    updatePlayer(selectedPlayerForTest.id, {
+      sprint30m: sprintTime,
+      jumpCm: parseInt(jumpDist) || selectedPlayerForTest.jumpCm,
+      beepTest: beepLevel,
+      tests: [newTestEntry, ...existingTests],
+    });
+
+    setTestModalVisible(false);
+    Alert.alert('Sukces 📊', 'Wyniki pomiarów i historia zostały zaktualizowane.');
   };
 
-  const generateInvite = () => {
-    if (!activePlayer) return;
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    updatePlayer(activePlayer.id, { inviteCode: code });
+  const handleAddNewPlayer = () => {
+    if (!newFirstName.trim() || !newLastName.trim()) {
+      Alert.alert('Błąd', 'Podaj imię i nazwisko nowego zawodnika.');
+      return;
+    }
+
+    addPlayer({
+      firstName: newFirstName,
+      lastName: newLastName,
+      name: `${newFirstName} ${newLastName}`,
+      number: Math.floor(Math.random() * 80) + 10,
+      year: newYear,
+      position: newPosition,
+      sprint30m: '4.50',
+      jumpCm: 200,
+      beepTest: '7.0',
+      injuryStatus: 'Zdrowy',
+      coachNote: 'Nowo dodany zawodnik do kadry.',
+      tests: [],
+    });
+
+    setNewFirstName('');
+    setNewLastName('');
+    setAddPlayerModalVisible(false);
+    Alert.alert('Sukces ⚽', 'Nowy zawodnik został dodany do bazy!');
   };
 
-  const copyInvite = async () => {
-    if (!activePlayer?.inviteCode) return;
-    await Clipboard.setStringAsync(`Kod dostępu do aplikacji SportsClub dla Twojego dziecka to: ${activePlayer.inviteCode}`);
-    Alert.alert('Skopiowano', 'Możesz teraz wkleić wiadomość w SMS lub WhatsApp.');
+  const openEditModal = (player: Player) => {
+    setEditingPlayer(player);
+    setEditFirstName(player.firstName || '');
+    setEditLastName(player.lastName || '');
+    setEditYear(String(player.year || '2012'));
+    setEditPosition(player.position || 'Pomocnik');
+    setEditNumber(String(player.number || '10'));
+    setEditPlayerModalVisible(true);
   };
-  
-  const openWhatsApp = (phone?: string) => {
-    if (!phone) return Alert.alert('Brak numeru', 'Uzupełnij numer w profilu.');
-    Linking.openURL(`whatsapp://send?phone=${phone.replace(/\s+/g, '')}`);
+
+  const handleSaveEditedPlayer = () => {
+    if (!editingPlayer) return;
+    updatePlayer(editingPlayer.id, {
+      firstName: editFirstName,
+      lastName: editLastName,
+      name: `${editFirstName} ${editLastName}`,
+      year: editYear,
+      position: editPosition,
+      number: parseInt(editNumber) || editingPlayer.number,
+    });
+    setEditPlayerModalVisible(false);
+    Alert.alert('Sukces', 'Dane zawodnika zostały zaktualizowane.');
+  };
+
+  const handleDeletePlayerPrompt = (player: Player) => {
+    Alert.alert(
+      'Usuń zawodnika',
+      `Czy na pewno chcesz usunąć zawodnika ${player.name} z kadry?`,
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        {
+          text: 'Usuń',
+          style: 'destructive',
+          onPress: () => removePlayer(player.id),
+        },
+      ]
+    );
+  };
+
+  const toggleHealthStatus = (player: Player) => {
+    const nextStatus = player.injuryStatus === 'Zdrowy' ? 'Kontuzja (2 tyg. przerwy)' : 'Zdrowy';
+    updatePlayer(player.id, { injuryStatus: nextStatus });
   };
 
   return (
-    <SafeAreaView style={[styles.container, { paddingTop: SAFE_TOP_PADDING }]}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+    <View style={styles.container}>
+      {/* NAGŁÓWEK Z PRZYCISKAMI AKCJI */}
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Szatnia & Kartoteki</Text>
-          <Text style={styles.headerSubtitle}>Zdrowie, BMI, Motoryka, B2C</Text>
+          <Text style={styles.headerTitle}>Szatnia & Centrum Motoryki</Text>
+          <Text style={styles.headerSubtitle}>
+            Zarządzanie kadrą, testy i kartoteka medyczna
+          </Text>
         </View>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setAddPlayerVisible(true)}>
-          <Ionicons name="person-add" size={16} color="#fff" />
-          <Text style={styles.addBtnText}>Nowy Gracz</Text>
+
+        <View style={{ flexDirection: 'row' }}>
+          <TouchableOpacity
+            style={styles.addPlayerTopBtn}
+            onPress={() => setAddPlayerModalVisible(true)}
+          >
+            <Ionicons name="person-add-outline" size={14} color="#2563eb" />
+            <Text style={styles.addPlayerTopBtnText}>+ Gracza</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.newEntryBtn}
+            onPress={() => {
+              if (filteredPlayers.length > 0) {
+                setSelectedPlayerForTest(filteredPlayers[0]);
+                setTestModalVisible(true);
+              } else {
+                Alert.alert('Uwaga', 'Brak zawodników w wybranej grupie.');
+              }
+            }}
+          >
+            <Ionicons name="speedometer-outline" size={14} color="#fff" />
+            <Text style={styles.newEntryBtnText}>+ Pomiar</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* PODZAKŁADKI */}
+      <View style={styles.subTabsRow}>
+        <TouchableOpacity
+          style={[styles.subTabBtn, activeSubTab === 'motoryka' && styles.subTabBtnActive]}
+          onPress={() => setActiveSubTab('motoryka')}
+        >
+          <Ionicons
+            name="speedometer-outline"
+            size={14}
+            color={activeSubTab === 'motoryka' ? '#2563eb' : '#64748b'}
+            style={{ marginRight: 4 }}
+          />
+          <Text style={[styles.subTabText, activeSubTab === 'motoryka' && styles.subTabTextActive]}>
+            Motoryka
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.subTabBtn, activeSubTab === 'zdrowie' && styles.subTabBtnActive]}
+          onPress={() => setActiveSubTab('zdrowie')}
+        >
+          <Ionicons
+            name="medkit-outline"
+            size={14}
+            color={activeSubTab === 'zdrowie' ? '#dc2626' : '#64748b'}
+            style={{ marginRight: 4 }}
+          />
+          <Text style={[styles.subTabText, activeSubTab === 'zdrowie' && styles.subTabTextActive]}>
+            Zdrowie ({injuredCount})
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.subTabBtn, activeSubTab === 'notatki' && styles.subTabBtnActive]}
+          onPress={() => setActiveSubTab('notatki')}
+        >
+          <Ionicons
+            name="create-outline"
+            size={14}
+            color={activeSubTab === 'notatki' ? '#2563eb' : '#64748b'}
+            style={{ marginRight: 4 }}
+          />
+          <Text style={[styles.subTabText, activeSubTab === 'notatki' && styles.subTabTextActive]}>
+            Notatki
+          </Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.tabContainer}>
-        <TouchableOpacity style={[styles.tab, activeSubTab === 'zdrowie' && styles.tabActive]} onPress={() => setActiveSubTab('zdrowie')}>
-          <Ionicons name="medkit" size={16} color={activeSubTab === 'zdrowie' ? '#fff' : '#64748b'} />
-          <Text style={[styles.tabText, activeSubTab === 'zdrowie' && styles.tabTextActive]}>Zdrowie</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.tab, activeSubTab === 'motoryka' && styles.tabActive]} onPress={() => setActiveSubTab('motoryka')}>
-          <Ionicons name="barbell" size={16} color={activeSubTab === 'motoryka' ? '#fff' : '#64748b'} />
-          <Text style={[styles.tabText, activeSubTab === 'motoryka' && styles.tabTextActive]}>Motoryka</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.tab, activeSubTab === 'rodzice' && styles.tabActive]} onPress={() => setActiveSubTab('rodzice')}>
-          <Ionicons name="people" size={16} color={activeSubTab === 'rodzice' ? '#fff' : '#64748b'} />
-          <Text style={[styles.tabText, activeSubTab === 'rodzice' && styles.tabTextActive]}>Rodzice</Text>
-        </TouchableOpacity>
+      {/* FILTRY I WYSZUKIWARKA */}
+      <View style={styles.filtersSection}>
+        <View style={styles.searchBar}>
+          <Ionicons name="search-outline" size={16} color="#94a3b8" style={{ marginRight: 6 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Szukaj zawodnika..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#94a3b8"
+          />
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+          <Text style={styles.filterGroupLabel}>Rocznik:</Text>
+          {availableYears.map((yr) => (
+            <TouchableOpacity
+              key={yr}
+              style={[styles.chipFilter, selectedYear === yr && styles.chipFilterActive]}
+              onPress={() => setSelectedYear(yr)}
+            >
+              <Text style={[styles.chipText, selectedYear === yr && styles.chipTextActive]}>
+                {yr}
+              </Text>
+            </TouchableOpacity>
+          ))}
+
+          <View style={styles.filterDivider} />
+
+          <Text style={styles.filterGroupLabel}>Pozycja:</Text>
+          {(['WSZYSTKIE', 'Bramkarz', 'Obrońca', 'Pomocnik', 'Napastnik'] as PositionFilter[]).map((pos) => (
+            <TouchableOpacity
+              key={pos}
+              style={[styles.chipFilter, selectedPosition === pos && styles.chipFilterActive]}
+              onPress={() => setSelectedPosition(pos)}
+            >
+              <Text style={[styles.chipText, selectedPosition === pos && styles.chipTextActive]}>
+                {pos}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
+      {/* LISTA ZAWODNIKÓW */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.listCounter}>Zarejestrowani zawodnicy: {players.length}</Text>
-        {players.map(p => {
-          const bmiVal = Number(calculateBMI(p.height, p.weight));
-          const bmiCat = getBMICategory(bmiVal);
-          const isLinked = !!p.parentId;
+        <Text style={styles.sectionTitle}>
+          Zawodnicy ({filteredPlayers.length})
+        </Text>
+
+        {filteredPlayers.map((player: any) => {
+          const pName = player.name || `${player.firstName || ''} ${player.lastName || ''}`;
 
           return (
-            <View key={p.id} style={styles.playerCard}>
-              <View style={styles.cardHeader}>
-                <View style={styles.avatar}><Text style={styles.avatarText}>#{p.number}</Text></View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.playerName}>{p.firstName} {p.lastName}</Text>
-                  <Text style={styles.playerMeta}>Rocznik {p.year} • {p.position}</Text>
+            <View key={player.id} style={styles.card}>
+              <View style={styles.cardMainRow}>
+                <View style={styles.avatarCircle}>
+                  <Text style={styles.avatarText}>#{player.number || player.id}</Text>
                 </View>
-                <TouchableOpacity onPress={() => removePlayer(p.id)} style={styles.deleteBtn}>
-                  <Ionicons name="trash-outline" size={18} color="#dc2626" />
-                </TouchableOpacity>
+
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.playerName}>{pName}</Text>
+                  <Text style={styles.playerMeta}>
+                    {player.position} | Rocznik {player.year}
+                  </Text>
+                </View>
+
+                {/* PRZYCISKI AKCJI (EDYCJA / USUWANIE) */}
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <TouchableOpacity
+                    style={[styles.actionIconBtn, { marginRight: 6 }]}
+                    onPress={() => openEditModal(player)}
+                  >
+                    <Ionicons name="pencil-outline" size={14} color="#2563eb" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.actionIconBtn, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}
+                    onPress={() => handleDeletePlayerPrompt(player)}
+                  >
+                    <Ionicons name="trash-outline" size={14} color="#dc2626" />
+                  </TouchableOpacity>
+                </View>
               </View>
 
-              {activeSubTab === 'zdrowie' && (
-                <View style={styles.dataGrid}>
-                  <View style={styles.dataBox}><Text style={styles.dataLabel}>Wzrost</Text><Text style={styles.dataVal}>{p.height || '--'} cm</Text></View>
-                  <View style={styles.dataBox}><Text style={styles.dataLabel}>Waga</Text><Text style={styles.dataVal}>{p.weight || '--'} kg</Text></View>
-                  <View style={[styles.dataBox, { backgroundColor: '#f8fafc', borderColor: bmiCat.color, borderWidth: 2 }]}>
-                    <Text style={styles.dataLabel}>Wskaźnik BMI</Text>
-                    <Text style={[styles.dataVal, { color: bmiCat.color, fontSize: 18 }]}>{bmiVal || '--'}</Text>
-                    <Text style={{ fontSize: 9, color: bmiCat.color, fontWeight: 'bold', marginTop: 2, textTransform: 'uppercase' }}>{bmiCat.text}</Text>
-                  </View>
-                </View>
-              )}
-
+              {/* ZAKŁADKA: MOTORYKA */}
               {activeSubTab === 'motoryka' && (
-                <View style={styles.dataGrid}>
-                  <View style={styles.dataBox}><Text style={styles.dataLabel}>Sprint 30m</Text><Text style={styles.dataVal}>{p.sprint30m || '--'}s</Text></View>
-                  <View style={styles.dataBox}><Text style={styles.dataLabel}>Skok w dal</Text><Text style={styles.dataVal}>{p.jumpCm || '--'}cm</Text></View>
-                  <View style={styles.dataBox}><Text style={styles.dataLabel}>Beep Test</Text><Text style={styles.dataVal}>{p.beepTest || '--'}</Text></View>
+                <>
+                  <View style={styles.metricsRow}>
+                    <View style={styles.metricBox}>
+                      <Text style={styles.metricLabel}>Sprint 30m</Text>
+                      <Text style={styles.metricVal}>{player.sprint30m} s</Text>
+                    </View>
+                    <View style={styles.metricBox}>
+                      <Text style={styles.metricLabel}>Skok w dal</Text>
+                      <Text style={styles.metricVal}>{player.jumpCm} cm</Text>
+                    </View>
+                    <View style={styles.metricBox}>
+                      <Text style={styles.metricLabel}>Beep Test</Text>
+                      <Text style={styles.metricVal}>{player.beepTest}</Text>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.singleTestBtn}
+                    onPress={() => {
+                      setSelectedPlayerForTest(player);
+                      setSprintTime(String(player.sprint30m || '4.5'));
+                      setJumpDist(String(player.jumpCm || '200'));
+                      setBeepLevel(String(player.beepTest || '7.0'));
+                      setTestModalVisible(true);
+                    }}
+                  >
+                    <Ionicons name="speedometer-outline" size={13} color="#2563eb" style={{ marginRight: 4 }} />
+                    <Text style={styles.singleTestBtnText}>Wprowadź pomiar motoryczny</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              {/* ZAKŁADKA: ZDROWIE */}
+              {activeSubTab === 'zdrowie' && (
+                <View style={styles.healthRow}>
+                  <TouchableOpacity
+                    style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+                    onPress={() => toggleHealthStatus(player)}
+                  >
+                    <Ionicons
+                      name={player.injuryStatus === 'Zdrowy' ? 'checkmark-circle' : 'alert-circle'}
+                      size={18}
+                      color={player.injuryStatus === 'Zdrowy' ? '#16a34a' : '#dc2626'}
+                    />
+                    <Text
+                      style={[
+                        styles.healthText,
+                        { color: player.injuryStatus === 'Zdrowy' ? '#16a34a' : '#dc2626' },
+                      ]}
+                    >
+                      Status: {player.injuryStatus || 'Zdrowy'} (Kliknij, aby zmienić)
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               )}
 
-              {activeSubTab === 'rodzice' && (
-                <View style={styles.parentSection}>
-                  <View style={styles.statusRow}>
-                    <Text style={styles.statusLabel}>Portal Rodzica (B2C):</Text>
-                    {isLinked ? (
-                      <View style={[styles.badge, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}><Text style={[styles.badgeText, { color: '#16a34a' }]}>Powiązane ✓</Text></View>
-                    ) : (
-                      <View style={[styles.badge, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}><Text style={[styles.badgeText, { color: '#dc2626' }]}>Brak dostępu</Text></View>
-                    )}
-                  </View>
+              {/* ZAKŁADKA: NOTATKI I HISTORIA TESTÓW */}
+              {activeSubTab === 'notatki' && (
+                <View style={styles.noteBox}>
+                  <Text style={styles.noteTitle}>Notatka trenerska:</Text>
+                  <Text style={styles.noteText}>
+                    {player.coachNote ? player.coachNote : 'Brak notatek dla tego zawodnika.'}
+                  </Text>
 
-                  <View style={styles.contactRow}>
-                    <TouchableOpacity style={[styles.contactBtn, { backgroundColor: '#25D366' }]} onPress={() => openWhatsApp(p.parentPhone)}>
-                      <Ionicons name="logo-whatsapp" size={16} color="#fff" />
-                      <Text style={styles.contactBtnText}>Napisz WhatsApp</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.contactBtn, { backgroundColor: '#0f172a' }]} onPress={() => Linking.openURL(`tel:${p.parentPhone}`)}>
-                      <Ionicons name="call" size={16} color="#fff" />
-                      <Text style={styles.contactBtnText}>Zadzwoń</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {!isLinked && (
-                    <TouchableOpacity style={styles.inviteBtn} onPress={() => { setActivePlayer(p); setInviteModalVisible(true); }}>
-                      <Ionicons name="key-outline" size={16} color="#2563eb" style={{ marginRight: 6 }} />
-                      <Text style={styles.inviteBtnText}>Generuj i wyślij kod dostępu</Text>
-                    </TouchableOpacity>
+                  {player.tests && player.tests.length > 0 && (
+                    <View style={{ marginTop: 8 }}>
+                      <Text style={styles.noteTitle}>Historia ostatnich testów:</Text>
+                      {player.tests.slice(0, 3).map((t: any, idx: number) => (
+                        <Text key={idx} style={styles.historyItemText}>
+                          • [{t.date}] {t.result}
+                        </Text>
+                      ))}
+                    </View>
                   )}
                 </View>
               )}
             </View>
           );
         })}
-        <View style={{ height: 60 }} />
+
+        <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Modal Kodu */}
-      <Modal visible={inviteModalVisible} transparent animationType="fade">
+      {/* MODAL 1: DODAWANIE NOWEGO ZAWODNIKA */}
+      <Modal animationType="slide" transparent={true} visible={addPlayerModalVisible}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Kod B2C dla Rodzica</Text>
-              <TouchableOpacity onPress={() => setInviteModalVisible(false)}><Ionicons name="close-circle" size={28} color="#94a3b8" /></TouchableOpacity>
-            </View>
-            <Text style={styles.modalSub}>Zawodnik: <Text style={{ fontWeight: 'bold' }}>{activePlayer?.firstName} {activePlayer?.lastName}</Text></Text>
-            
-            {activePlayer?.inviteCode ? (
-              <View style={styles.codeBox}>
-                <Text style={styles.codeText}>{activePlayer.inviteCode}</Text>
-                <TouchableOpacity style={styles.copyBtn} onPress={copyInvite}>
-                  <Ionicons name="copy" size={20} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.copyBtnText}>Skopiuj treść wiadomości SMS</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <TouchableOpacity style={styles.generateBtn} onPress={generateInvite}>
-                <Text style={styles.generateBtnText}>Wygeneruj Unikalny Kod</Text>
+              <Text style={styles.modalTitle}>Dodaj Zawodnika do Szatni ⚽</Text>
+              <TouchableOpacity onPress={() => setAddPlayerModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#64748b" />
               </TouchableOpacity>
-            )}
+            </View>
+
+            <Text style={styles.inputLabel}>Imię zawodnika</Text>
+            <TextInput style={styles.modalInput} placeholder="np. Adam" value={newFirstName} onChangeText={setNewFirstName} />
+
+            <Text style={styles.inputLabel}>Nazwisko zawodnika</Text>
+            <TextInput style={styles.modalInput} placeholder="np. Wiśniewski" value={newLastName} onChangeText={setNewLastName} />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1, marginRight: 6 }}>
+                <Text style={styles.inputLabel}>Rocznik (np. 2016)</Text>
+                <TextInput style={styles.modalInput} value={newYear} onChangeText={setNewYear} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 6 }}>
+                <Text style={styles.inputLabel}>Pozycja</Text>
+                <TextInput style={styles.modalInput} value={newPosition} onChangeText={setNewPosition} />
+              </View>
+            </View>
+
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setAddPlayerModalVisible(false)}>
+                <Text style={styles.cancelBtnText}>Anuluj</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleAddNewPlayer}>
+                <Text style={styles.saveBtnText}>Zapisz Zawodnika</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+
+      {/* MODAL 2: EDYCJA DANYCH ZAWODNIKA */}
+      <Modal animationType="slide" transparent={true} visible={editPlayerModalVisible}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edytuj Dane Zawodnika ✏️</Text>
+              <TouchableOpacity onPress={() => setEditPlayerModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.inputLabel}>Imię</Text>
+            <TextInput style={styles.modalInput} value={editFirstName} onChangeText={setEditFirstName} />
+
+            <Text style={styles.inputLabel}>Nazwisko</Text>
+            <TextInput style={styles.modalInput} value={editLastName} onChangeText={setEditLastName} />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1, marginRight: 6 }}>
+                <Text style={styles.inputLabel}>Rocznik</Text>
+                <TextInput style={styles.modalInput} value={editYear} onChangeText={setEditYear} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 6 }}>
+                <Text style={styles.inputLabel}>Numer na koszulce</Text>
+                <TextInput style={styles.modalInput} keyboardType="numeric" value={editNumber} onChangeText={setEditNumber} />
+              </View>
+            </View>
+
+            <Text style={styles.inputLabel}>Pozycja</Text>
+            <TextInput style={styles.modalInput} value={editPosition} onChangeText={setEditPosition} />
+
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditPlayerModalVisible(false)}>
+                <Text style={styles.cancelBtnText}>Anuluj</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEditedPlayer}>
+                <Text style={styles.saveBtnText}>Zapisz Zmiany</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL 3: WPISYWANIE WYNIKÓW TESTU */}
+      <Modal animationType="slide" transparent={true} visible={testModalVisible}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Wprowadź Pomiary Motoryki ⏱️</Text>
+              <TouchableOpacity onPress={() => setTestModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.inputLabel}>Wybrany zawodnik</Text>
+            <Text style={styles.selectedPlayerNameText}>
+              {selectedPlayerForTest ? (selectedPlayerForTest.name || `${selectedPlayerForTest.firstName} ${selectedPlayerForTest.lastName}`) : ''} (Rocznik {selectedPlayerForTest?.year})
+            </Text>
+
+            <Text style={styles.inputLabel}>Sprint 30m (sekundy)</Text>
+            <TextInput style={styles.modalInput} keyboardType="numeric" value={sprintTime} onChangeText={setSprintTime} />
+
+            <Text style={styles.inputLabel}>Skok w dal z miejsca (cm)</Text>
+            <TextInput style={styles.modalInput} keyboardType="numeric" value={jumpDist} onChangeText={setJumpDist} />
+
+            <Text style={styles.inputLabel}>Beep Test (poziom)</Text>
+            <TextInput style={styles.modalInput} value={beepLevel} onChangeText={setBeepLevel} />
+
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setTestModalVisible(false)}>
+                <Text style={styles.cancelBtnText}>Anuluj</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveTest}>
+                <Text style={styles.saveBtnText}>Zapisz Pomiar & Dodaj do Historii</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f1f5f9' },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', elevation: 2 },
-  headerTitle: { fontSize: 22, fontWeight: '900', color: '#0f172a' },
-  headerSubtitle: { fontSize: 13, color: '#64748b', fontWeight: '500' },
-  addBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#2563eb', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, shadowColor: '#2563eb', shadowOpacity: 0.3, shadowRadius: 5 },
-  addBtnText: { color: '#fff', fontWeight: '800', fontSize: 13, marginLeft: 6 },
-  
-  tabContainer: { flexDirection: 'row', backgroundColor: '#fff', padding: 12, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
-  tab: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 12, borderRadius: 12, backgroundColor: '#f8fafc', marginHorizontal: 4, borderWidth: 1, borderColor: '#f1f5f9' },
-  tabActive: { backgroundColor: '#2563eb', borderColor: '#1d4ed8', shadowColor: '#2563eb', shadowOpacity: 0.2, shadowRadius: 5, elevation: 3 },
-  tabText: { fontSize: 12, fontWeight: '800', color: '#64748b', marginLeft: 6 },
-  tabTextActive: { color: '#fff' },
-
+  container: { 
+    flex: 1, 
+    backgroundColor: '#f8fafc',
+    paddingTop: 20, // Poprawiony margines górny (oddech od paska systemowego)
+  },
+  header: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#0f172a' },
+  headerSubtitle: { fontSize: 12, color: '#64748b', marginTop: 2 },
+  addPlayerTopBtn: {
+    backgroundColor: '#eff6ff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  addPlayerTopBtnText: { color: '#2563eb', fontSize: 11, fontWeight: 'bold', marginLeft: 4 },
+  newEntryBtn: {
+    backgroundColor: '#2563eb',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  newEntryBtnText: { color: '#fff', fontSize: 11, fontWeight: 'bold', marginLeft: 4 },
+  subTabsRow: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  subTabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#f1f5f9',
+    marginRight: 6,
+  },
+  subTabBtnActive: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe' },
+  subTabText: { fontSize: 11, fontWeight: '600', color: '#64748b' },
+  subTabTextActive: { color: '#2563eb', fontWeight: 'bold' },
+  filtersSection: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  searchInput: { flex: 1, fontSize: 12, color: '#0f172a', padding: 0 },
+  filterGroupLabel: { fontSize: 11, fontWeight: 'bold', color: '#475569', alignSelf: 'center', marginRight: 6 },
+  chipFilter: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#f1f5f9',
+    marginRight: 4,
+  },
+  chipFilterActive: { backgroundColor: '#2563eb' },
+  chipText: { fontSize: 10, color: '#64748b', fontWeight: '600' },
+  chipTextActive: { color: '#fff', fontWeight: 'bold' },
+  filterDivider: { width: 1, height: 16, backgroundColor: '#cbd5e1', marginHorizontal: 8, alignSelf: 'center' },
   content: { padding: 16 },
-  listCounter: { fontSize: 13, fontWeight: '700', color: '#94a3b8', marginBottom: 12, marginLeft: 4, textTransform: 'uppercase', letterSpacing: 1 },
-  
-  playerCard: { backgroundColor: '#fff', borderRadius: 20, padding: 20, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 10, elevation: 3, borderWidth: 1, borderColor: '#f1f5f9' },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#eff6ff', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#bfdbfe' },
-  avatarText: { fontSize: 14, fontWeight: '900', color: '#1e40af' },
-  playerName: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
-  playerMeta: { fontSize: 13, color: '#64748b', fontWeight: '500', marginTop: 2 },
-  deleteBtn: { backgroundColor: '#fef2f2', padding: 10, borderRadius: 10 },
-
-  dataGrid: { flexDirection: 'row', gap: 12, borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 16 },
-  dataBox: { flex: 1, alignItems: 'center', backgroundColor: '#f8fafc', paddingVertical: 16, paddingHorizontal: 8, borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0' },
-  dataLabel: { fontSize: 11, color: '#64748b', fontWeight: '800', textTransform: 'uppercase', marginBottom: 6 },
-  dataVal: { fontSize: 16, fontWeight: '900', color: '#0f172a' },
-
-  parentSection: { borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 16 },
-  statusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  statusLabel: { fontSize: 13, color: '#475569', fontWeight: '800' },
-  badge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
-  badgeText: { fontSize: 11, fontWeight: '900', textTransform: 'uppercase' },
-  
-  contactRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  contactBtn: { flex: 1, flexDirection: 'row', paddingVertical: 14, justifyContent: 'center', alignItems: 'center', borderRadius: 12, elevation: 2 },
-  contactBtnText: { color: '#fff', fontSize: 13, fontWeight: '800', marginLeft: 8 },
-  inviteBtn: { flexDirection: 'row', backgroundColor: '#eff6ff', paddingVertical: 14, justifyContent: 'center', alignItems: 'center', borderRadius: 12, borderWidth: 2, borderColor: '#bfdbfe', borderStyle: 'dashed' },
-  inviteBtnText: { color: '#2563eb', fontSize: 13, fontWeight: '800' },
-
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.8)', justifyContent: 'center', padding: 20 },
-  modalCard: { backgroundColor: '#fff', borderRadius: 24, padding: 24, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  modalTitle: { fontSize: 20, fontWeight: '900', color: '#0f172a' },
-  modalSub: { fontSize: 14, color: '#64748b', marginBottom: 24 },
-  codeBox: { alignItems: 'center' },
-  codeText: { fontSize: 40, fontWeight: '900', letterSpacing: 8, color: '#2563eb', backgroundColor: '#eff6ff', paddingVertical: 20, paddingHorizontal: 40, borderRadius: 20, overflow: 'hidden', marginBottom: 24 },
-  copyBtn: { flexDirection: 'row', backgroundColor: '#0f172a', paddingVertical: 16, paddingHorizontal: 32, borderRadius: 16, alignItems: 'center', width: '100%', justifyContent: 'center' },
-  copyBtnText: { color: '#fff', fontWeight: '900', fontSize: 15 },
-  generateBtn: { backgroundColor: '#2563eb', paddingVertical: 18, borderRadius: 16, alignItems: 'center' },
-  generateBtnText: { color: '#fff', fontWeight: '900', fontSize: 16 },
+  sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#334155', marginBottom: 12 },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  cardMainRow: { flexDirection: 'row', alignItems: 'center' },
+  avatarCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#eff6ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  avatarText: { fontSize: 11, fontWeight: 'bold', color: '#2563eb' },
+  playerName: { fontSize: 13, fontWeight: 'bold', color: '#0f172a' },
+  playerMeta: { fontSize: 11, color: '#64748b', marginTop: 1 },
+  actionIconBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  metricBox: { flex: 1, alignItems: 'center', backgroundColor: '#f8fafc', padding: 6, borderRadius: 6, marginRight: 4, borderWidth: 1, borderColor: '#e2e8f0' },
+  metricLabel: { fontSize: 9, color: '#64748b' },
+  metricVal: { fontSize: 11, fontWeight: 'bold', color: '#0f172a', marginTop: 2 },
+  singleTestBtn: {
+    marginTop: 8,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    borderRadius: 6,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  singleTestBtnText: { fontSize: 11, fontWeight: 'bold', color: '#2563eb' },
+  healthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  healthText: { fontSize: 12, fontWeight: '600', marginLeft: 6 },
+  noteBox: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  noteTitle: { fontSize: 11, fontWeight: 'bold', color: '#475569', marginBottom: 2 },
+  noteText: { fontSize: 12, color: '#334155', fontStyle: 'italic' },
+  historyItemText: { fontSize: 11, color: '#64748b', marginTop: 2 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.5)', justifyContent: 'center', padding: 16 },
+  modalContainer: { backgroundColor: '#fff', borderRadius: 16, padding: 20, elevation: 5 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  modalTitle: { fontSize: 15, fontWeight: 'bold', color: '#0f172a' },
+  inputLabel: { fontSize: 11, fontWeight: '600', color: '#475569', marginTop: 8, marginBottom: 4 },
+  selectedPlayerNameText: { fontSize: 12, fontWeight: 'bold', color: '#2563eb', marginBottom: 4 },
+  modalInput: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    fontSize: 12,
+    color: '#0f172a',
+  },
+  modalButtonsRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16 },
+  cancelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, marginRight: 6 },
+  cancelBtnText: { fontSize: 12, color: '#64748b', fontWeight: '600' },
+  saveBtn: { backgroundColor: '#2563eb', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
+  saveBtnText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
 });

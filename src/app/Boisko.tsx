@@ -1,162 +1,453 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Platform, StatusBar, Alert, Modal } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Modal,
+  Alert,
+  TextInput,
+  SafeAreaView,
+  Platform,
+  StatusBar,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { usePlayers } from '../components/PlayersContext';
+import { usePlayers, Player } from '../components/PlayersContext';
 
+// Dynamiczny, bezpieczny margines górny
 const SAFE_TOP_PADDING = Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 10 : 50;
+
+type GameFormat = '5v5' | '7v7' | '9v9' | '11v11';
+type ActiveTab = 'pitch' | 'matchLive';
+
+interface PositionSlot {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+}
+
+interface MatchEvent {
+  id: string;
+  type: 'goal' | 'yellow' | 'red';
+  player: Player;
+  minute: string;
+  assistPlayer?: Player;
+}
+
+const FORMAT_FORMATIONS: Record<GameFormat, { name: string; slots: PositionSlot[] }[]> = {
+  '5v5': [
+    {
+      name: '1-2-1',
+      slots: [
+        { id: 'GK', label: 'Bramkarz (GK)', x: 50, y: 85 },
+        { id: 'CB', label: 'Obrońca (CB)', x: 50, y: 65 },
+        { id: 'LM', label: 'Lewy Pomocnik (LM)', x: 25, y: 40 },
+        { id: 'RM', label: 'Prawy Pomocnik (RM)', x: 75, y: 40 },
+        { id: 'ST', label: 'Napastnik (ST)', x: 50, y: 20 },
+      ],
+    },
+  ],
+  '7v7': [
+    {
+      name: '1-3-2-1',
+      slots: [
+        { id: 'GK', label: 'Bramkarz (GK)', x: 50, y: 85 },
+        { id: 'LB', label: 'Lewy Obrońca (LB)', x: 20, y: 65 },
+        { id: 'CB', label: 'Środkowy Obrońca (CB)', x: 50, y: 70 },
+        { id: 'RB', label: 'Prawy Obrońca (RB)', x: 80, y: 65 },
+        { id: 'LM', label: 'Lewy Pomocnik (LM)', x: 25, y: 40 },
+        { id: 'RM', label: 'Prawy Pomocnik (RM)', x: 75, y: 40 },
+        { id: 'ST', label: 'Napastnik (ST)', x: 50, y: 20 },
+      ],
+    },
+  ],
+  '9v9': [
+    {
+      name: '1-3-4-1',
+      slots: [
+        { id: 'GK', label: 'Bramkarz (GK)', x: 50, y: 85 },
+        { id: 'LB', label: 'Lewy Obrońca (LB)', x: 20, y: 68 },
+        { id: 'CB', label: 'Środkowy Obrońca (CB)', x: 50, y: 72 },
+        { id: 'RB', label: 'Prawy Obrońca (RB)', x: 80, y: 68 },
+        { id: 'LM', label: 'Lewy Pomocnik (LM)', x: 15, y: 45 },
+        { id: 'CM1', label: 'Środkowy Pomocnik', x: 38, y: 48 },
+        { id: 'CM2', label: 'Środkowy Pomocnik', x: 62, y: 48 },
+        { id: 'RM', label: 'Prawy Pomocnik (RM)', x: 85, y: 45 },
+        { id: 'ST', label: 'Napastnik (ST)', x: 50, y: 20 },
+      ],
+    },
+  ],
+  '11v11': [
+    {
+      name: '1-4-3-3',
+      slots: [
+        { id: 'GK', label: 'Bramkarz (GK)', x: 50, y: 85 },
+        { id: 'LB', label: 'Lewy Obrońca (LB)', x: 15, y: 65 },
+        { id: 'CB1', label: 'Środkowy Obrońca (CB)', x: 38, y: 70 },
+        { id: 'CB2', label: 'Środkowy Obrońca (CB)', x: 62, y: 70 },
+        { id: 'RB', label: 'Prawy Obrońca (RB)', x: 85, y: 65 },
+        { id: 'CM1', label: 'Środkowy Pomocnik (CM)', x: 30, y: 45 },
+        { id: 'CM2', label: 'Środkowy Pomocnik (CM)', x: 50, y: 50 },
+        { id: 'CM3', label: 'Środkowy Pomocnik (CM)', x: 70, y: 45 },
+        { id: 'LW', label: 'Lewy Skrzydłowy (LW)', x: 18, y: 20 },
+        { id: 'ST', label: 'Napastnik (ST)', x: 50, y: 15 },
+        { id: 'RW', label: 'Prawy Skrzydłowy (RW)', x: 82, y: 20 },
+      ],
+    },
+  ],
+};
 
 export default function BoiskoScreen() {
   const { players } = usePlayers();
+
+  const [activeTab, setActiveTab] = useState<ActiveTab>('pitch');
+  const [selectedFormat, setSelectedFormat] = useState<GameFormat>('7v7');
+  const [formationIndex, setFormationIndex] = useState<number>(0);
   
-  // Zaawansowany Stoper
-  const [matchTime, setMatchTime] = useState(0);
-  const [isRunning, setIsRunning] = useState(false);
-  const [matchPhase, setMatchPhase] = useState<'Przed Meczem' | '1. Połowa' | 'Przerwa' | '2. Połowa' | 'Koniec'>('Przed Meczem');
+  const [lineup, setLineup] = useState<Record<string, Player>>({});
+
+  // Stany modalu wyboru zawodnika do taktyki
+  const [modalVisible, setModalVisible] = useState<boolean>(false);
+  const [activeSlot, setActiveSlot] = useState<PositionSlot | null>(null);
+
+  // Stany dla Tablicy Wyników na Żywo (Match Live)
+  const [opponentName, setOpponentName] = useState<string>('Przeciwnik');
+  const [teamScore, setTeamScore] = useState<number>(0);
+  const [opponentScore, setOpponentScore] = useState<number>(0);
+  const [matchEvents, setMatchEvents] = useState<MatchEvent[]>([]);
   
-  // Wyniki i Protokół
-  const [homeScore, setHomeScore] = useState(0);
-  const [awayScore, setAwayScore] = useState(0);
-  const [events, setEvents] = useState<{ minute: number; text: string; type: string; player?: string }[]>([]);
+  // Modal dodawania zdarzenia (bramka/kartka)
+  const [eventModalVisible, setEventModalVisible] = useState<boolean>(false);
+  const [selectedEventType, setSelectedEventType] = useState<'goal' | 'yellow' | 'red'>('goal');
+  const [eventMinute, setEventMinute] = useState<string>('15');
 
-  // Modale do wyboru zawodnika
-  const [playerModalVisible, setPlayerModalVisible] = useState(false);
-  const [pendingEventType, setPendingEventType] = useState<'goal' | 'yellow' | 'red' | null>(null);
+  const availableFormations = FORMAT_FORMATIONS[selectedFormat];
+  const currentFormation = availableFormations[formationIndex] || availableFormations[0];
+  const currentSlots = currentFormation.slots;
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isRunning) {
-      interval = setInterval(() => { setMatchTime((prev) => prev + 1); }, 1000); 
+  const handleSelectFormat = (format: GameFormat) => {
+    setSelectedFormat(format);
+    setFormationIndex(0);
+    setLineup({});
+  };
+
+  const handleOpenSelector = (slot: PositionSlot) => {
+    setActiveSlot(slot);
+    setModalVisible(true);
+  };
+
+  const handleAssignPlayer = (player: Player) => {
+    if (!activeSlot) return;
+    setLineup((prev) => ({
+      ...prev,
+      [activeSlot.id]: player,
+    }));
+    setModalVisible(false);
+    setActiveSlot(null);
+  };
+
+  const handleRemoveFromSlot = (slotId: string) => {
+    setLineup((prev) => {
+      const copy = { ...prev };
+      delete copy[slotId];
+      return copy;
+    });
+  };
+
+  const handleClearLineup = () => {
+    Alert.alert('Reset składu', 'Czy chcesz wyczyścić całe ustawienie na boisku?', [
+      { text: 'Anuluj', style: 'cancel' },
+      { text: 'Wyczyść', style: 'destructive', onPress: () => setLineup({}) },
+    ]);
+  };
+
+  // Dodawanie zdarzenia meczowego
+  const handleOpenEventModal = (type: 'goal' | 'yellow' | 'red') => {
+    setSelectedEventType(type);
+    setEventModalVisible(true);
+  };
+
+  const handleAddEventSubmit = (player: Player) => {
+    const newEvent: MatchEvent = {
+      id: Date.now().toString(),
+      type: selectedEventType,
+      player,
+      minute: eventMinute || '1',
+    };
+
+    if (selectedEventType === 'goal') {
+      setTeamScore((prev) => prev + 1);
     }
-    return () => clearInterval(interval);
-  }, [isRunning]);
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const handleMatchPhase = () => {
-    if (matchPhase === 'Przed Meczem') { setMatchPhase('1. Połowa'); setIsRunning(true); }
-    else if (matchPhase === '1. Połowa') { setMatchPhase('Przerwa'); setIsRunning(false); }
-    else if (matchPhase === 'Przerwa') { setMatchPhase('2. Połowa'); setIsRunning(true); }
-    else if (matchPhase === '2. Połowa') { setMatchPhase('Koniec'); setIsRunning(false); Alert.alert('Koniec Spotkania', 'Raport meczowy zsynchronizowany z Supabase.'); }
-  };
-
-  const openEventModal = (type: 'goal' | 'yellow' | 'red') => {
-    if (!isRunning && matchPhase !== '1. Połowa' && matchPhase !== '2. Połowa') {
-      return Alert.alert('Stoper Zatrzymany', 'Zdarzenia możesz dodawać tylko w trakcie trwania połowy.');
-    }
-    setPendingEventType(type);
-    setPlayerModalVisible(true);
-  };
-
-  const confirmEvent = (playerName: string) => {
-    const currentMinute = Math.floor(matchTime / 60) || 1;
-    const typeNames = { goal: 'Gol!', yellow: 'Żółta kartka', red: 'Czerwona kartka' };
-    
-    setEvents([{ minute: currentMinute, text: typeNames[pendingEventType!], type: pendingEventType!, player: playerName }, ...events]);
-    if (pendingEventType === 'goal') setHomeScore(prev => prev + 1);
-    
-    setPlayerModalVisible(false);
-    setPendingEventType(null);
+    setMatchEvents([newEvent, ...matchEvents]);
+    setEventModalVisible(false);
   };
 
   return (
     <SafeAreaView style={[styles.container, { paddingTop: SAFE_TOP_PADDING }]}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
+
+      {/* NAGŁÓWEK */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Centrum Meczowe LIVE</Text>
-        <TouchableOpacity style={styles.syncBadge}><Ionicons name="cloud-done" size={14} color="#16a34a" /><Text style={styles.syncText}>Supabase</Text></TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>Kreator Składu & Mecz ⚽</Text>
+          <Text style={styles.headerSubtitle}>Format: {selectedFormat} | Ustawienie: {currentFormation.name}</Text>
+        </View>
+        <TouchableOpacity style={styles.clearBtn} onPress={handleClearLineup}>
+          <Ionicons name="trash-outline" size={16} color="#dc2626" />
+        </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        
-        {/* ZAAWANSOWANY STOPER */}
-        <View style={styles.stopwatchCard}>
-          <View style={styles.phaseBadge}><Text style={styles.phaseText}>{matchPhase}</Text></View>
-          <Text style={styles.timeText}>{formatTime(matchTime)}</Text>
-          <TouchableOpacity style={[styles.mainBtn, isRunning ? styles.btnStop : styles.btnStart]} onPress={handleMatchPhase}>
-            <Text style={styles.mainBtnText}>
-              {matchPhase === 'Przed Meczem' ? 'Gwizdek: Start Meczu' : 
-               matchPhase === '1. Połowa' ? 'Zakończ 1. Połowę' : 
-               matchPhase === 'Przerwa' ? 'Gwizdek: Start 2. Połowy' :
-               matchPhase === '2. Połowa' ? 'Zakończ Mecz' : 'Mecz Zakończony'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+      {/* PRZEŁĄCZNIK ZAKŁADEK (Boisko / Mecz na żywo) */}
+      <View style={styles.mainTabRow}>
+        <TouchableOpacity
+          style={[styles.mainTabBtn, activeTab === 'pitch' && styles.mainTabBtnActive]}
+          onPress={() => setActiveTab('pitch')}
+        >
+          <Ionicons name="football-outline" size={15} color={activeTab === 'pitch' ? '#2563eb' : '#64748b'} style={{ marginRight: 6 }} />
+          <Text style={[styles.mainTabText, activeTab === 'pitch' && styles.mainTabTextActive]}>Ustawienie & Boisko</Text>
+        </TouchableOpacity>
 
-        {/* INTERAKTYWNA TABLICA WYNIKÓW */}
-        <View style={styles.scoreBoard}>
-          <View style={styles.teamScore}>
-            <Text style={styles.teamName}>NASZ KLUB</Text>
-            <Text style={styles.scoreNum}>{homeScore}</Text>
+        <TouchableOpacity
+          style={[styles.mainTabBtn, activeTab === 'matchLive' && styles.mainTabBtnActive]}
+          onPress={() => setActiveTab('matchLive')}
+        >
+          <Ionicons name="stats-chart-outline" size={15} color={activeTab === 'matchLive' ? '#2563eb' : '#64748b'} style={{ marginRight: 6 }} />
+          <Text style={[styles.mainTabText, activeTab === 'matchLive' && styles.mainTabTextActive]}>Tablica Wyników na Żywo 🔴</Text>
+        </TouchableOpacity>
+      </View>
+
+      {activeTab === 'pitch' ? (
+        <>
+          {/* WYBÓR FORMATU GRY */}
+          <View style={styles.formatRow}>
+            {(['5v5', '7v7', '9v9', '11v11'] as GameFormat[]).map((fmt) => (
+              <TouchableOpacity
+                key={fmt}
+                style={[styles.formatChip, selectedFormat === fmt && styles.formatChipActive]}
+                onPress={() => handleSelectFormat(fmt)}
+              >
+                <Text style={[styles.formatChipText, selectedFormat === fmt && styles.formatChipTextActive]}>
+                  {fmt}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
-          <View style={styles.vsBox}><Text style={styles.vsText}>VS</Text></View>
-          <View style={styles.teamScore}>
-            <Text style={styles.teamName}>PRZECIWNIK</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <TouchableOpacity onPress={() => setAwayScore(Math.max(0, awayScore - 1))} style={styles.scoreAdjust}><Text style={styles.scoreAdjustText}>-</Text></TouchableOpacity>
-              <Text style={styles.scoreNumAway}>{awayScore}</Text>
-              <TouchableOpacity onPress={() => setAwayScore(awayScore + 1)} style={styles.scoreAdjust}><Text style={styles.scoreAdjustText}>+</Text></TouchableOpacity>
+
+          {/* WYBÓR FORMACJI */}
+          <View style={styles.formationRow}>
+            {availableFormations.map((formObj, idx) => (
+              <TouchableOpacity
+                key={formObj.name}
+                style={[styles.formationChip, formationIndex === idx && styles.formationChipActive]}
+                onPress={() => setFormationIndex(idx)}
+              >
+                <Text style={[styles.formationChipText, formationIndex === idx && styles.formationChipTextActive]}>
+                  {formObj.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* WIZUALIZACJA BOISKA */}
+          <View style={styles.pitchContainer}>
+            <View style={styles.pitchCenterCircle} />
+            <View style={styles.pitchCenterLine} />
+            <View style={styles.pitchPenaltyBoxTop} />
+            <View style={styles.pitchGoalBoxTop} />
+
+            {currentSlots.map((slot) => {
+              const assignedPlayer = lineup[slot.id];
+
+              return (
+                <TouchableOpacity
+                  key={slot.id}
+                  style={[styles.playerNode, { left: `${slot.x}%`, top: `${slot.y}%` }]}
+                  onPress={() => handleOpenSelector(slot)}
+                  onLongPress={() => assignedPlayer && handleRemoveFromSlot(slot.id)}
+                >
+                  <View style={[styles.nodeAvatar, assignedPlayer ? styles.nodeAssigned : styles.nodeEmpty]}>
+                    {assignedPlayer ? (
+                      <Text style={styles.nodeNumber}>#{assignedPlayer.number}</Text>
+                    ) : (
+                      <Ionicons name="add" size={16} color="#94a3b8" />
+                    )}
+                  </View>
+                  <Text style={styles.nodeLabel} numberOfLines={1}>
+                    {assignedPlayer ? `${assignedPlayer.name.split(' ')[0]}` : slot.label.split(' ')[0]}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </>
+      ) : (
+        /* TABLICA WYNIKÓW NA ŻYWO (MATCH LIVE) */
+        <ScrollView style={styles.liveContainer} showsVerticalScrollIndicator={false}>
+          {/* WYNIK MECZU */}
+          <View style={styles.scoreCard}>
+            <View style={{ alignItems: 'center', flex: 1 }}>
+              <Text style={styles.teamTitle}>Nasza Drużyna</Text>
+              <Text style={styles.scoreText}>{teamScore}</Text>
+            </View>
+
+            <View style={{ alignItems: 'center', paddingHorizontal: 10 }}>
+              <Text style={styles.vsText}>VS</Text>
+              <TextInput
+                style={styles.opponentInput}
+                value={opponentName}
+                onChangeText={setOpponentName}
+                placeholder="Przeciwnik"
+              />
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                <TouchableOpacity 
+                  style={styles.scoreAdjBtn} 
+                  onPress={() => setOpponentScore(Math.max(0, opponentScore - 1))}
+                >
+                  <Text style={styles.scoreAdjText}>-</Text>
+                </TouchableOpacity>
+                <Text style={[styles.scoreText, { marginHorizontal: 12, fontSize: 24 }]}>{opponentScore}</Text>
+                <TouchableOpacity 
+                  style={styles.scoreAdjBtn} 
+                  onPress={() => setOpponentScore(opponentScore + 1)}
+                >
+                  <Text style={styles.scoreAdjText}>+</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
 
-        {/* PRZYCISKI ZDARZEŃ */}
-        <Text style={styles.sectionTitle}>Rejestracja Zdarzeń</Text>
-        <View style={styles.actionsRow}>
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#16a34a' }]} onPress={() => openEventModal('goal')}>
-            <Ionicons name="football" size={24} color="#fff" />
-            <Text style={styles.actionBtnText}>Gol (Nasz)</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#eab308' }]} onPress={() => openEventModal('yellow')}>
-            <View style={styles.cardYellow} />
-            <Text style={styles.actionBtnText}>Żółta</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#dc2626' }]} onPress={() => openEventModal('red')}>
-            <View style={styles.cardRed} />
-            <Text style={styles.actionBtnText}>Czerwona</Text>
-          </TouchableOpacity>
-        </View>
+          {/* SZYBKIE AKCJE / ZDARZENIA */}
+          <Text style={styles.sectionHeader}>Dodaj zdarzenie w meczu:</Text>
+          <View style={styles.actionsRow}>
+            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#16a34a' }]} onPress={() => handleOpenEventModal('goal')}>
+              <Ionicons name="football" size={16} color="#fff" style={{ marginRight: 4 }} />
+              <Text style={styles.actionBtnText}>+ Bramka</Text>
+            </TouchableOpacity>
 
-        {/* PROTOKÓŁ ZDARZEŃ */}
-        <View style={styles.logCard}>
-          <Text style={styles.logTitle}>Oficjalny Protokół Zdarzeń</Text>
-          {events.length === 0 ? <Text style={styles.logEmpty}>Brak zdarzeń. Użyj przycisków powyżej.</Text> : 
-            events.map((e, idx) => (
-              <View key={idx} style={styles.logItem}>
-                <View style={styles.logMinuteBox}><Text style={styles.logMinute}>{e.minute}'</Text></View>
-                <View style={styles.logDetails}>
-                  <Text style={styles.logTextBold}>{e.text}</Text>
-                  {e.player && <Text style={styles.logPlayer}>{e.player}</Text>}
+            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#ca8a04' }]} onPress={() => handleOpenEventModal('yellow')}>
+              <Text style={styles.cardYellow}>🟨</Text>
+              <Text style={[styles.actionBtnText, { color: '#fff' }]}>Żółta</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#dc2626' }]} onPress={() => handleOpenEventModal('red')}>
+              <Text style={styles.cardRed}>🟥</Text>
+              <Text style={styles.actionBtnText}>Czerwona</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* LINIA CZASU ZDARZEŃ */}
+          <Text style={styles.sectionHeader}>Przebieg spotkania (Protokół):</Text>
+          {matchEvents.length > 0 ? (
+            matchEvents.map((ev) => (
+              <View key={ev.id} style={styles.eventRow}>
+                <Text style={styles.eventMinute}>{ev.minute}'</Text>
+                <Text style={styles.eventIcon}>
+                  {ev.type === 'goal' ? '⚽' : ev.type === 'yellow' ? '🟨' : '🟥'}
+                </Text>
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={styles.eventPlayerName}>
+                    #{ev.player.number} {ev.player.name}
+                  </Text>
+                  <Text style={styles.eventDesc}>
+                    {ev.type === 'goal' ? 'Strzelona bramka' : ev.type === 'yellow' ? 'Żółta kartka' : 'Czerwona kartka'}
+                  </Text>
                 </View>
-                <Ionicons name={e.type === 'goal' ? 'football' : 'alert'} size={20} color={e.type === 'goal' ? '#16a34a' : e.type === 'yellow' ? '#eab308' : '#dc2626'} />
+                <TouchableOpacity 
+                  onPress={() => {
+                    if (ev.type === 'goal') setTeamScore(Math.max(0, teamScore - 1));
+                    setMatchEvents(matchEvents.filter((item) => item.id !== ev.id));
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={16} color="#94a3b8" />
+                </TouchableOpacity>
               </View>
             ))
-          }
-        </View>
-        <View style={{ height: 40 }} />
-      </ScrollView>
+          ) : (
+            <Text style={styles.noEventsText}>Brak zarejestrowanych zdarzeń w tym meczu.</Text>
+          )}
+        </ScrollView>
+      )}
 
-      {/* MODAL WYBORU ZAWODNIKA DO ZDARZENIA */}
-      <Modal visible={playerModalVisible} transparent animationType="slide">
+      {/* MODAL WYBORU ZAWODNIKA DO TAKTYKI */}
+      <Modal animationType="slide" transparent={true} visible={modalVisible}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Kto brał udział w zdarzeniu?</Text>
-            <ScrollView style={{ maxHeight: 300, width: '100%' }}>
-              {players.length > 0 ? players.map(p => (
-                <TouchableOpacity key={p.id} style={styles.modalPlayerRow} onPress={() => confirmEvent(`${p.firstName} ${p.lastName}`)}>
-                  <Text style={styles.modalPlayerNumber}>#{p.number}</Text>
-                  <Text style={styles.modalPlayerName}>{p.firstName} {p.lastName}</Text>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Wybierz zawodnika dla: {activeSlot?.label}</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.playerList} showsVerticalScrollIndicator={false}>
+              {players.map((player) => (
+                <TouchableOpacity
+                  key={player.id}
+                  style={styles.playerSelectRow}
+                  onPress={() => handleAssignPlayer(player)}
+                >
+                  <View style={styles.selectAvatar}>
+                    <Text style={styles.selectAvatarText}>#{player.number}</Text>
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.selectPlayerName}>{player.name}</Text>
+                    <Text style={styles.selectPlayerMeta}>Pozycja: {player.position} | Rocznik {player.year}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#cbd5e1" />
                 </TouchableOpacity>
-              )) : (
-                <Text style={{ textAlign: 'center', color: '#64748b', padding: 20 }}>Brak zawodników w bazie. Dodaj ich w Szatni.</Text>
-              )}
+              ))}
             </ScrollView>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => setPlayerModalVisible(false)}>
-              <Text style={styles.cancelBtnText}>Anuluj Zdarzenie</Text>
-            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL WYBORU ZAWODNIKA DO ZDARZENIA (BRAMKA/KARTKA) */}
+      <Modal animationType="slide" transparent={true} visible={eventModalVisible}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {selectedEventType === 'goal' ? '⚽ Kto strzelił bramkę?' : selectedEventType === 'yellow' ? '🟨 Żółta kartka dla:' : '🟥 Czerwona kartka dla:'}
+              </Text>
+              <TouchableOpacity onPress={() => setEventModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+              <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#334155', marginRight: 8 }}>Minuta meczu:</Text>
+              <TextInput
+                style={styles.minuteInput}
+                value={eventMinute}
+                onChangeText={setEventMinute}
+                keyboardType="numeric"
+                maxLength={3}
+              />
+            </View>
+
+            <Text style={styles.modalHint}>Wybierz z zawodników wystawionych w wyjściowym składzie lub z całej kadry:</Text>
+
+            <ScrollView style={styles.playerList} showsVerticalScrollIndicator={false}>
+              {players.map((player) => (
+                <TouchableOpacity
+                  key={player.id}
+                  style={styles.playerSelectRow}
+                  onPress={() => handleAddEventSubmit(player)}
+                >
+                  <View style={styles.selectAvatar}>
+                    <Text style={styles.selectAvatarText}>#{player.number}</Text>
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.selectPlayerName}>{player.name}</Text>
+                    <Text style={styles.selectPlayerMeta}>Rocznik {player.year}</Text>
+                  </View>
+                  <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#2563eb' }}>Wybierz</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -165,56 +456,273 @@ export default function BoiskoScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f1f5f9' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
-  headerTitle: { fontSize: 20, fontWeight: '900', color: '#0f172a' },
-  syncBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0fdf4', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: '#bbf7d0' },
-  syncText: { fontSize: 10, color: '#16a34a', fontWeight: 'bold', marginLeft: 4 },
-  
-  content: { padding: 16 },
-  
-  stopwatchCard: { backgroundColor: '#fff', padding: 24, borderRadius: 20, alignItems: 'center', marginBottom: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 4 },
-  phaseBadge: { backgroundColor: '#eff6ff', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 16, marginBottom: 12 },
-  phaseText: { fontSize: 12, color: '#2563eb', fontWeight: '800', textTransform: 'uppercase' },
-  timeText: { fontSize: 64, fontWeight: '900', color: '#0f172a', letterSpacing: 2, marginBottom: 20, fontVariant: ['tabular-nums'] },
-  mainBtn: { paddingVertical: 16, width: '100%', borderRadius: 12, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 5, elevation: 4 },
-  btnStart: { backgroundColor: '#2563eb' },
-  btnStop: { backgroundColor: '#ef4444' },
-  mainBtnText: { color: '#fff', fontWeight: '900', fontSize: 16, textTransform: 'uppercase' },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#f8fafc',
+  },
+  header: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#0f172a' },
+  headerSubtitle: { fontSize: 12, color: '#64748b', marginTop: 2 },
+  clearBtn: { padding: 8, backgroundColor: '#ffeeef', borderRadius: 8, borderWidth: 1, borderColor: '#fecaca' },
 
-  scoreBoard: { flexDirection: 'row', backgroundColor: '#0f172a', borderRadius: 20, padding: 24, alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, shadowColor: '#0f172a', shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 },
-  teamScore: { alignItems: 'center', flex: 1 },
-  teamName: { color: '#94a3b8', fontSize: 11, fontWeight: '800', marginBottom: 8, letterSpacing: 1 },
-  scoreNum: { color: '#fff', fontSize: 56, fontWeight: '900' },
-  scoreNumAway: { color: '#fff', fontSize: 48, fontWeight: '900', marginHorizontal: 12 },
-  vsBox: { backgroundColor: '#1e293b', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
-  vsText: { fontSize: 14, fontWeight: '900', color: '#3b82f6' },
-  scoreAdjust: { backgroundColor: '#334155', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
-  scoreAdjustText: { color: '#fff', fontSize: 24, fontWeight: 'bold' },
+  mainTabRow: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  mainTabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    marginHorizontal: 4,
+  },
+  mainTabBtnActive: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe' },
+  mainTabText: { fontSize: 12, fontWeight: '600', color: '#64748b' },
+  mainTabTextActive: { color: '#2563eb', fontWeight: 'bold' },
 
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#0f172a', marginBottom: 12, marginLeft: 4 },
-  actionsRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
-  actionBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 16, borderRadius: 16, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5, elevation: 3 },
-  actionBtnText: { color: '#fff', fontWeight: '800', fontSize: 13, marginTop: 8 },
-  cardYellow: { width: 18, height: 24, backgroundColor: '#fef08a', borderRadius: 2, borderWidth: 1, borderColor: '#ca8a04' },
-  cardRed: { width: 18, height: 24, backgroundColor: '#fca5a5', borderRadius: 2, borderWidth: 1, borderColor: '#991b1b' },
+  formatRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  formatChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 16,
+    backgroundColor: '#e2e8f0',
+    marginHorizontal: 4,
+  },
+  formatChipActive: { backgroundColor: '#0284c7' },
+  formatChipText: { fontSize: 11, fontWeight: 'bold', color: '#475569' },
+  formatChipTextActive: { color: '#fff' },
 
-  logCard: { backgroundColor: '#fff', padding: 20, borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 },
-  logTitle: { fontSize: 16, fontWeight: '900', color: '#0f172a', marginBottom: 16 },
-  logEmpty: { fontSize: 13, color: '#94a3b8', fontStyle: 'italic', textAlign: 'center', padding: 20 },
-  logItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  logMinuteBox: { backgroundColor: '#f8fafc', padding: 8, borderRadius: 8, marginRight: 12 },
-  logMinute: { fontWeight: '900', color: '#334155', fontSize: 14 },
-  logDetails: { flex: 1 },
-  logTextBold: { fontWeight: '800', color: '#0f172a', fontSize: 15 },
-  logPlayer: { color: '#64748b', fontSize: 12, marginTop: 2, fontWeight: '600' },
+  formationRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  formationChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: '#f1f5f9',
+    marginHorizontal: 4,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  formationChipActive: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
+  formationChipText: { fontSize: 11, fontWeight: '600', color: '#64748b' },
+  formationChipTextActive: { color: '#fff', fontWeight: 'bold' },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.7)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, alignItems: 'center', maxHeight: '80%' },
-  modalTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a', marginBottom: 20 },
-  modalPlayerRow: { flexDirection: 'row', alignItems: 'center', width: '100%', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  modalPlayerNumber: { fontSize: 16, fontWeight: '900', color: '#2563eb', width: 40 },
-  modalPlayerName: { fontSize: 16, fontWeight: '700', color: '#334155' },
-  cancelBtn: { marginTop: 20, padding: 16, width: '100%', backgroundColor: '#f1f5f9', borderRadius: 12, alignItems: 'center' },
-  cancelBtnText: { color: '#64748b', fontWeight: '800', fontSize: 15 },
+  /* BOISKO */
+  pitchContainer: {
+    flex: 1,
+    backgroundColor: '#15803d',
+    margin: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+    position: 'relative',
+    borderWidth: 2,
+    borderColor: '#16a34a',
+  },
+  pitchCenterCircle: {
+    position: 'absolute',
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.4)',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -45 }, { translateY: -45 }],
+  },
+  pitchCenterLine: {
+    position: 'absolute',
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.4)',
+    top: '50%',
+    left: 0,
+    right: 0,
+  },
+  pitchPenaltyBoxTop: {
+    position: 'absolute',
+    width: 160,
+    height: 60,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.4)',
+    top: 0,
+    left: '50%',
+    transform: [{ translateX: -80 }],
+  },
+  pitchGoalBoxTop: {
+    position: 'absolute',
+    width: 70,
+    height: 25,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.4)',
+    top: 0,
+    left: '50%',
+    transform: [{ translateX: -35 }],
+  },
+
+  playerNode: {
+    position: 'absolute',
+    alignItems: 'center',
+    transform: [{ translateX: -24 }, { translateY: -24 }],
+    width: 48,
+  },
+  nodeAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  nodeEmpty: { backgroundColor: '#f1f5f9', borderColor: '#cbd5e1' },
+  nodeAssigned: { backgroundColor: '#fef08a', borderColor: '#eab308' },
+  nodeNumber: { fontSize: 12, fontWeight: 'bold', color: '#854d0e' },
+  nodeLabel: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginTop: 2,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.7)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+
+  /* LIVE MATCH STYLES */
+  liveContainer: { flex: 1, padding: 16 },
+  scoreCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 16,
+  },
+  teamTitle: { fontSize: 13, fontWeight: 'bold', color: '#334155', marginBottom: 4 },
+  scoreText: { fontSize: 36, fontWeight: 'bold', color: '#0f172a' },
+  vsText: { fontSize: 12, fontWeight: 'bold', color: '#94a3b8' },
+  opponentInput: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#cbd5e1',
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    paddingVertical: 2,
+    width: 90,
+  },
+  scoreAdjBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  scoreAdjText: { fontSize: 14, fontWeight: 'bold', color: '#334155' },
+
+  sectionHeader: { fontSize: 13, fontWeight: 'bold', color: '#334155', marginBottom: 8 },
+  actionsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginHorizontal: 3,
+  },
+  actionBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
+  cardYellow: { fontSize: 12, marginRight: 4 },
+  cardRed: { fontSize: 12, marginRight: 4 },
+
+  eventRow: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  eventMinute: { fontSize: 12, fontWeight: 'bold', color: '#64748b', width: 28 },
+  eventIcon: { fontSize: 16, marginRight: 6 },
+  eventPlayerName: { fontSize: 12, fontWeight: 'bold', color: '#0f172a' },
+  eventDesc: { fontSize: 10, color: '#64748b' },
+  noEventsText: { fontSize: 12, color: '#94a3b8', fontStyle: 'italic', textAlign: 'center', marginVertical: 12 },
+
+  /* MODALS */
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.5)', justifyContent: 'center', padding: 16 },
+  modalContainer: { backgroundColor: '#fff', borderRadius: 16, padding: 20, maxHeight: '80%', elevation: 5 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  modalTitle: { fontSize: 14, fontWeight: 'bold', color: '#0f172a' },
+  modalHint: { fontSize: 11, color: '#64748b', marginBottom: 10 },
+  minuteInput: {
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    fontSize: 12,
+    width: 60,
+    textAlign: 'center',
+    backgroundColor: '#f8fafc',
+  },
+  playerList: { maxHeight: 320 },
+  playerSelectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  selectAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#eff6ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  selectAvatarText: { fontSize: 11, fontWeight: 'bold', color: '#2563eb' },
+  selectPlayerName: { fontSize: 12, fontWeight: 'bold', color: '#0f172a' },
+  selectPlayerMeta: { fontSize: 10, color: '#64748b' },
 });
