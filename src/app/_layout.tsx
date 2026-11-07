@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Tabs, useRouter, useSegments } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, View, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, ActivityIndicator, Text } from 'react-native';
 import { PlayersProvider } from '../components/PlayersContext';
 import { supabase } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
@@ -28,23 +28,19 @@ export default function RootLayout() {
   useEffect(() => {
     if (isInitializing) return;
     const inAuthGroup = segments[0] === 'Auth';
-
-    if (!session && !inAuthGroup) {
-      router.replace('/Auth');
-    } else if (session && inAuthGroup) {
-      router.replace('/');
-    }
+    if (!session && !inAuthGroup) router.replace('/Auth');
+    else if (session && inAuthGroup) router.replace('/');
   }, [session, isInitializing, segments]);
 
   if (isInitializing) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f172a' }}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2563eb" />
+        <Text style={styles.loadingText}>Łączenie z chmurą SportsClub...</Text>
       </View>
     );
   }
 
-  // Definiujemy, które ekrany mają być widoczne na dolnym pasku
   const tabBarScreens = ['index', 'Kalendarz', 'Boisko', 'Szatnia', 'Zawodnicy'];
 
   return (
@@ -54,18 +50,18 @@ export default function RootLayout() {
           headerShown: false,
           tabBarActiveTintColor: '#2563eb',
           tabBarInactiveTintColor: '#64748b',
-          tabBarStyle: tabBarScreens.includes(route.name) ? styles.tabBar : { display: 'none' }, // Ukrywa pasek dla ekranów dodatkowych
+          tabBarStyle: tabBarScreens.includes(route.name) ? styles.tabBar : { display: 'none' },
           tabBarLabelStyle: styles.tabLabel,
+          tabBarItemStyle: styles.tabItem,
         })}
       >
-        {/* WIDOCZNE NA PASKU */}
-        <Tabs.Screen name="index" options={{ title: 'Start', tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} /> }} />
-        <Tabs.Screen name="Kalendarz" options={{ title: 'Kalendarz', tabBarIcon: ({ color, size }) => <Ionicons name="calendar-outline" size={size} color={color} /> }} />
-        <Tabs.Screen name="Boisko" options={{ title: 'Boisko', tabBarIcon: ({ color, size }) => <Ionicons name="football-outline" size={size} color={color} /> }} />
-        <Tabs.Screen name="Szatnia" options={{ title: 'Szatnia', tabBarIcon: ({ color, size }) => <Ionicons name="fitness-outline" size={size} color={color} /> }} />
-        <Tabs.Screen name="Zawodnicy" options={{ title: 'Zawodnicy', tabBarIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} /> }} />
-
-        {/* UKRYTE EKRANY (Bezpośrednie przejścia) - href: null ukrywa je z paska Tabs */}
+        <Tabs.Screen name="index" options={{ title: 'Pulpit', tabBarIcon: ({ color, size }) => <Ionicons name="apps" size={size + 2} color={color} /> }} />
+        <Tabs.Screen name="Kalendarz" options={{ title: 'Terminarz', tabBarIcon: ({ color, size }) => <Ionicons name="calendar-clear" size={size + 2} color={color} /> }} />
+        <Tabs.Screen name="Boisko" options={{ title: 'Protokół', tabBarIcon: ({ color, size }) => <Ionicons name="football" size={size + 2} color={color} /> }} />
+        <Tabs.Screen name="Szatnia" options={{ title: 'Baza Kadry', tabBarIcon: ({ color, size }) => <Ionicons name="shield-checkmark" size={size + 2} color={color} /> }} />
+        
+        {/* Ukryte ekrany */}
+        <Tabs.Screen name="Zawodnicy" options={{ href: null }} />
         <Tabs.Screen name="Auth" options={{ href: null }} />
         <Tabs.Screen name="ZadaniaDomowe" options={{ href: null }} />
         <Tabs.Screen name="AiVideoAnalysis" options={{ href: null }} />
@@ -73,16 +69,15 @@ export default function RootLayout() {
         <Tabs.Screen name="TreningiIndywidualne" options={{ href: null }} />
         <Tabs.Screen name="StrojePanel" options={{ href: null }} />
         <Tabs.Screen name="RodzicPanel" options={{ href: null }} />
-        <Tabs.Screen name="Ustawienia" options={{ href: null }} />
-        <Tabs.Screen name="Finanse" options={{ href: null }} />
-        <Tabs.Screen name="Klub" options={{ href: null }} />
-        <Tabs.Screen name="Raporty" options={{ href: null }} />
       </Tabs>
     </PlayersProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  tabBar: { backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e2e8f0', height: 60, paddingBottom: 8, paddingTop: 6 },
-  tabLabel: { fontSize: 10, fontWeight: '600' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' },
+  loadingText: { marginTop: 16, fontSize: 14, color: '#64748b', fontWeight: '500' },
+  tabBar: { backgroundColor: '#ffffff', borderTopWidth: 1, borderTopColor: '#e2e8f0', height: 65, paddingBottom: 8, paddingTop: 8, elevation: 8, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
+  tabLabel: { fontSize: 11, fontWeight: '700', marginTop: 2 },
+  tabItem: { paddingVertical: 4 },
 });
