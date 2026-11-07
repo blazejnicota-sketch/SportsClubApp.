@@ -2,7 +2,7 @@
   "expo": {
     "name": "Klub Sportowy",
     "slug": "SportsClubApp",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "orientation": "portrait",
     "scheme": "sportsclubapp",
     "userInterfaceStyle": "dark",
