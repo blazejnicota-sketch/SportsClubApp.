@@ -295,6 +295,57 @@ export const isEventOnDateHelper = (ev: EventItem, dateStr: string): boolean => 
   return false;
 };
 
+const isValidUuid = (val?: string | null): boolean => {
+  if (!val) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+};
+
+const mapDbToWellbeingLog = (row: any): WellbeingLog => ({
+  id: String(row.id),
+  playerId: row.player_id ? String(row.player_id) : 'local-player',
+  playerName: row.player_name || 'Zawodnik',
+  ageGroup: row.age_group || '11-13',
+  moodScore: Number(row.mood_score ?? 4),
+  stressLevel: Number(row.stress_level ?? 2),
+  energyLevel: row.energy_level !== null && row.energy_level !== undefined ? Number(row.energy_level) : undefined,
+  mentalLoad: row.mental_load !== null && row.mental_load !== undefined ? Number(row.mental_load) : undefined,
+  sleepHours: Number(row.sleep_hours ?? 8.5),
+  noPhoneBeforeSleep: row.no_phone_before_sleep ?? undefined,
+  notes: row.notes || undefined,
+  loggedDate: row.logged_date
+    ? new Date(row.logged_date).toLocaleDateString('pl-PL')
+    : new Date().toLocaleDateString('pl-PL'),
+});
+
+const mapDbToSafeSportAlert = (row: any): SafeSportAlert => ({
+  id: String(row.id),
+  playerId: row.player_id ? String(row.player_id) : undefined,
+  senderLabel: row.sender_label || 'Anonimowy zawodnik',
+  ageGroup: row.age_group || undefined,
+  category: (row.category || 'Inne') as SafeSportCategory,
+  recipient: row.recipient || 'Psycholog klubowy',
+  message: row.message || '',
+  createdAt: row.created_at
+    ? new Date(row.created_at).toLocaleString('pl-PL', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '',
+  resolved: Boolean(row.resolved),
+});
+
+const mapDbToTickerEvent = (row: any): LiveTickerEvent => ({
+  id: String(row.id),
+  type: row.event_type || 'goal',
+  playerId: row.player_id ? String(row.player_id) : undefined,
+  playerName: row.player_name || 'Zawodnik',
+  playerNumber: row.player_number !== null && row.player_number !== undefined ? Number(row.player_number) : undefined,
+  minute: String(row.minute || '1'),
+  reportedBy: row.reported_by || 'Rodzic (Trybuny)',
+});
+
 const mapDbToPlayer = (row: any): Player => {
   const fName = row.first_name ?? row.firstName ?? '';
   const lName = row.last_name ?? row.lastName ?? '';
@@ -351,17 +402,60 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
   const [wellbeingLogs, setWellbeingLogs] = useState<WellbeingLog[]>([]);
   const [safeSportAlerts, setSafeSportAlerts] = useState<SafeSportAlert[]>([]);
 
+  const fetchWellbeingLogs = async () => {
+    const { data, error } = await supabase
+      .from('player_wellbeing_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (!error && data) {
+      setWellbeingLogs(data.map(mapDbToWellbeingLog));
+    }
+  };
+
+  const fetchSafeSportAlerts = async () => {
+    const { data, error } = await supabase
+      .from('safe_sport_alerts')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (!error && data) {
+      setSafeSportAlerts(data.map(mapDbToSafeSportAlert));
+    }
+  };
+
   const addWellbeingLog = (log: Omit<WellbeingLog, 'id' | 'loggedDate'>) => {
-    const entry: WellbeingLog = {
+    const tempEntry: WellbeingLog = {
       ...log,
       id: `wb-${Date.now()}`,
       loggedDate: new Date().toLocaleDateString('pl-PL'),
     };
-    setWellbeingLogs((prev) => [entry, ...prev]);
+    setWellbeingLogs((prev) => [tempEntry, ...prev]);
+
+    supabase
+      .from('player_wellbeing_logs')
+      .insert([
+        {
+          player_id: isValidUuid(log.playerId) ? log.playerId : null,
+          player_name: log.playerName,
+          age_group: log.ageGroup,
+          mood_score: log.moodScore,
+          stress_level: log.stressLevel,
+          energy_level: log.energyLevel ?? null,
+          mental_load: log.mentalLoad ?? null,
+          sleep_hours: log.sleepHours,
+          no_phone_before_sleep: log.noPhoneBeforeSleep ?? null,
+          notes: log.notes ?? null,
+        },
+      ])
+      .then(({ error }) => {
+        if (error) console.error('Błąd zapisu wellbeing_logs:', error.message);
+        else fetchWellbeingLogs();
+      });
   };
 
   const addSafeSportAlert = (alertData: Omit<SafeSportAlert, 'id' | 'createdAt' | 'resolved'>) => {
-    const entry: SafeSportAlert = {
+    const tempEntry: SafeSportAlert = {
       ...alertData,
       id: `ss-${Date.now()}`,
       createdAt: new Date().toLocaleString('pl-PL', {
@@ -372,15 +466,42 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
       }),
       resolved: false,
     };
-    setSafeSportAlerts((prev) => [entry, ...prev]);
+    setSafeSportAlerts((prev) => [tempEntry, ...prev]);
+
+    supabase
+      .from('safe_sport_alerts')
+      .insert([
+        {
+          player_id: isValidUuid(alertData.playerId) ? alertData.playerId : null,
+          sender_label: alertData.senderLabel,
+          age_group: alertData.ageGroup ?? null,
+          category: alertData.category,
+          recipient: alertData.recipient,
+          message: alertData.message,
+          resolved: false,
+        },
+      ])
+      .then(({ error }) => {
+        if (error) console.error('Błąd zapisu safe_sport_alerts:', error.message);
+        else fetchSafeSportAlerts();
+      });
   };
 
   const resolveSafeSportAlert = (alertId: string) => {
     setSafeSportAlerts((prev) =>
       prev.map((a) => (a.id === alertId ? { ...a, resolved: true } : a))
     );
-  };
 
+    if (isValidUuid(alertId)) {
+      supabase
+        .from('safe_sport_alerts')
+        .update({ resolved: true })
+        .eq('id', alertId)
+        .then(({ error }) => {
+          if (error) console.error('Błąd aktualizacji safe_sport_alerts:', error.message);
+        });
+    }
+  };
 
   const [liveMatchTicker, setLiveMatchTicker] = useState<LiveMatchTickerState>({
     isActive: true,
@@ -398,14 +519,103 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
     events: [],
   });
 
+  const fetchLiveMatchTicker = async () => {
+    const { data: tickerRow, error } = await supabase
+      .from('live_match_tickers')
+      .select('*')
+      .eq('is_active', true)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !tickerRow) return;
+
+    const { data: evRows } = await supabase
+      .from('live_ticker_events')
+      .select('*')
+      .eq('ticker_id', tickerRow.id)
+      .order('created_at', { ascending: false });
+
+    setLiveMatchTicker({
+      isActive: Boolean(tickerRow.is_active),
+      matchId: String(tickerRow.id),
+      opponentName: tickerRow.opponent_name || 'Przeciwnik ligowy',
+      date: tickerRow.match_date || todayStr,
+      location: tickerRow.location || 'Boisko Główne',
+      phase: (tickerRow.phase || 'Przed meczem') as LiveMatchPhase,
+      teamScore: Number(tickerRow.team_score ?? 0),
+      opponentScore: Number(tickerRow.opponent_score ?? 0),
+      currentMinute: Number(tickerRow.current_minute ?? 1),
+      reporterPlayerId: tickerRow.reporter_player_id ? String(tickerRow.reporter_player_id) : null,
+      reporterName: tickerRow.reporter_name || null,
+      allowAllParentsToReport: Boolean(tickerRow.allow_all_parents_to_report),
+      events: (evRows || []).map(mapDbToTickerEvent),
+    });
+  };
+
+  const ensureActiveTickerRow = async (snapshot: LiveMatchTickerState): Promise<string | null> => {
+    if (isValidUuid(snapshot.matchId)) return snapshot.matchId;
+
+    const { data: authData } = await supabase.auth.getUser();
+    const { data, error } = await supabase
+      .from('live_match_tickers')
+      .insert([
+        {
+          coach_id: authData?.user?.id || null,
+          opponent_name: snapshot.opponentName,
+          location: snapshot.location,
+          phase: snapshot.phase,
+          team_score: snapshot.teamScore,
+          opponent_score: snapshot.opponentScore,
+          current_minute: snapshot.currentMinute,
+          reporter_player_id: isValidUuid(snapshot.reporterPlayerId) ? snapshot.reporterPlayerId : null,
+          reporter_name: snapshot.reporterName,
+          allow_all_parents_to_report: snapshot.allowAllParentsToReport,
+          is_active: true,
+        },
+      ])
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      console.error('Błąd tworzenia live_match_tickers:', error?.message);
+      return null;
+    }
+
+    const newId = String(data.id);
+    setLiveMatchTicker((prev) => ({ ...prev, matchId: newId }));
+    return newId;
+  };
+
   const assignParentReporter = (player: Player | null, allowAll: boolean = false) => {
-    setLiveMatchTicker((prev) => ({
-      ...prev,
-      isActive: true,
-      reporterPlayerId: player ? String(player.id) : null,
-      reporterName: player ? `Rodzic: ${player.firstName} ${player.lastName || ''}`.trim() : null,
-      allowAllParentsToReport: allowAll,
-    }));
+    const nextRepId = player ? String(player.id) : null;
+    const nextRepName = player ? `Rodzic: ${player.firstName} ${player.lastName || ''}`.trim() : null;
+
+    setLiveMatchTicker((prev) => {
+      const updated: LiveMatchTickerState = {
+        ...prev,
+        isActive: true,
+        reporterPlayerId: nextRepId,
+        reporterName: nextRepName,
+        allowAllParentsToReport: allowAll,
+      };
+      ensureActiveTickerRow(updated).then((tickerId) => {
+        if (!tickerId) return;
+        supabase
+          .from('live_match_tickers')
+          .update({
+            reporter_player_id: isValidUuid(nextRepId) ? nextRepId : null,
+            reporter_name: nextRepName,
+            allow_all_parents_to_report: allowAll,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', tickerId)
+          .then(({ error }) => {
+            if (error) console.error('Błąd aktualizacji reportera:', error.message);
+          });
+      });
+      return updated;
+    });
   };
 
   const addLiveTickerEvent = (
@@ -414,28 +624,68 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
     minuteStr: string,
     reportedBy: 'Trener' | 'Rodzic (Trybuny)'
   ) => {
+    const pName =
+      type === 'opponent_goal'
+        ? 'Bramka dla rywali'
+        : player
+        ? `${player.firstName} ${player.lastName || ''}`.trim() || player.name
+        : 'Zawodnik';
+
     const newEv: LiveTickerEvent = {
       id: `tick-${Date.now()}`,
       type,
       playerId: player ? String(player.id) : undefined,
-      playerName:
-        type === 'opponent_goal'
-          ? 'Bramka dla rywali'
-          : player
-          ? `${player.firstName} ${player.lastName || ''}`.trim() || player.name
-          : 'Zawodnik',
+      playerName: pName,
       playerNumber: player?.number,
       minute: minuteStr || '1',
       reportedBy,
     };
 
-    setLiveMatchTicker((prev) => ({
-      ...prev,
-      isActive: true,
-      teamScore: type === 'goal' ? prev.teamScore + 1 : prev.teamScore,
-      opponentScore: type === 'opponent_goal' ? prev.opponentScore + 1 : prev.opponentScore,
-      events: [newEv, ...prev.events],
-    }));
+    setLiveMatchTicker((prev) => {
+      const nextTeamScore = type === 'goal' ? prev.teamScore + 1 : prev.teamScore;
+      const nextOppScore = type === 'opponent_goal' ? prev.opponentScore + 1 : prev.opponentScore;
+      const updated: LiveMatchTickerState = {
+        ...prev,
+        isActive: true,
+        teamScore: nextTeamScore,
+        opponentScore: nextOppScore,
+        events: [newEv, ...prev.events],
+      };
+
+      ensureActiveTickerRow(updated).then((tickerId) => {
+        if (!tickerId) return;
+        supabase
+          .from('live_ticker_events')
+          .insert([
+            {
+              ticker_id: tickerId,
+              event_type: type,
+              player_id: player && isValidUuid(String(player.id)) ? String(player.id) : null,
+              player_name: pName,
+              player_number: player?.number ?? null,
+              minute: minuteStr || '1',
+              reported_by: reportedBy,
+            },
+          ])
+          .then(({ error }) => {
+            if (error) console.error('Błąd zapisu live_ticker_events:', error.message);
+          });
+
+        supabase
+          .from('live_match_tickers')
+          .update({
+            team_score: nextTeamScore,
+            opponent_score: nextOppScore,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', tickerId)
+          .then(({ error }) => {
+            if (error) console.error('Błąd aktualizacji wyniku live_match_tickers:', error.message);
+          });
+      });
+
+      return updated;
+    });
 
     if (type === 'goal' && player) {
       updatePlayer(player.id, {
@@ -453,11 +703,29 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
     setLiveMatchTicker((prev) => {
       const target = prev.events.find((e) => e.id === eventId);
       if (!target) return prev;
+      const nextTeamScore = target.type === 'goal' ? Math.max(0, prev.teamScore - 1) : prev.teamScore;
+      const nextOppScore =
+        target.type === 'opponent_goal' ? Math.max(0, prev.opponentScore - 1) : prev.opponentScore;
+
+      if (isValidUuid(eventId)) {
+        supabase.from('live_ticker_events').delete().eq('id', eventId).then(() => {});
+      }
+      if (isValidUuid(prev.matchId)) {
+        supabase
+          .from('live_match_tickers')
+          .update({
+            team_score: nextTeamScore,
+            opponent_score: nextOppScore,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', prev.matchId)
+          .then(() => {});
+      }
+
       return {
         ...prev,
-        teamScore: target.type === 'goal' ? Math.max(0, prev.teamScore - 1) : prev.teamScore,
-        opponentScore:
-          target.type === 'opponent_goal' ? Math.max(0, prev.opponentScore - 1) : prev.opponentScore,
+        teamScore: nextTeamScore,
+        opponentScore: nextOppScore,
         events: prev.events.filter((e) => e.id !== eventId),
       };
     });
@@ -472,16 +740,34 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     fetchPlayers();
+    fetchWellbeingLogs();
+    fetchSafeSportAlerts();
+    fetchLiveMatchTicker();
 
     const channel = supabase
-      .channel('public:players')
+      .channel('public:sportsclub_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, () => {
         fetchPlayers();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'player_wellbeing_logs' }, () => {
+        fetchWellbeingLogs();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'safe_sport_alerts' }, () => {
+        fetchSafeSportAlerts();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'live_match_tickers' }, () => {
+        fetchLiveMatchTicker();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'live_ticker_events' }, () => {
+        fetchLiveMatchTicker();
       })
       .subscribe();
 
     const { data: authSub } = supabase.auth.onAuthStateChange(() => {
       fetchPlayers();
+      fetchWellbeingLogs();
+      fetchSafeSportAlerts();
+      fetchLiveMatchTicker();
     });
 
     return () => {
