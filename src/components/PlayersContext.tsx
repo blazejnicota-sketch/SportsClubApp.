@@ -26,6 +26,45 @@ export interface TestResult {
 
 export type AttendanceStatus = 'present' | 'pending' | 'absent' | 'excused';
 
+export type MentalAgeStage = '8-10' | '11-13' | '14-15' | '16-18';
+
+export interface WellbeingLog {
+  id: string;
+  playerId: string;
+  playerName: string;
+  ageGroup: MentalAgeStage;
+  moodScore: number; // 1-5
+  stressLevel: number; // 1-5
+  energyLevel?: number; // 1-5 (bateria energii / gotowość)
+  mentalLoad?: number; // 1-5 (obciążenie szkołą i meczami dla 16-18)
+  sleepHours: number;
+  noPhoneBeforeSleep?: boolean;
+  notes?: string;
+  loggedDate: string;
+}
+
+export type SafeSportCategory =
+  | 'Ktoś mi dokucza'
+  | 'Boli mnie'
+  | 'Boję się'
+  | 'Mobbing / Hejt'
+  | 'Presja / Stres'
+  | 'Wypalenie'
+  | 'Powrót po kontuzji'
+  | 'Inne';
+
+export interface SafeSportAlert {
+  id: string;
+  playerId?: string;
+  senderLabel: string; // 'Anonimowy zawodnik' lub imię
+  ageGroup?: MentalAgeStage;
+  category: SafeSportCategory;
+  recipient: 'Trener' | 'Psycholog klubowy' | 'Rodzic';
+  message: string;
+  createdAt: string;
+  resolved: boolean;
+}
+
 export type LiveMatchPhase = 'Przed meczem' | '1. Połowa' | 'Przerwa' | '2. Połowa' | 'Koniec meczu';
 
 export interface LiveTickerEvent {
@@ -207,6 +246,12 @@ interface PlayersContextType {
     reportedBy: 'Trener' | 'Rodzic (Trybuny)'
   ) => void;
   removeLiveTickerEvent: (eventId: string) => void;
+  // Moduł Wsparcia Psychologicznego (Mental Space & Safe Sport)
+  wellbeingLogs: WellbeingLog[];
+  addWellbeingLog: (log: Omit<WellbeingLog, 'id' | 'loggedDate'>) => void;
+  safeSportAlerts: SafeSportAlert[];
+  addSafeSportAlert: (alert: Omit<SafeSportAlert, 'id' | 'createdAt' | 'resolved'>) => void;
+  resolveSafeSportAlert: (alertId: string) => void;
 }
 
 const PlayersContext = createContext<PlayersContextType | undefined>(undefined);
@@ -302,6 +347,40 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
   const [events, setEvents] = useState<EventItem[]>([]);
 
   const [individualSessions, setIndividualSessions] = useState<IndividualSessionItem[]>([]);
+
+  const [wellbeingLogs, setWellbeingLogs] = useState<WellbeingLog[]>([]);
+  const [safeSportAlerts, setSafeSportAlerts] = useState<SafeSportAlert[]>([]);
+
+  const addWellbeingLog = (log: Omit<WellbeingLog, 'id' | 'loggedDate'>) => {
+    const entry: WellbeingLog = {
+      ...log,
+      id: `wb-${Date.now()}`,
+      loggedDate: new Date().toLocaleDateString('pl-PL'),
+    };
+    setWellbeingLogs((prev) => [entry, ...prev]);
+  };
+
+  const addSafeSportAlert = (alertData: Omit<SafeSportAlert, 'id' | 'createdAt' | 'resolved'>) => {
+    const entry: SafeSportAlert = {
+      ...alertData,
+      id: `ss-${Date.now()}`,
+      createdAt: new Date().toLocaleString('pl-PL', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      resolved: false,
+    };
+    setSafeSportAlerts((prev) => [entry, ...prev]);
+  };
+
+  const resolveSafeSportAlert = (alertId: string) => {
+    setSafeSportAlerts((prev) =>
+      prev.map((a) => (a.id === alertId ? { ...a, resolved: true } : a))
+    );
+  };
+
 
   const [liveMatchTicker, setLiveMatchTicker] = useState<LiveMatchTickerState>({
     isActive: true,
@@ -656,6 +735,11 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
         assignParentReporter,
         addLiveTickerEvent,
         removeLiveTickerEvent,
+        wellbeingLogs,
+        addWellbeingLog,
+        safeSportAlerts,
+        addSafeSportAlert,
+        resolveSafeSportAlert,
       }}
     >
       {children}

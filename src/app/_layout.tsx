@@ -76,6 +76,15 @@ function AppTabsLayout({ userRole }: { userRole: 'trener' | 'rodzic' | 'zawodnik
         }}
       />
 
+      {/* 4B. MENTAL SPACE & SAFE SPORT */}
+      <Tabs.Screen
+        name="MentalSpace"
+        options={{
+          title: 'Mental',
+          tabBarIcon: ({ color, size }) => <Ionicons name="heart-outline" size={size} color={color} />,
+        }}
+      />
+
       {/* 5. USTAWIENIA & SUBSKRYPCJA */}
       <Tabs.Screen
         name="Ustawienia"

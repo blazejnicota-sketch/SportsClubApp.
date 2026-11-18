@@ -109,9 +109,209 @@ const EXERCISE_VAULT: VaultExercise[] = [
   },
 ];
 
+
+export type ProgramCategory = 'Wszystkie' | 'Skoczność' | 'Zwinność' | 'Siła Core' | 'Szybkość' | 'Prewencja';
+
+interface MotorModuleProgram {
+  id: string;
+  title: string;
+  category: Exclude<ProgramCategory, 'Wszystkie'>;
+  durationWeeks: number;
+  ageGroup: string;
+  drillType: string;
+  unit: 'powt.' | 'sek.';
+  baseSets: number;
+  baseRepsOrSec: number;
+  baseRestSec: number;
+  xpPerWeek: number;
+  goal: string;
+  aiFocus: string;
+}
+
+const AI_MOTOR_MODULES: MotorModuleProgram[] = [
+  {
+    id: 'mod-1',
+    title: 'Fundament Lotu (Skoczność)',
+    category: 'Skoczność',
+    durationWeeks: 8,
+    ageGroup: '11–18 lat',
+    drillType: 'jump_squat',
+    unit: 'powt.',
+    baseSets: 3,
+    baseRepsOrSec: 8,
+    baseRestSec: 45,
+    xpPerWeek: 120,
+    goal: 'Zwiększenie wysokości wyskoku dosiężnego i bezpieczna technika lądowania.',
+    aiFocus: 'MediaPipe kontroluje kąt zgięcia kolan (<135°) i oś stawów przy lądowaniu.',
+  },
+  {
+    id: 'mod-2',
+    title: 'Eksplozja na Boisku (Plyometria)',
+    category: 'Skoczność',
+    durationWeeks: 10,
+    ageGroup: '13–18 lat',
+    drillType: 'jump_squat',
+    unit: 'powt.',
+    baseSets: 4,
+    baseRepsOrSec: 10,
+    baseRestSec: 50,
+    xpPerWeek: 150,
+    goal: 'Moc eksplozywna w pojedynkach główkowych, blokach i pierwszych krokach.',
+    aiFocus: 'AI mierzy dynamikę wybicia oraz stabilność tułowia w fazie lotu.',
+  },
+  {
+    id: 'mod-3',
+    title: 'Zwinne Stopy (Agility Pro)',
+    category: 'Zwinność',
+    durationWeeks: 8,
+    ageGroup: '10–18 lat',
+    drillType: 'agility_skater',
+    unit: 'powt.',
+    baseSets: 3,
+    baseRepsOrSec: 14,
+    baseRestSec: 30,
+    xpPerWeek: 110,
+    goal: 'Szybka praca nóg, koordynacja i lekkość poruszania się na małej przestrzeni.',
+    aiFocus: 'Skaner sprawdza symetrię przeskoków bocznych i balans środka ciężkości.',
+  },
+  {
+    id: 'mod-4',
+    title: 'Zmiana Kierunku (COD Master)',
+    category: 'Zwinność',
+    durationWeeks: 12,
+    ageGroup: '13–18 lat',
+    drillType: 'agility_skater',
+    unit: 'powt.',
+    baseSets: 4,
+    baseRepsOrSec: 16,
+    baseRestSec: 35,
+    xpPerWeek: 160,
+    goal: 'Błyskawiczne hamowanie i dynamiczny zwrot bez utraty równowagi.',
+    aiFocus: 'AI wykrywa asymetrię lewej i prawej nogi przy gwałtownym zatrzymaniu.',
+  },
+  {
+    id: 'mod-5',
+    title: 'Stalowy Gorset (Core Stability)',
+    category: 'Siła Core',
+    durationWeeks: 8,
+    ageGroup: '10–18 lat',
+    drillType: 'plank',
+    unit: 'sek.',
+    baseSets: 3,
+    baseRepsOrSec: 35,
+    baseRestSec: 30,
+    xpPerWeek: 120,
+    goal: 'Wzmocnienie mięśni głębokich brzucha i pleców dla stabilności w kontakcie.',
+    aiFocus: 'MediaPipe pilnuje prostej linii barki–biodra–kostki bez zapadania lędźwi.',
+  },
+  {
+    id: 'mod-6',
+    title: 'Siła bez Sztangi (Kalistenika)',
+    category: 'Siła Core',
+    durationWeeks: 12,
+    ageGroup: '12–18 lat',
+    drillType: 'pushups',
+    unit: 'powt.',
+    baseSets: 3,
+    baseRepsOrSec: 12,
+    baseRestSec: 45,
+    xpPerWeek: 150,
+    goal: 'Bezpieczna budowa siły górnej części ciała z masą własnego ciała.',
+    aiFocus: 'AI liczy pełne powtórzenia (<115° w łokciach) i symetrię barków.',
+  },
+  {
+    id: 'mod-7',
+    title: 'Błyskawiczny Start (0–10m)',
+    category: 'Szybkość',
+    durationWeeks: 8,
+    ageGroup: '11–18 lat',
+    drillType: 'jump_squat',
+    unit: 'powt.',
+    baseSets: 4,
+    baseRepsOrSec: 8,
+    baseRestSec: 45,
+    xpPerWeek: 130,
+    goal: 'Poprawa czasu reakcji i siły pierwszych trzech kroków przyspieszenia.',
+    aiFocus: 'Skaner analizuje głębokość pozycji startowej i dynamikę wyprostu biodra.',
+  },
+  {
+    id: 'mod-8',
+    title: 'Maksymalna V-Max (Szybkość)',
+    category: 'Szybkość',
+    durationWeeks: 10,
+    ageGroup: '14–18 lat',
+    drillType: 'agility_skater',
+    unit: 'powt.',
+    baseSets: 4,
+    baseRepsOrSec: 18,
+    baseRestSec: 40,
+    xpPerWeek: 145,
+    goal: 'Zwiększenie kadencji kroku i utrzymanie prędkości maksymalnej.',
+    aiFocus: 'AI kontroluje rytm pracy rąk i nóg oraz minimalizuje zbędne ruchy tułowia.',
+  },
+  {
+    id: 'mod-9',
+    title: 'Elastyczny Atleta (Mobility)',
+    category: 'Prewencja',
+    durationWeeks: 8,
+    ageGroup: '10–18 lat',
+    drillType: 'mobility_stretch',
+    unit: 'powt.',
+    baseSets: 2,
+    baseRepsOrSec: 10,
+    baseRestSec: 20,
+    xpPerWeek: 100,
+    goal: 'Zwiększenie zakresu ruchu w biodrach i stawach skokowych oraz regeneracja.',
+    aiFocus: 'MediaPipe weryfikuje płynność zejścia i pełny zakres rozciągnięcia.',
+  },
+  {
+    id: 'mod-10',
+    title: 'Prewencja ACL & Kolan (FIFA 11+)',
+    category: 'Prewencja',
+    durationWeeks: 12,
+    ageGroup: '11–18 lat',
+    drillType: 'mobility_stretch',
+    unit: 'powt.',
+    baseSets: 3,
+    baseRepsOrSec: 12,
+    baseRestSec: 25,
+    xpPerWeek: 155,
+    goal: 'Ochrona więzadeł krzyżowych i stabilizacja kolan u młodych zawodników.',
+    aiFocus: 'Kluczowy alert AI przy koślawieniu kolan do środka podczas przysiadu.',
+  },
+];
+
+const getWeekPrescription = (mod: MotorModuleProgram, week: number) => {
+  const progressRatio = (week - 1) / Math.max(1, mod.durationWeeks - 1);
+  let phaseLabel = 'Adaptacja Techniczna';
+  if (week === mod.durationWeeks) phaseLabel = 'Szczyt Formy / Test AI';
+  else if (progressRatio >= 0.65) phaseLabel = 'Intensyfikacja & Moc';
+  else if (progressRatio >= 0.3) phaseLabel = 'Budowanie Objętości';
+
+  const extraSets = week >= Math.ceil(mod.durationWeeks * 0.6) ? 1 : 0;
+  const sets = mod.baseSets + extraSets;
+  const repsOrSec =
+    mod.unit === 'sek.'
+      ? mod.baseRepsOrSec + (week - 1) * 5
+      : mod.baseRepsOrSec + Math.floor((week - 1) * 1.5);
+  const restSec = Math.max(15, mod.baseRestSec - Math.floor((week - 1) / 3) * 5);
+
+  return { sets, repsOrSec, restSec, phaseLabel };
+};
+
 export default function ZadaniaDomoweScreen() {
   const { sport, setSport, sportConfig, allSports } = useClubSettings();
   const { players, availableYears, updatePlayer } = usePlayers();
+
+  const [mainViewTab, setMainViewTab] = useState<'modules' | 'single'>('modules');
+  const [selectedProgramCategory, setSelectedProgramCategory] = useState<ProgramCategory>('Wszystkie');
+  const [moduleWeeks, setModuleWeeks] = useState<Record<string, number>>(() => {
+    const init: Record<string, number> = {};
+    AI_MOTOR_MODULES.forEach((m) => {
+      init[m.id] = 1;
+    });
+    return init;
+  });
 
   const [selectedSportCategory, setSelectedSportCategory] = useState<SportCategory | 'Wszystkie'>('Wszystkie');
   const [selectedModule, setSelectedModule] = useState<ModuleCategory>('Wszystkie');
@@ -214,6 +414,85 @@ export default function ZadaniaDomoweScreen() {
     } else {
       Alert.alert(title, msg);
     }
+  };
+
+  const filteredMotorModules = useMemo(() => {
+    return AI_MOTOR_MODULES.filter(
+      (m) => selectedProgramCategory === 'Wszystkie' || m.category === selectedProgramCategory
+    );
+  }, [selectedProgramCategory]);
+
+  const handleAssignModuleWeekToTeam = (mod: MotorModuleProgram) => {
+    const week = moduleWeeks[mod.id] || 1;
+    const plan = getWeekPrescription(mod, week);
+
+    const targetPlayers =
+      selectedYearFilter === 'Wszyscy'
+        ? players
+        : players.filter((p) => String(p.year) === String(selectedYearFilter));
+
+    const prescription: HomeworkPrescription = {
+      exerciseId: `${mod.id}-w${week}`,
+      title: `${mod.title} (Tydz. ${week}/${mod.durationWeeks})`,
+      drillType: mod.drillType,
+      sets: plan.sets,
+      repsOrSec: plan.repsOrSec,
+      unit: mod.unit,
+      restSec: plan.restSec,
+      xpReward: mod.xpPerWeek,
+      requireWarmup: requireWarmupBumper,
+      assignedAt: new Date().toLocaleDateString('pl-PL'),
+    };
+
+    targetPlayers.forEach((p) => {
+      updatePlayer(p.id, { activeHomework: prescription });
+    });
+
+    showNotice(
+      `Moduł AI Przypisany! 🏆 (Tydzień ${week}/${mod.durationWeeks})`,
+      `Program: ${mod.title}
+` +
+        `Faza: ${plan.phaseLabel}
+` +
+        `Plan: ${plan.sets} serii x ${plan.repsOrSec} ${mod.unit} (przerwa ${plan.restSec}s)
+` +
+        `Nagroda: +${mod.xpPerWeek} XP
+` +
+        `Odbiorcy (${selectedYearFilter === 'Wszyscy' ? 'Cała Kadra' : `Rocznik ${selectedYearFilter}`}): ${targetPlayers.length} zawodników
+` +
+        `Nadzór AI (MediaPipe): WŁĄCZONY 🤖`
+    );
+  };
+
+  const handleStartModuleScanner = (mod: MotorModuleProgram) => {
+    const week = moduleWeeks[mod.id] || 1;
+    const plan = getWeekPrescription(mod, week);
+
+    const syntheticEx: VaultExercise = {
+      id: `${mod.id}-w${week}`,
+      title: `${mod.title} (Tydz. ${week}/${mod.durationWeeks})`,
+      drillType: mod.drillType,
+      module: 'Skoczność',
+      defaultSets: plan.sets,
+      defaultRepsOrSec: plan.repsOrSec,
+      unit: mod.unit,
+      defaultRestSec: plan.restSec,
+      xpPerSet: Math.round(mod.xpPerWeek / Math.max(1, plan.sets)),
+      recommendedSports: ['football'],
+      description: mod.goal,
+    };
+
+    setPreviewExercise(syntheticEx);
+    setTotalSetsCount(plan.sets);
+    setTargetRepsForSet(plan.repsOrSec);
+    setConfiguredRestSeconds(plan.restSec);
+    setActiveSetNumber(1);
+    setIsRestingBetweenSets(false);
+    setRestCountdown(0);
+    if (!selectedTestPlayerId && players.length > 0) {
+      setSelectedTestPlayerId(players[0].id);
+    }
+    setScannerVisible(true);
   };
 
   const handleAssignToTeam = (ex: VaultExercise) => {
@@ -332,14 +611,209 @@ export default function ZadaniaDomoweScreen() {
 
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Wyzwania AI & Progresja Treningowa 🧬</Text>
+          <Text style={styles.headerTitle}>Wyzwania AI & 10 Modułów Motorycznych 🧬</Text>
           <Text style={styles.headerSubtitle}>
-            Konfiguruj serie, powtórzenia/czas i przerwy oraz monitoruj postępy graczy
+            Autonomiczne plany 8–12 tygodniowe z analizą MediaPipe oraz pojedyncze zadania
           </Text>
         </View>
       </View>
 
+      {/* PRZEŁĄCZNIK GŁÓWNY: 10 MODUŁÓW AI vs POJEDYNCZE ĆWICZENIA */}
+      <View style={styles.mainSwitcherRow}>
+        <TouchableOpacity
+          style={[styles.mainSwitchBtn, mainViewTab === 'modules' && styles.mainSwitchBtnActive]}
+          onPress={() => setMainViewTab('modules')}
+        >
+          <Ionicons
+            name="layers-outline"
+            size={15}
+            color={mainViewTab === 'modules' ? '#fff' : '#475569'}
+          />
+          <Text style={[styles.mainSwitchText, mainViewTab === 'modules' && styles.mainSwitchTextActive]}>
+            10 Modułów AI (8–12 tyg.)
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.mainSwitchBtn, mainViewTab === 'single' && styles.mainSwitchBtnActive]}
+          onPress={() => setMainViewTab('single')}
+        >
+          <Ionicons
+            name="flash-outline"
+            size={15}
+            color={mainViewTab === 'single' ? '#fff' : '#475569'}
+          />
+          <Text style={[styles.mainSwitchText, mainViewTab === 'single' && styles.mainSwitchTextActive]}>
+            Pojedyncze Ćwiczenia
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {mainViewTab === 'modules' && (
+          <View>
+            {/* BANER INFORMACYJNY AI-FIRST */}
+            <View style={styles.aiHeroBanner}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <Ionicons name="hardware-chip-outline" size={20} color="#38bdf8" />
+                <Text style={styles.aiHeroTitle}>Autonomiczna Periodyzacja AI (MediaPipe)</Text>
+              </View>
+              <Text style={styles.aiHeroSub}>
+                Wybierz jeden z 10 gotowych programów (8–12 tygodni) i przypisz aktywny tydzień kadrze lub wybranemu rocznikowi. Sztuczna inteligencja sama pilnuje techniki, progresji i zapisuje raporty.
+              </Text>
+            </View>
+
+            {/* WYBÓR ROCZNIKA DOCELOWEGO + ROZGRZEWKA */}
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Odbiorcy Modułu (Rocznik / Kadra):</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
+                {['Wszyscy', ...availableYears].map((yr) => (
+                  <TouchableOpacity
+                    key={yr}
+                    style={[styles.yearChip, selectedYearFilter === yr && styles.yearChipActive]}
+                    onPress={() => setSelectedYearFilter(yr)}
+                  >
+                    <Text style={[styles.yearChipText, selectedYearFilter === yr && styles.yearChipTextActive]}>
+                      {yr === 'Wszyscy' ? 'Cała Kadra' : `Rocznik ${yr}`}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* FILTR KATEGORII MODUŁÓW */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+              {(['Wszystkie', 'Skoczność', 'Zwinność', 'Siła Core', 'Szybkość', 'Prewencja'] as ProgramCategory[]).map(
+                (cat) => (
+                  <TouchableOpacity
+                    key={cat}
+                    style={[
+                      styles.modulePill,
+                      selectedProgramCategory === cat && styles.modulePillActive,
+                    ]}
+                    onPress={() => setSelectedProgramCategory(cat)}
+                  >
+                    <Text
+                      style={[
+                        styles.modulePillText,
+                        selectedProgramCategory === cat && styles.modulePillTextActive,
+                      ]}
+                    >
+                      {cat}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              )}
+            </ScrollView>
+
+            {/* LISTA 10 MODUŁÓW MOTORYCZNYCH */}
+            {filteredMotorModules.map((mod, idx) => {
+              const currentWeek = moduleWeeks[mod.id] || 1;
+              const plan = getWeekPrescription(mod, currentWeek);
+
+              return (
+                <View key={mod.id} style={styles.moduleProgramCard}>
+                  <View style={styles.exerciseHeaderRow}>
+                    <View style={styles.moduleTag}>
+                      <Text style={styles.moduleTagText}>
+                        #{idx + 1} • {mod.category} • {mod.durationWeeks} tyg.
+                      </Text>
+                    </View>
+                    <View style={styles.ageBadge}>
+                      <Text style={styles.ageBadgeText}>👤 {mod.ageGroup}</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.exerciseTitle}>{mod.title}</Text>
+                  <Text style={styles.exerciseDesc}>{mod.goal}</Text>
+
+                  <View style={styles.aiFocusBox}>
+                    <Ionicons name="eye-outline" size={14} color="#7c3aed" />
+                    <Text style={styles.aiFocusText}>{mod.aiFocus}</Text>
+                  </View>
+
+                  {/* STEROWANIE TYGODNIEM PERIODYZACJI */}
+                  <View style={styles.weekSelectorBox}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <View>
+                        <Text style={styles.weekSelectorLabel}>
+                          Aktywny Tydzień: <Text style={{ color: '#2563eb' }}>{currentWeek} / {mod.durationWeeks}</Text>
+                        </Text>
+                        <Text style={styles.weekPhaseText}>Faza: {plan.phaseLabel}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity
+                          style={styles.weekStepBtn}
+                          onPress={() =>
+                            setModuleWeeks((prev) => ({
+                              ...prev,
+                              [mod.id]: Math.max(1, (prev[mod.id] || 1) - 1),
+                            }))
+                          }
+                        >
+                          <Ionicons name="remove" size={16} color="#0f172a" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.weekStepBtn}
+                          onPress={() =>
+                            setModuleWeeks((prev) => ({
+                              ...prev,
+                              [mod.id]: Math.min(mod.durationWeeks, (prev[mod.id] || 1) + 1),
+                            }))
+                          }
+                        >
+                          <Ionicons name="add" size={16} color="#0f172a" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {/* AUTOMATYCZNE PARAMETRY DLA WYBRANEGO TYGODNIA */}
+                    <View style={styles.weekMetricsRow}>
+                      <View style={styles.weekMetricChip}>
+                        <Text style={styles.weekMetricVal}>{plan.sets}</Text>
+                        <Text style={styles.weekMetricLbl}>Serie</Text>
+                      </View>
+                      <View style={styles.weekMetricChip}>
+                        <Text style={styles.weekMetricVal}>{plan.repsOrSec} {mod.unit}</Text>
+                        <Text style={styles.weekMetricLbl}>Cel / seria</Text>
+                      </View>
+                      <View style={styles.weekMetricChip}>
+                        <Text style={styles.weekMetricVal}>{plan.restSec}s</Text>
+                        <Text style={styles.weekMetricLbl}>Przerwa</Text>
+                      </View>
+                      <View style={[styles.weekMetricChip, { backgroundColor: '#fef3c7', borderColor: '#fde68a' }]}>
+                        <Text style={[styles.weekMetricVal, { color: '#b45309' }]}>+{mod.xpPerWeek}</Text>
+                        <Text style={[styles.weekMetricLbl, { color: '#b45309' }]}>XP</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* PRZYCISKI AKCJI MODUŁU */}
+                  <View style={styles.exerciseActionsRow}>
+                    <TouchableOpacity
+                      style={styles.assignBtn}
+                      onPress={() => handleAssignModuleWeekToTeam(mod)}
+                    >
+                      <Ionicons name="send-outline" size={15} color="#fff" />
+                      <Text style={styles.assignBtnText}>Przypisz Tydzień {currentWeek}</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.testAiBtn}
+                      onPress={() => handleStartModuleScanner(mod)}
+                    >
+                      <Ionicons name="videocam-outline" size={15} color="#2563eb" />
+                      <Text style={styles.testAiBtnText}>Testuj AI</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })}
+            <View style={{ height: 40 }} />
+          </View>
+        )}
+
+        {mainViewTab === 'single' && (
+          <View>
         {/* 1. WYBÓR I FILTROWANIE DYSCYPLINY SPORTOWEJ */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>1. Aktywna Dyscyplina: {sportConfig.emoji} {sportConfig.name}</Text>
@@ -577,7 +1051,9 @@ export default function ZadaniaDomoweScreen() {
           );
         })}
 
-        <View style={{ height: 40 }} />
+            <View style={{ height: 40 }} />
+          </View>
+        )}
       </ScrollView>
 
       {/* MODAL SKANERA AI Z OBSŁUGĄ WIELU SERII I TIMERA PRZERWY */}
@@ -890,4 +1366,228 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   skipRestBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
+
+  mainSwitcherRow: {
+    flexDirection: 'row',
+    backgroundColor: '#e2e8f0',
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 12,
+    padding: 4,
+    gap: 4,
+  },
+  mainSwitchBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    borderRadius: 9,
+    gap: 6,
+  },
+  mainSwitchBtnActive: {
+    backgroundColor: '#2563eb',
+  },
+  mainSwitchText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#475569',
+  },
+  mainSwitchTextActive: {
+    color: '#ffffff',
+  },
+  aiHeroBanner: {
+    backgroundColor: '#0f172a',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#1e293b',
+  },
+  aiHeroTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+  aiHeroSub: {
+    fontSize: 11,
+    color: '#cbd5e1',
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  moduleProgramCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  ageBadge: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  ageBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#475569',
+  },
+  aiFocusBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f3ff',
+    padding: 8,
+    borderRadius: 8,
+    marginTop: 8,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#ddd6fe',
+  },
+  aiFocusText: {
+    flex: 1,
+    fontSize: 11,
+    color: '#5b21b6',
+    fontWeight: '600',
+  },
+  weekSelectorBox: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  weekSelectorLabel: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#0f172a',
+  },
+  weekPhaseText: {
+    fontSize: 10,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  weekStepBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: '#e2e8f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekMetricsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 10,
+  },
+  weekMetricChip: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    paddingVertical: 6,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  weekMetricVal: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#0f172a',
+  },
+  weekMetricLbl: {
+    fontSize: 9,
+    color: '#64748b',
+    marginTop: 1,
+  },
+
+  yearChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#f1f5f9',
+    marginRight: 6,
+  },
+  yearChipActive: {
+    backgroundColor: '#2563eb',
+  },
+  yearChipText: {
+    fontSize: 11,
+    color: '#475569',
+    fontWeight: '600',
+  },
+  yearChipTextActive: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+  },
+  modulePill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: '#e2e8f0',
+    marginRight: 8,
+  },
+  modulePillActive: {
+    backgroundColor: '#2563eb',
+  },
+  modulePillText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#475569',
+  },
+  modulePillTextActive: {
+    color: '#ffffff',
+  },
+  exerciseHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  moduleTag: {
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  moduleTagText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#2563eb',
+  },
+  exerciseTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    marginTop: 6,
+  },
+  exerciseDesc: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 3,
+    lineHeight: 17,
+  },
+  exerciseActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  testAiBtn: {
+    flexDirection: 'row',
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    gap: 5,
+  },
+  testAiBtnText: {
+    color: '#2563eb',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
 });
