@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,33 +15,23 @@ import {
   StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { usePlayers } from '../components/PlayersContext';
+import {
+  usePlayers,
+  EventItem,
+  AttendanceStatus,
+  formatDateLocal,
+  parseLocalDate,
+  isEventOnDateHelper,
+} from '../components/PlayersContext';
 import { notificationService } from '../services/notificationService';
 
 // Dynamiczny, bezpieczny margines górny
 const SAFE_TOP_PADDING = Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 10 : 50;
 
-type ViewMode = 'miesiac' | 'tydzien' | 'lista';
-type AttendanceStatus = 'present' | 'pending' | 'absent';
-
-interface EventItem {
-  id: string;
-  title: string;
-  startDate: string; // YYYY-MM-DD
-  endDate: string; // YYYY-MM-DD
-  meetingTime: string; // HH:MM
-  meetingLocation?: string; // Adres zbiórki
-  startTime: string; // HH:MM
-  endTime: string; // HH:MM
-  location: string; // Adres wydarzenia
-  type: 'Mecz' | 'Trening' | 'Inne';
-  isRecurring?: boolean;
-  recurringDayOfWeek?: number; // 0 = Niedziela, 1 = Poniedziałek, itd.
-  squadIds: string[];
-  attendance: Record<string, AttendanceStatus>;
-}
+type ViewMode = 'miesiac' | 'tydzien' | 'lista' | 'dzien';
 
 const MONTH_NAMES = [
   'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
@@ -51,29 +41,42 @@ const MONTH_NAMES = [
 const DAY_NAMES = ['Niedziela', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota'];
 const SHORT_WEEK_DAYS = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Ndz'];
 
-const getEventTypeConfig = (type: 'Mecz' | 'Trening' | 'Inne') => {
+const getEventTypeConfig = (type: string) => {
   switch (type) {
     case 'Mecz':
       return { bg: '#fee2e2', text: '#dc2626', border: '#f87171', badge: '⚽ Mecz' };
     case 'Trening':
       return { bg: '#dbeafe', text: '#2563eb', border: '#60a5fa', badge: '🏃 Trening' };
-    case 'Inne':
-      return { bg: '#f3e8ff', text: '#7c3aed', border: '#c084fc', badge: '📌 Inne' };
+    case '1-on-1':
+    case 'Grupa':
+      return { bg: '#f3e8ff', text: '#7c3aed', border: '#c084fc', badge: '🎯 1-on-1 / Grupa' };
+    default:
+      return { bg: '#f1f5f9', text: '#64748b', border: '#cbd5e1', badge: '📌 Inne' };
   }
 };
 
 export default function KalendarzScreen() {
-  const { players: availablePlayers, updatePlayer } = usePlayers();
+  const router = useRouter();
+  const {
+    players: availablePlayers,
+    updatePlayer,
+    events,
+    individualSessions,
+    setEvents,
+    updateEventAttendance: handleQuickAttendanceChange,
+    updateEventAttendanceBatch: handleQuickAttendanceBatch,
+  } = usePlayers();
+
   const [viewMode, setViewMode] = useState<ViewMode>('miesiac');
   
   // Stan filtru typu wydarzenia na głównym ekranie
   const [filterType, setFilterType] = useState<string>('Wszystkie');
   
   const today = new Date();
+  const todayStr = formatDateLocal(today);
+
   const [currentMonthDate, setCurrentMonthDate] = useState<Date>(new Date(today.getFullYear(), today.getMonth(), 1));
-  const [selectedDate, setSelectedDate] = useState<string>(
-    `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-  );
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
 
   const curYear = currentMonthDate.getFullYear();
   const curMonth = currentMonthDate.getMonth();
@@ -81,39 +84,6 @@ export default function KalendarzScreen() {
 
   const firstDayIndexRaw = new Date(curYear, curMonth, 1).getDay();
   const firstDayOffset = firstDayIndexRaw === 0 ? 6 : firstDayIndexRaw - 1;
-
-  const [events, setEvents] = useState<EventItem[]>([
-    {
-      id: '1',
-      title: 'Mecz Godynice Szkoła Podstawowa',
-      startDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`,
-      endDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`,
-      meetingTime: '07:05',
-      meetingLocation: 'Klub Sportowy, ul. Sportowa 1 (Szatnia)',
-      startTime: '08:30',
-      endTime: '10:15',
-      location: 'Stadion Miejski, ul. Sportowa 1',
-      type: 'Mecz',
-      squadIds: [],
-      attendance: {},
-    },
-    {
-      id: '2',
-      title: 'Trening Cykliczny Drużyny',
-      startDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`,
-      endDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`,
-      meetingTime: '17:15',
-      meetingLocation: 'Orlik ul. Szkolna 5',
-      startTime: '17:30',
-      endTime: '19:00',
-      location: 'Orlik ul. Szkolna 5',
-      type: 'Trening',
-      isRecurring: true,
-      recurringDayOfWeek: 1,
-      squadIds: [],
-      attendance: {},
-    },
-  ]);
 
   const [dayModalVisible, setDayModalVisible] = useState<boolean>(false);
   const [formModalVisible, setFormModalVisible] = useState<boolean>(false);
@@ -129,7 +99,7 @@ export default function KalendarzScreen() {
 
   const [eventLocation, setEventLocation] = useState<string>('');
   const [meetingLocation, setMeetingLocation] = useState<string>('');
-  const [eventType, setEventType] = useState<'Mecz' | 'Trening' | 'Inne'>('Mecz');
+  const [eventType, setEventType] = useState<string>('Mecz');
   const [isRecurring, setIsRecurring] = useState<boolean>(false);
 
   const [selectedSquad, setSelectedSquad] = useState<string[]>([]);
@@ -142,71 +112,97 @@ export default function KalendarzScreen() {
   const [showStartTimePicker, setShowStartTimePicker] = useState<boolean>(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState<boolean>(false);
 
-  const formattedStartDate = startDateObj.toISOString().split('T')[0];
-  const formattedEndDate = endDateObj.toISOString().split('T')[0];
+  const formattedStartDate = formatDateLocal(startDateObj);
+  const formattedEndDate = formatDateLocal(endDateObj);
   const formattedMeetingTime = `${String(meetingTimeObj.getHours()).padStart(2, '0')}:${String(meetingTimeObj.getMinutes()).padStart(2, '0')}`;
   const formattedStartTime = `${String(startTimeObj.getHours()).padStart(2, '0')}:${String(startTimeObj.getMinutes()).padStart(2, '0')}`;
   const formattedEndTime = `${String(endTimeObj.getHours()).padStart(2, '0')}:${String(endTimeObj.getMinutes()).padStart(2, '0')}`;
 
   const currentDayOfWeekName = DAY_NAMES[startDateObj.getDay()];
 
+  // Dynamiczne obliczanie 7 dni wybranego tygodnia (Poniedziałek - Niedziela) wokół selectedDate
+    // Zunifikowany strumień wszystkich wydarzeń (Drużynowe + Indywidualne)
+  const allEvents = useMemo(() => {
+    const combined: any[] = [...events];
+    if (individualSessions) {
+        individualSessions.forEach((ind: any) => {
+          combined.push({
+            id: ind.id,
+            title: `${ind.mode}: ${ind.playerNames.join(', ')}`,
+            startDate: ind.date,
+            endDate: ind.date,
+            startTime: ind.startTime,
+            endTime: ind.endTime,
+            meetingTime: ind.startTime,
+            location: 'Klub (Trening Indywidualny)',
+            type: ind.mode,
+            isRecurring: ind.isRecurring,
+            recurringDayOfWeek: ind.recurringDayOfWeek,
+            squadIds: ind.playerIds,
+            attendance: ind.attendance,
+          });
+        });
+    }
+    return combined;
+  }, [events,
+    individualSessions, individualSessions]);
+
+  const currentWeekDays = useMemo(() => {
+    const base = parseLocalDate(selectedDate);
+    const dayOfWeek = base.getDay(); // 0 (Ndz) do 6 (Sob)
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+
+    const monday = new Date(base);
+    monday.setDate(base.getDate() + diffToMonday);
+
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      return {
+        day: DAY_NAMES[d.getDay()],
+        date: formatDateLocal(d),
+      };
+    });
+  }, [selectedDate]);
+
+  const handleChangeWeek = (direction: number) => {
+    const base = parseLocalDate(selectedDate);
+    base.setDate(base.getDate() + direction * 7);
+    const newDateStr = formatDateLocal(base);
+    setSelectedDate(newDateStr);
+    setCurrentMonthDate(new Date(base.getFullYear(), base.getMonth(), 1));
+  };
+
   const applyTemplate = (templateType: 'mecz' | 'trening' | 'turniej') => {
+    const base = new Date(startDateObj);
     if (templateType === 'mecz') {
       setEventTitle('Mecz Ligowy');
       setEventType('Mecz');
       setEventLocation('');
       setMeetingLocation('');
       setIsRecurring(false);
-      setMeetingTimeObj(new Date(startDateObj.setHours(7, 5)));
-      setStartTimeObj(new Date(startDateObj.setHours(8, 30)));
-      setEndTimeObj(new Date(startDateObj.setHours(10, 15)));
+      setMeetingTimeObj(new Date(base.getFullYear(), base.getMonth(), base.getDate(), 7, 5));
+      setStartTimeObj(new Date(base.getFullYear(), base.getMonth(), base.getDate(), 8, 30));
+      setEndTimeObj(new Date(base.getFullYear(), base.getMonth(), base.getDate(), 10, 15));
     } else if (templateType === 'trening') {
       setEventTitle('Trening Drużyny');
       setEventType('Trening');
       setEventLocation('');
       setMeetingLocation('');
       setIsRecurring(true);
-      setMeetingTimeObj(new Date(startDateObj.setHours(17, 15)));
-      setStartTimeObj(new Date(startDateObj.setHours(17, 30)));
-      setEndTimeObj(new Date(startDateObj.setHours(19, 0)));
+      setMeetingTimeObj(new Date(base.getFullYear(), base.getMonth(), base.getDate(), 17, 15));
+      setStartTimeObj(new Date(base.getFullYear(), base.getMonth(), base.getDate(), 17, 30));
+      setEndTimeObj(new Date(base.getFullYear(), base.getMonth(), base.getDate(), 19, 0));
     } else if (templateType === 'turniej') {
       setEventTitle('Turniej Piłkarski');
       setEventType('Mecz');
       setEventLocation('');
       setMeetingLocation('');
       setIsRecurring(false);
-      setMeetingTimeObj(new Date(startDateObj.setHours(6, 45)));
-      setStartTimeObj(new Date(startDateObj.setHours(8, 0)));
-      setEndTimeObj(new Date(startDateObj.setHours(16, 0)));
+      setMeetingTimeObj(new Date(base.getFullYear(), base.getMonth(), base.getDate(), 6, 45));
+      setStartTimeObj(new Date(base.getFullYear(), base.getMonth(), base.getDate(), 8, 0));
+      setEndTimeObj(new Date(base.getFullYear(), base.getMonth(), base.getDate(), 16, 0));
     }
-  };
-
-  const isEventOnDate = (ev: EventItem, dateStr: string) => {
-    if (!ev.isRecurring && ev.startDate <= dateStr && dateStr <= ev.endDate) {
-      return true;
-    }
-
-    if (ev.isRecurring && ev.recurringDayOfWeek !== undefined) {
-      if (dateStr >= ev.startDate && dateStr <= ev.endDate) {
-        const [tY, tM, tD] = dateStr.split('-').map(Number);
-        const targetDate = new Date(tY, tM - 1, tD);
-
-        const [sY, sM, sD] = ev.startDate.split('-').map(Number);
-        const startDate = new Date(sY, sM - 1, sD);
-
-        const isSameDayOfWeek = targetDate.getDay() === ev.recurringDayOfWeek;
-
-        const targetDaysTotal = Math.floor(targetDate.getTime() / (1000 * 60 * 60 * 24));
-        const startDaysTotal = Math.floor(startDate.getTime() / (1000 * 60 * 60 * 24));
-        const diffDays = targetDaysTotal - startDaysTotal;
-
-        const isExactWeekInterval = diffDays % 7 === 0;
-
-        return isSameDayOfWeek && isExactWeekInterval;
-      }
-    }
-
-    return false;
   };
 
   const handlePrevMonth = () => {
@@ -231,13 +227,13 @@ export default function KalendarzScreen() {
     setMeetingLocation('');
     
     const [yr, mo, dy] = dateStr.split('-').map(Number);
-    const baseDate = new Date(yr, mo - 1, dy);
+    const baseDate = new Date(yr, mo - 1, dy, 12, 0, 0);
     setStartDateObj(baseDate);
     setEndDateObj(baseDate);
     
-    setMeetingTimeObj(new Date(yr, mo - 1, dy, 8, 0));
-    setStartTimeObj(new Date(yr, mo - 1, dy, 9, 0));
-    setEndTimeObj(new Date(yr, mo - 1, dy, 10, 0));
+    setMeetingTimeObj(new Date(yr, mo - 1, dy, 17, 15));
+    setStartTimeObj(new Date(yr, mo - 1, dy, 17, 30));
+    setEndTimeObj(new Date(yr, mo - 1, dy, 19, 0));
     
     setEventType('Trening');
     setIsRecurring(false);
@@ -254,10 +250,10 @@ export default function KalendarzScreen() {
     setEventTitle(event.title);
     
     const [sYr, sMo, sDy] = event.startDate.split('-').map(Number);
-    setStartDateObj(new Date(sYr, sMo - 1, sDy));
+    setStartDateObj(new Date(sYr, sMo - 1, sDy, 12, 0, 0));
 
     const [eYr, eMo, eDy] = event.endDate.split('-').map(Number);
-    setEndDateObj(new Date(eYr, eMo - 1, eDy));
+    setEndDateObj(new Date(eYr, eMo - 1, eDy, 12, 0, 0));
 
     const [mHr, mMn] = event.meetingTime.split(':').map(Number);
     setMeetingTimeObj(new Date(sYr, sMo - 1, sDy, mHr, mMn));
@@ -284,20 +280,28 @@ export default function KalendarzScreen() {
       return;
     }
 
-    selectedSquad.forEach((playerId) => {
-      const status = squadAttendance[playerId];
-      const playerObj = availablePlayers.find((p: any) => String(p.id) === String(playerId));
-      
-      if (playerObj && (status === 'present' || status === 'absent')) {
-        const currentTotal = playerObj.trainingsTotal || 0;
-        const currentPresent = playerObj.trainingsPresent || 0;
+    if (formattedEndDate < formattedStartDate) {
+      Alert.alert('Błąd daty', 'Data zakończenia nie może być wcześniejsza niż data rozpoczęcia.');
+      return;
+    }
 
-        updatePlayer(playerId, {
-          trainingsTotal: currentTotal + 1,
-          trainingsPresent: status === 'present' ? currentPresent + 1 : currentPresent,
-        });
-      }
-    });
+    // Naliczamy statystyki ogólne tylko przy tworzeniu nowego wydarzenia, by uniknąć duplikatów przy edycji
+    if (!editingEventId) {
+      selectedSquad.forEach((playerId) => {
+        const status = squadAttendance[playerId];
+        const playerObj = availablePlayers.find((p: any) => String(p.id) === String(playerId));
+        
+        if (playerObj && (status === 'present' || status === 'absent')) {
+          const currentTotal = playerObj.trainingsTotal || 0;
+          const currentPresent = playerObj.trainingsPresent || 0;
+
+          updatePlayer(playerId, {
+            trainingsTotal: currentTotal + 1,
+            trainingsPresent: status === 'present' ? currentPresent + 1 : currentPresent,
+          });
+        }
+      });
+    }
 
     const recurringDay = isRecurring ? startDateObj.getDay() : undefined;
 
@@ -343,14 +347,22 @@ export default function KalendarzScreen() {
         attendance: squadAttendance,
       };
       setEvents([newEv, ...events]);
-      Alert.alert('Dodano ⚽', isRecurring ? `Dodano cykliczny trening w każde ${currentDayOfWeekName}!` : 'Nowe wydarzenie zostało zapisane.');
+      Alert.alert('Dodano ⚽', isRecurring ? `Dodano cykliczny trening w każdy ${currentDayOfWeekName}!` : 'Nowe wydarzenie zostało zapisane.');
     }
 
+    setSelectedDate(formattedStartDate);
     setFormModalVisible(false);
   };
 
   const handleDeleteEvent = () => {
     if (!editingEventId) return;
+    if (Platform.OS === 'web') {
+      if (window.confirm('Czy na pewno chcesz usunąć to wydarzenie?')) {
+        setEvents((prev) => prev.filter((ev) => ev.id !== editingEventId));
+        setFormModalVisible(false);
+      }
+      return;
+    }
     Alert.alert('Potwierdzenie', 'Czy na pewno chcesz usunąć to wydarzenie?', [
       { text: 'Anuluj', style: 'cancel' },
       {
@@ -383,33 +395,17 @@ export default function KalendarzScreen() {
     setSquadAttendance((prev) => ({ ...prev, [id]: status }));
   };
 
-  const handleQuickAttendanceChange = (eventId: string, playerId: string, status: AttendanceStatus) => {
-    setEvents((prevEvents) =>
-      prevEvents.map((ev) => {
-        if (ev.id === eventId) {
-          const updatedAttendance = { ...ev.attendance, [playerId]: status };
-          return { ...ev, attendance: updatedAttendance };
-        }
-        return ev;
-      })
-    );
-  };
-
-  const handleQuickAttendanceBatch = (eventId: string, newAttendanceMap: Record<string, AttendanceStatus>) => {
-    setEvents((prevEvents) =>
-      prevEvents.map((ev) => {
-        if (ev.id === eventId) {
-          return { ...ev, attendance: newAttendanceMap };
-        }
-        return ev;
-      })
-    );
-  };
-
   const selectEntireYear = () => {
     const yearPlayers = filteredSquadPlayers.map((p: any) => String(p.id));
     const newSquad = Array.from(new Set([...selectedSquad, ...yearPlayers]));
+    const updatedAttendance = { ...squadAttendance };
+    yearPlayers.forEach((id) => {
+      if (!updatedAttendance[id]) {
+        updatedAttendance[id] = 'pending';
+      }
+    });
     setSelectedSquad(newSquad);
+    setSquadAttendance(updatedAttendance);
   };
 
   const handleCopySquadAndSendPush = async () => {
@@ -448,12 +444,26 @@ export default function KalendarzScreen() {
     Linking.openURL(url).catch(() => Alert.alert('Błąd', 'Nie można otworzyć mapy Google.'));
   };
 
+  // Pomocnicza obsługa zmiany czasu dla Web / Mobile
+  const applyTimeString = (baseDate: Date, timeStr: string): Date => {
+    const [hr, mn] = (timeStr || '00:00').split(':').map(Number);
+    return new Date(
+      baseDate.getFullYear(),
+      baseDate.getMonth(),
+      baseDate.getDate(),
+      isNaN(hr) ? 0 : hr,
+      isNaN(mn) ? 0 : mn
+    );
+  };
+
   const filteredSquadPlayers = availablePlayers.filter((p: any) => {
     if (squadYearFilter === 'Wszyscy') return true;
     return String(p.year) === String(squadYearFilter);
   });
 
-  const dayEvents = events.filter((ev) => isEventOnDate(ev, selectedDate) && (filterType === 'Wszystkie' || ev.type === filterType));
+  const dayEvents = allEvents.filter(
+    (ev) => isEventOnDateHelper(ev, selectedDate) && (filterType === 'Wszystkie' || ev.type === filterType)
+  );
 
   return (
     <SafeAreaView style={[styles.container, { paddingTop: SAFE_TOP_PADDING }]}>
@@ -468,6 +478,7 @@ export default function KalendarzScreen() {
           <Ionicons name="add" size={16} color="#fff" />
           <Text style={styles.addBtnText}>Dodaj</Text>
         </TouchableOpacity>
+
       </View>
 
       {/* Pasek Filtrów nad Kalendarzem */}
@@ -509,6 +520,14 @@ export default function KalendarzScreen() {
           <Ionicons name="list-outline" size={14} color={viewMode === 'lista' ? '#2563eb' : '#64748b'} />
           <Text style={[styles.toggleText, viewMode === 'lista' && styles.toggleTextActive]}>Lista</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.toggleBtn, viewMode === 'dzien' && styles.toggleBtnActive]}
+          onPress={() => setViewMode('dzien')}
+        >
+          <Ionicons name="time-outline" size={14} color={viewMode === 'dzien' ? '#2563eb' : '#64748b'} />
+          <Text style={[styles.toggleText, viewMode === 'dzien' && styles.toggleTextActive]}>Dzień</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -537,15 +556,15 @@ export default function KalendarzScreen() {
               ))}
 
               {Array.from({ length: daysInCurrentMonth }, (_, i) => i + 1).map((dayNum) => {
-                const dayStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${dayNum < 10 ? '0' + dayNum : dayNum}`;
-                const dayEvs = events.filter((ev) => isEventOnDate(ev, dayStr) && (filterType === 'Wszystkie' || ev.type === filterType));
+                const dayStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                const dayEvs = allEvents.filter((ev) => isEventOnDateHelper(ev, dayStr) && (filterType === 'Wszystkie' || ev.type === filterType));
                 const hasEvent = dayEvs.length > 0;
                 const isSelected = selectedDate === dayStr;
 
                 return (
                   <TouchableOpacity
                     key={dayNum}
-                    style={[styles.dayCell, isSelected && styles.dayCellSelected, hasEvent && styles.dayCellHasEvent]}
+                    style={[styles.dayCell, isSelected && styles.dayCellSelected, hasEvent && !isSelected && styles.dayCellHasEvent]}
                     onPress={() => handleDayPress(dayStr)}
                   >
                     <Text style={[styles.dayCellText, isSelected && styles.dayCellTextSelected]}>{dayNum}</Text>
@@ -553,7 +572,7 @@ export default function KalendarzScreen() {
                       <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 2 }}>
                         {dayEvs.slice(0, 3).map((e, idx) => {
                           const cfg = getEventTypeConfig(e.type);
-                          return <View key={idx} style={[styles.eventDot, { backgroundColor: cfg.text }]} />;
+                          return <View key={idx} style={[styles.eventDot, { backgroundColor: isSelected ? '#fff' : cfg.text }]} />;
                         })}
                       </View>
                     )}
@@ -566,26 +585,33 @@ export default function KalendarzScreen() {
 
         {viewMode === 'tydzien' && (
           <View style={styles.cardBox}>
-            <Text style={styles.monthTitle}>Wybrany Tydzień</Text>
-            {[
-              { day: 'Poniedziałek', date: `${curYear}-${String(curMonth + 1).padStart(2, '0')}-26` },
-              { day: 'Wtorek', date: `${curYear}-${String(curMonth + 1).padStart(2, '0')}-27` },
-              { day: 'Środa', date: `${curYear}-${String(curMonth + 1).padStart(2, '0')}-28` },
-              { day: 'Czwartek', date: `${curYear}-${String(curMonth + 1).padStart(2, '0')}-29` },
-              { day: 'Piątek', date: `${curYear}-${String(curMonth + 1).padStart(2, '0')}-30` },
-              { day: 'Sobota', date: `${curYear}-${String(curMonth + 1).padStart(2, '0')}-31` },
-              { day: 'Niedziela', date: `${curYear}-${String(curMonth + 1).padStart(2, '0')}-01` },
-            ].map((dayObj) => {
-              const dEvents = events.filter((ev) => isEventOnDate(ev, dayObj.date) && (filterType === 'Wszystkie' || ev.type === filterType));
+            <View style={[styles.monthNavHeader, { marginBottom: 8 }]}>
+              <TouchableOpacity onPress={() => handleChangeWeek(-1)} style={styles.monthNavArrow}>
+                <Ionicons name="chevron-back" size={18} color="#2563eb" />
+              </TouchableOpacity>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={styles.monthTitle}>Wybrany Tydzień</Text>
+                <Text style={{ fontSize: 11, color: '#64748b' }}>
+                  {currentWeekDays[0].date} — {currentWeekDays[6].date}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => handleChangeWeek(1)} style={styles.monthNavArrow}>
+                <Ionicons name="chevron-forward" size={18} color="#2563eb" />
+              </TouchableOpacity>
+            </View>
+
+            {currentWeekDays.map((dayObj) => {
+              const dEvents = allEvents.filter((ev) => isEventOnDateHelper(ev, dayObj.date) && (filterType === 'Wszystkie' || ev.type === filterType));
+              const isTodayRow = dayObj.date === todayStr;
 
               return (
                 <TouchableOpacity
                   key={dayObj.date}
-                  style={styles.weekDayRow}
+                  style={[styles.weekDayRow, isTodayRow && { backgroundColor: '#eff6ff', borderRadius: 8, paddingHorizontal: 6 }]}
                   onPress={() => handleDayPress(dayObj.date)}
                 >
                   <View style={styles.weekDayHeader}>
-                    <Text style={styles.weekDayName}>{dayObj.day}</Text>
+                    <Text style={[styles.weekDayName, isTodayRow && { color: '#2563eb' }]}>{dayObj.day}</Text>
                     <Text style={styles.weekDayDate}>{dayObj.date.substring(5)}</Text>
                   </View>
 
@@ -640,10 +666,80 @@ export default function KalendarzScreen() {
           </View>
         )}
 
+        {viewMode === 'dzien' && (
+          <View style={styles.cardBox}>
+            <View style={[styles.monthNavHeader, { marginBottom: 12 }]}>
+              <TouchableOpacity onPress={() => handleChangeWeek(-1/7)} style={styles.monthNavArrow}>
+                <Ionicons name="chevron-back" size={18} color="#2563eb" />
+              </TouchableOpacity>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={styles.monthTitle}>Szczegóły Dnia</Text>
+                <Text style={{ fontSize: 12, color: '#2563eb', fontWeight: 'bold', marginTop: 2 }}>
+                  {selectedDate}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => handleChangeWeek(1/7)} style={styles.monthNavArrow}>
+                <Ionicons name="chevron-forward" size={18} color="#2563eb" />
+              </TouchableOpacity>
+            </View>
+
+            {allEvents.filter(ev => isEventOnDateHelper(ev, selectedDate) && (filterType === 'Wszystkie' || ev.type === filterType)).length > 0 ? (
+              allEvents
+                .filter(ev => isEventOnDateHelper(ev, selectedDate) && (filterType === 'Wszystkie' || ev.type === filterType))
+                .sort((a, b) => a.startTime.localeCompare(b.startTime))
+                .map(ev => {
+                  const cfg = getEventTypeConfig(ev.type);
+                  return (
+                    <View key={ev.id} style={[styles.eventListCard, { borderLeftColor: cfg.text, borderLeftWidth: 5, flexDirection: 'column', alignItems: 'stretch' }]}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <Text style={styles.eventTitleText}>{ev.title}</Text>
+                        <View style={[styles.eventBadge, { backgroundColor: cfg.bg }]}>
+                          <Text style={[styles.eventBadgeText, { color: cfg.text }]}>{ev.type}</Text>
+                        </View>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                        <Ionicons name="time-outline" size={14} color="#64748b" style={{ marginRight: 6 }} />
+                        <Text style={{ fontSize: 13, color: '#0f172a', fontWeight: 'bold' }}>{ev.startTime} - {ev.endTime}</Text>
+                      </View>
+                      <TouchableOpacity onPress={() => openMapLocation(ev.location)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                        <Ionicons name="location-outline" size={14} color="#2563eb" style={{ marginRight: 6 }} />
+                        <Text style={{ fontSize: 12, color: '#2563eb', fontWeight: 'bold', textDecorationLine: 'underline' }}>{ev.location}</Text>
+                      </TouchableOpacity>
+                      {ev.meetingLocation && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#fef2f2', padding: 8, borderRadius: 6, marginTop: 4 }}>
+                          <Ionicons name="warning-outline" size={14} color="#dc2626" style={{ marginRight: 6 }} />
+                          <Text style={{ fontSize: 11, color: '#dc2626', fontWeight: 'bold' }}>Zbiórka: {ev.meetingTime} ({ev.meetingLocation})</Text>
+                        </View>
+                      )}
+                      
+                      <TouchableOpacity 
+                        style={{ backgroundColor: '#eff6ff', padding: 10, borderRadius: 8, marginTop: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
+                        onPress={() => handleOpenEditModal(ev)}
+                      >
+                        <Ionicons name="options-outline" size={16} color="#2563eb" style={{marginRight: 6}} />
+                        <Text style={{ color: '#2563eb', fontWeight: 'bold', fontSize: 12 }}>Zarządzaj wydarzeniem</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )
+                })
+            ) : (
+              <View style={{ padding: 20, alignItems: 'center' }}>
+                <Ionicons name="calendar-clear-outline" size={40} color="#cbd5e1" />
+                <Text style={{ color: '#94a3b8', marginTop: 10, fontWeight: 'bold' }}>Dzień bez zaplanowanych wydarzeń</Text>
+              </View>
+            )}
+
+            <TouchableOpacity style={[styles.addNewEventInDayBtn, { marginTop: 4 }]} onPress={() => handleOpenCreateModal(selectedDate)}>
+              <Ionicons name="add" size={16} color="#fff" style={{ marginRight: 4 }} />
+              <Text style={styles.addNewEventInDayText}>Dodaj do tego dnia</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {viewMode === 'lista' && (
           <View>
             <Text style={styles.sectionTitle}>Nadchodzące Wydarzenia</Text>
-            {events
+            {allEvents
               .filter(ev => filterType === 'Wszystkie' || ev.type === filterType)
               .map((ev) => {
               const cfg = getEventTypeConfig(ev.type);
@@ -764,10 +860,7 @@ export default function KalendarzScreen() {
                         style={styles.quickAttendanceRouteBtn} 
                         onPress={() => {
                           setDayModalVisible(false);
-                          Alert.alert(
-                            "Integracja Nawigacji", 
-                            "Tutaj użyjemy routera by przenieść Cię na płytę boiska! Np.\n\nrouter.push('/QuickAttendance')"
-                          );
+                          router.push({ pathname: '/Boisko', params: { eventId: ev.id } });
                         }}
                       >
                         <Ionicons name="football-outline" size={16} color="#fff" style={{marginRight: 6}} />
@@ -936,19 +1029,47 @@ export default function KalendarzScreen() {
               <View style={{ flexDirection: 'row', gap: 8, marginVertical: 6 }}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.inputLabel}>Data od:</Text>
-                  <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowStartDatePicker(true)}>
-                    <Text style={styles.pickerBoxBtnText}>{formattedStartDate}</Text>
-                  </TouchableOpacity>
+                  {Platform.OS === 'web' ? (
+                    <TextInput
+                      style={styles.modalInput}
+                      value={formattedStartDate}
+                      placeholder="YYYY-MM-DD"
+                      onChangeText={(txt) => {
+                        if (/^\d{4}-\d{2}-\d{2}$/.test(txt)) {
+                          const d = parseLocalDate(txt);
+                          setStartDateObj(d);
+                          setEndDateObj(d);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowStartDatePicker(true)}>
+                      <Text style={styles.pickerBoxBtnText}>{formattedStartDate}</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.inputLabel}>Data do:</Text>
-                  <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowEndDatePicker(true)}>
-                    <Text style={styles.pickerBoxBtnText}>{formattedEndDate}</Text>
-                  </TouchableOpacity>
+                  {Platform.OS === 'web' ? (
+                    <TextInput
+                      style={styles.modalInput}
+                      value={formattedEndDate}
+                      placeholder="YYYY-MM-DD"
+                      onChangeText={(txt) => {
+                        if (/^\d{4}-\d{2}-\d{2}$/.test(txt)) {
+                          setEndDateObj(parseLocalDate(txt));
+                        }
+                      }}
+                    />
+                  ) : (
+                    <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowEndDatePicker(true)}>
+                      <Text style={styles.pickerBoxBtnText}>{formattedEndDate}</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
 
-              {showStartDatePicker && (
+              {Platform.OS !== 'web' && showStartDatePicker && (
                 <DateTimePicker
                   value={startDateObj}
                   mode="date"
@@ -963,7 +1084,7 @@ export default function KalendarzScreen() {
                 />
               )}
 
-              {showEndDatePicker && (
+              {Platform.OS !== 'web' && showEndDatePicker && (
                 <DateTimePicker
                   value={endDateObj}
                   mode="date"
@@ -977,20 +1098,38 @@ export default function KalendarzScreen() {
 
               <View style={{ flexDirection: 'row', gap: 6, marginVertical: 6 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Start:</Text>
-                  <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowStartTimePicker(true)}>
-                    <Text style={styles.pickerBoxBtnText}>{formattedStartTime}</Text>
-                  </TouchableOpacity>
+                  <Text style={styles.inputLabel}>Start (HH:MM):</Text>
+                  {Platform.OS === 'web' ? (
+                    <TextInput
+                      style={styles.modalInput}
+                      value={formattedStartTime}
+                      placeholder="17:30"
+                      onChangeText={(txt) => setStartTimeObj(applyTimeString(startDateObj, txt))}
+                    />
+                  ) : (
+                    <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowStartTimePicker(true)}>
+                      <Text style={styles.pickerBoxBtnText}>{formattedStartTime}</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Koniec:</Text>
-                  <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowEndTimePicker(true)}>
-                    <Text style={styles.pickerBoxBtnText}>{formattedEndTime}</Text>
-                  </TouchableOpacity>
+                  <Text style={styles.inputLabel}>Koniec (HH:MM):</Text>
+                  {Platform.OS === 'web' ? (
+                    <TextInput
+                      style={styles.modalInput}
+                      value={formattedEndTime}
+                      placeholder="19:00"
+                      onChangeText={(txt) => setEndTimeObj(applyTimeString(startDateObj, txt))}
+                    />
+                  ) : (
+                    <TouchableOpacity style={styles.pickerBoxBtn} onPress={() => setShowEndTimePicker(true)}>
+                      <Text style={styles.pickerBoxBtnText}>{formattedEndTime}</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
 
-              {showStartTimePicker && (
+              {Platform.OS !== 'web' && showStartTimePicker && (
                 <DateTimePicker
                   value={startTimeObj}
                   mode="time"
@@ -1003,7 +1142,7 @@ export default function KalendarzScreen() {
                 />
               )}
 
-              {showEndTimePicker && (
+              {Platform.OS !== 'web' && showEndTimePicker && (
                 <DateTimePicker
                   value={endTimeObj}
                   mode="time"
@@ -1021,12 +1160,21 @@ export default function KalendarzScreen() {
                 
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 6 }}>
                   <Text style={[styles.inputLabel, { flex: 1, marginBottom: 0 }]}>Godzina zbiórki:</Text>
-                  <TouchableOpacity style={[styles.pickerBoxBtn, { width: 120 }]} onPress={() => setShowMeetingTimePicker(true)}>
-                    <Text style={[styles.pickerBoxBtnText, { color: '#dc2626', fontWeight: 'bold' }]}>{formattedMeetingTime}</Text>
-                  </TouchableOpacity>
+                  {Platform.OS === 'web' ? (
+                    <TextInput
+                      style={[styles.modalInput, { width: 120, marginBottom: 0, textAlign: 'center', color: '#dc2626', fontWeight: 'bold' }]}
+                      value={formattedMeetingTime}
+                      placeholder="17:15"
+                      onChangeText={(txt) => setMeetingTimeObj(applyTimeString(startDateObj, txt))}
+                    />
+                  ) : (
+                    <TouchableOpacity style={[styles.pickerBoxBtn, { width: 120 }]} onPress={() => setShowMeetingTimePicker(true)}>
+                      <Text style={[styles.pickerBoxBtnText, { color: '#dc2626', fontWeight: 'bold' }]}>{formattedMeetingTime}</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
-                {showMeetingTimePicker && (
+                {Platform.OS !== 'web' && showMeetingTimePicker && (
                   <DateTimePicker
                     value={meetingTimeObj}
                     mode="time"
@@ -1336,7 +1484,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#f1f5f9',
   },
   weekDayHeader: {
-    width: 80,
+    width: 85,
   },
   weekDayName: {
     fontSize: 12,
@@ -1511,9 +1659,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 2,
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 4,
   },
-  massTitle: { fontSize: 12, fontWeight: 'bold', color: '#0f172a' },
+  massTitle: { fontSize: 12, fontWeight: 'bold', color: '#0f172a', flex: 1 },
   massSubtitle: { fontSize: 10, color: '#64748b', marginBottom: 6 },
   massActionAllBtn: {
     backgroundColor: '#dcfce7',

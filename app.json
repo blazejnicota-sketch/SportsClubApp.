@@ -1,33 +1,52 @@
 {
   "expo": {
-    "name": "Klub Sportowy",
-    "slug": "SportsClubApp",
-    "version": "1.0.3",
+    "name": "SportsClubPro",
+    "slug": "sportsclubpro",
+    "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "sportsclubapp",
-    "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "sportsclubpro",
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "ios": {
       "supportsTablet": true
     },
     "android": {
-      "package": "com.anonymous.SportsClubApp"
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.sportsclubpro.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-image-picker",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "SportsClub Pro potrzebuje dostępu do aparatu w celu analizy ćwiczeń."
+        }
+      ]
     ],
     "extra": {
       "router": {
         "origin": false
       },
       "eas": {
-        "projectId": "a8350101-df13-4ed4-a56b-eaf89f61832b"
+        "projectId": "5198b265-7ff0-473a-b0bf-2dbdb4e944b1"
       }
-    },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/a8350101-df13-4ed4-a56b-eaf89f61832b"
     }
   }
 }
