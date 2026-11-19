@@ -16,6 +16,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import * as XLSX from 'xlsx';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import * as Print from 'expo-print';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'react-native';
@@ -42,7 +46,36 @@ const MONTH_NAMES = [
 ];
 const SHORT_WEEK_DAYS = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Ndz'];
 
-type MainSubTab = 'pulpit' | '1on1' | 'stroje' | 'finanse' | 'kadra' | 'ustawienia';
+type MainSubTab = 'pulpit' | '1on1' | 'testy' | 'stroje' | 'finanse' | 'kadra' | 'ustawienia';
+
+type MotorTestUnit = 's' | 'cm' | 'm' | 'powt.' | 'pkt';
+
+interface MotorTestDef {
+  id: string;
+  name: string;
+  unit: MotorTestUnit;
+  betterDirection: 'lower' | 'higher'; // lower = mniej lepiej (np. sprint), higher = więcej lepiej (np. skok)
+  useStopwatch: boolean;
+  icon: string;
+  isCustom?: boolean;
+}
+
+const DEFAULT_MOTOR_TESTS: MotorTestDef[] = [
+  { id: 'sprint10', name: 'Sprint 10m', unit: 's', betterDirection: 'lower', useStopwatch: true, icon: '⚡' },
+  { id: 'sprint30', name: 'Sprint 30m', unit: 's', betterDirection: 'lower', useStopwatch: true, icon: '🏃' },
+  { id: 'beep', name: 'Beep Test', unit: 'pkt', betterDirection: 'higher', useStopwatch: false, icon: '🫀' },
+  { id: 'jump', name: 'Skok w dal z miejsca', unit: 'cm', betterDirection: 'higher', useStopwatch: false, icon: '🦘' },
+  { id: 'run100', name: 'Bieg 100m', unit: 's', betterDirection: 'lower', useStopwatch: true, icon: '⏱️' },
+];
+
+// Inteligentna normalizacja liczb: zamienia przecinek na kropkę, usuwa spacje i jednostki (np. "3,76 s" -> 3.76)
+const parseNumericInput = (raw: string): number | null => {
+  if (!raw || !raw.trim()) return null;
+  const cleaned = raw.replace(/,/g, '.').replace(/[^0-9.-]/g, '');
+  if (!cleaned || cleaned === '.' || cleaned === '-') return null;
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? null : num;
+};
 type CoachWorkMode = 'both' | 'individual_only';
 
 const AI_HOMEWORK_EXERCISES = [
@@ -146,6 +179,32 @@ export default function PanelTrenera() {
   const [selectedKitRecipients, setSelectedKitRecipients] = useState<string[]>([]);
   const [newKitName, setNewKitName] = useState<string>('');
   const [newKitPrice, setNewKitPrice] = useState<string>('');
+
+  // Stany dla Modułu Testów Motorycznych (+ Własny test + Normalizacja przecinka/kropki)
+  const [motorTests, setMotorTests] = useState<MotorTestDef[]>(DEFAULT_MOTOR_TESTS);
+  const [customTestModalVisible, setCustomTestModalVisible] = useState<boolean>(false);
+  const [ctName, setCtName] = useState<string>('');
+  const [ctUnit, setCtUnit] = useState<MotorTestUnit>('s');
+  const [ctDirection, setCtDirection] = useState<'lower' | 'higher'>('lower');
+  const [ctUseStopwatch, setCtUseStopwatch] = useState<boolean>(true);
+
+  const [activeMotorTest, setActiveMotorTest] = useState<MotorTestDef | null>(null);
+  const [testTargetPlayerId, setTestTargetPlayerId] = useState<string>('');
+  const [testRawValue, setTestRawValue] = useState<string>('');
+  const [swRunning, setSwRunning] = useState<boolean>(false);
+  const [swMs, setSwMs] = useState<number>(0);
+
+  // Stan eksportu Excel / PDF
+  const [exportingReport, setExportingReport] = useState<boolean>(false);
+
+  React.useEffect(() => {
+    if (!swRunning) return;
+    const start = Date.now() - swMs;
+    const interval = setInterval(() => {
+      setSwMs(Date.now() - start);
+    }, 50);
+    return () => clearInterval(interval);
+  }, [swRunning]);
 
   // Modal podglądu gotowego raportu zamówienia dla hurtowni
   const [orderReportModalVisible, setOrderReportModalVisible] = useState<boolean>(false);
@@ -524,6 +583,263 @@ export default function PanelTrenera() {
     setOrderReportModalVisible(true);
   };
 
+  // --- TESTY MOTORYCZNE: KREATOR + ZAPIS Z NORMALIZACJĄ ---
+  const handleCreateCustomTest = () => {
+    if (!ctName.trim()) {
+      showNotice('Brak nazwy', 'Wpisz nazwę własnego testu (np. Test Illinois, Żonglerka 60s).');
+      return;
+    }
+    const newTest: MotorTestDef = {
+      id: `custom-${Date.now()}`,
+      name: ctName.trim(),
+      unit: ctUnit,
+      betterDirection: ctDirection,
+      useStopwatch: ctUseStopwatch,
+      icon: ctUnit === 's' ? '⏱️' : ctUnit === 'cm' || ctUnit === 'm' ? '📏' : '🎯',
+      isCustom: true,
+    };
+    setMotorTests((prev) => [...prev, newTest]);
+    setCtName('');
+    setCustomTestModalVisible(false);
+    showNotice('Dodano własny test! ✅', `Kafelek „${newTest.name}” (${newTest.unit}) jest już gotowy do użycia.`);
+  };
+
+  const handleOpenMotorTestModal = (test: MotorTestDef) => {
+    setActiveMotorTest(test);
+    setTestTargetPlayerId(players[0]?.id ? String(players[0].id) : '');
+    setTestRawValue('');
+    setSwRunning(false);
+    setSwMs(0);
+  };
+
+  const handleSaveMotorTestResult = () => {
+    if (!activeMotorTest) return;
+    const targetPlayer = players.find((p) => String(p.id) === String(testTargetPlayerId));
+    if (!targetPlayer) {
+      showNotice('Wybierz zawodnika', 'Wybierz zawodnika z listy, aby zapisać wynik testu.');
+      return;
+    }
+    const parsedNum = parseNumericInput(testRawValue);
+    if (parsedNum === null) {
+      showNotice('Niepoprawny wynik', 'Wpisz poprawną liczbę (możesz użyć kropki lub przecinka, np. 3,76 lub 3.76).');
+      return;
+    }
+
+    const normalizedStr = `${parsedNum} ${activeMotorTest.unit}`;
+    const newEntry = {
+      testName: activeMotorTest.name,
+      result: normalizedStr,
+      date: formatDateLocal(new Date()),
+    };
+
+    const extraUpdates: Record<string, any> = {};
+    if (activeMotorTest.id === 'sprint30') extraUpdates.sprint30m = normalizedStr;
+    if (activeMotorTest.id === 'jump') extraUpdates.jumpCm = parsedNum;
+    if (activeMotorTest.id === 'beep') extraUpdates.beepTest = String(parsedNum);
+
+    updatePlayer(targetPlayer.id, {
+      ...extraUpdates,
+      tests: [newEntry, ...(targetPlayer.tests || [])],
+    });
+
+    setTestRawValue('');
+    setSwRunning(false);
+    setSwMs(0);
+    showNotice(
+      'Wynik zapisany! 📊',
+      `${targetPlayer.firstName} ${targetPlayer.lastName || ''}
+${activeMotorTest.name}: ${normalizedStr}
+(Automatycznie znormalizowano do formatu liczbowego)`
+    );
+  };
+
+  // --- EKSPORT DO EXCELA (.XLSX - 4 ARKUSZE) ---
+  const handleExportToExcel = async () => {
+    if (players.length === 0) {
+      showNotice('Brak danych', 'Dodaj przynajmniej jednego zawodnika w Kadrze, aby wygenerować raport Excel.');
+      return;
+    }
+    setExportingReport(true);
+    try {
+      const wb = XLSX.utils.book_new();
+
+      // Arkusz 1: Kadra i Frekwencja
+      const sheet1Data = players.map((p) => {
+        const total = p.trainingsTotal || 0;
+        const present = p.trainingsPresent || 0;
+        const pct = total > 0 ? Math.round((present / total) * 100) : 0;
+        return {
+          Numer: p.number || '',
+          Imię: p.firstName,
+          Nazwisko: p.lastName || '',
+          Rocznik: p.year,
+          Pozycja: p.position,
+          'Treningi (Obecny/Razem)': `${present}/${total}`,
+          'Frekwencja (%)': pct,
+          'Badania lekarskie': p.medicalClearanceDate || 'Brak daty',
+          'Status zdrowia': p.healthStatus || 'Zdrowy',
+          'Saldo (PLN)': p.balance ?? 0,
+        };
+      });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet1Data), 'Kadra i Frekwencja');
+
+      // Arkusz 2: Statystyki Meczowe
+      const sheet2Data = players.map((p) => ({
+        Numer: p.number || '',
+        Zawodnik: `${p.firstName} ${p.lastName || ''}`.trim(),
+        Rocznik: p.year,
+        Mecze: p.matchesPlayed ?? 0,
+        Gole: p.goals ?? 0,
+        Asysty: p.assists ?? 0,
+        'Żółte kartki': p.yellowCards ?? 0,
+        'Punkty XP': p.xp ?? 300,
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet2Data), 'Statystyki Meczowe');
+
+      // Arkusz 3: Motoryka i Testy (w tym Własne Testy)
+      const allCustomTestNames = Array.from(
+        new Set(
+          players.flatMap((p) => (p.tests || []).map((t) => t.testName))
+        )
+      );
+      const sheet3Data = players.map((p) => {
+        const row: Record<string, any> = {
+          Zawodnik: `${p.firstName} ${p.lastName || ''}`.trim(),
+          Rocznik: p.year,
+          'Sprint 30m': p.sprint30m || '-',
+          'Skok w dal (cm)': p.jumpCm ?? '-',
+          'Beep Test': p.beepTest || '-',
+        };
+        allCustomTestNames.forEach((tName) => {
+          const found = (p.tests || []).find((t) => t.testName === tName);
+          row[tName] = found ? found.result : '-';
+        });
+        return row;
+      });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet3Data), 'Motoryka i Testy');
+
+      // Arkusz 4: Stroje i Rozliczenia
+      const sheet4Data: Record<string, any>[] = [];
+      kits.forEach((k) => {
+        k.orders.forEach((o) => {
+          sheet4Data.push({
+            Zestaw: k.name,
+            Cena: k.price,
+            Zawodnik: o.playerName,
+            Rocznik: o.year,
+            Rozmiar: o.size,
+            Opłacono: o.paid ? 'TAK' : 'NIE',
+          });
+        });
+      });
+      if (sheet4Data.length === 0) {
+        sheet4Data.push({ Informacja: 'Brak zapisanych zamówień strojów' });
+      }
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet4Data), 'Stroje i Rozliczenia');
+
+      const fileName = `SportsClubPro_Raport_${formatDateLocal(new Date())}.xlsx`;
+
+      if (Platform.OS === 'web') {
+        XLSX.writeFile(wb, fileName);
+        showNotice('Eksport gotowy! 📊', `Plik Excel (${fileName}) został pobrany na Twój komputer.`);
+      } else {
+        const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+        const dir = (FileSystem as any).documentDirectory || (FileSystem as any).cacheDirectory;
+        const fileUri = `${dir}${fileName}`;
+        await FileSystem.writeAsStringAsync(fileUri, wbout, {
+          encoding: 'base64' as any,
+        });
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            dialogTitle: 'Udostępnij raport Excel (.xlsx)',
+          });
+        } else {
+          showNotice('Zapisano plik', `Raport zapisano w: ${fileUri}`);
+        }
+      }
+    } catch (err: any) {
+      showNotice('Błąd eksportu Excel', err?.message || 'Nie udało się wygenerować pliku .xlsx.');
+    } finally {
+      setExportingReport(false);
+    }
+  };
+
+  // --- EKSPORT DO PDF (RAPORT DRUŻYNOWY) ---
+  const handleExportToPdf = async () => {
+    if (players.length === 0) {
+      showNotice('Brak danych', 'Dodaj przynajmniej jednego zawodnika w Kadrze, aby wygenerować raport PDF.');
+      return;
+    }
+    setExportingReport(true);
+    try {
+      const rowsHtml = players
+        .map(
+          (p) => `
+          <tr>
+            <td>#${p.number || '-'}</td>
+            <td><strong>${p.firstName} ${p.lastName || ''}</strong></td>
+            <td>${p.year}</td>
+            <td>${p.position}</td>
+            <td>${p.goals ?? 0}</td>
+            <td>${p.assists ?? 0}</td>
+            <td>${p.sprint30m || '-'}</td>
+            <td>${p.xp ?? 300} XP</td>
+          </tr>`
+        )
+        .join('');
+
+      const html = `
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <style>
+              body { font-family: Helvetica, Arial, sans-serif; padding: 24px; color: #0f172a; }
+              h1 { color: #1e3a8a; margin-bottom: 4px; }
+              p.sub { color: #64748b; font-size: 12px; margin-top: 0; }
+              table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 12px; }
+              th { background: #0f172a; color: #fff; text-align: left; padding: 8px; }
+              td { border-bottom: 1px solid #e2e8f0; padding: 8px; }
+              tr:nth-child(even) { background: #f8fafc; }
+            </style>
+          </head>
+          <body>
+            <h1>SportsClub Pro — Raport Kadry i Statystyk</h1>
+            <p class="sub">Data wygenerowania: ${formatDateLocal(new Date())} • Liczba zawodników: ${players.length}</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Nr</th><th>Zawodnik</th><th>Rocznik</th><th>Pozycja</th>
+                  <th>Gole</th><th>Asysty</th><th>Sprint 30m</th><th>XP</th>
+                </tr>
+              </thead>
+              <tbody>${rowsHtml}</tbody>
+            </table>
+          </body>
+        </html>`;
+
+      if (Platform.OS === 'web') {
+        await Print.printAsync({ html });
+      } else {
+        const { uri } = await Print.printToFileAsync({ html });
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(uri, {
+            mimeType: 'application/pdf',
+            dialogTitle: 'Udostępnij raport PDF',
+          });
+        } else {
+          showNotice('Zapisano PDF', `Plik PDF zapisano w: ${uri}`);
+        }
+      }
+    } catch (err: any) {
+      showNotice('Błąd eksportu PDF', err?.message || 'Nie udało się wygenerować pliku PDF.');
+    } finally {
+      setExportingReport(false);
+    }
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
@@ -600,6 +916,14 @@ export default function PanelTrenera() {
           >
             <Ionicons name="person-add-outline" size={14} color={activeTab === '1on1' ? '#fff' : '#475569'} />
             <Text style={[styles.pillTabText, activeTab === '1on1' && styles.pillTabTextActive]}>1-on-1</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.pillTab, activeTab === 'testy' && styles.pillTabActive]}
+            onPress={() => setActiveTab('testy')}
+          >
+            <Ionicons name="stopwatch-outline" size={14} color={activeTab === 'testy' ? '#fff' : '#475569'} />
+            <Text style={[styles.pillTabText, activeTab === 'testy' && styles.pillTabTextActive]}>Testy</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -827,6 +1151,35 @@ export default function PanelTrenera() {
                 <Text style={styles.statValue}>{kits.reduce((acc, k) => acc + k.orders.length, 0)}</Text>
                 <Text style={styles.statLabel}>Przypisane Rozmiary</Text>
               </TouchableOpacity>
+            </View>
+
+            {/* CENTRUM EKSPORTU: EXCEL (.XLSX) I PDF */}
+            <View style={[styles.whiteCard, { marginTop: 14 }]}>
+              <Text style={styles.cardSectionTitle}>📊 Eksport Danych na Komputer (Excel / PDF)</Text>
+              <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2, marginBottom: 10 }}>
+                Pobierz pełne podsumowanie kadry, statystyk meczowych, testów motorycznych i strojów.
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  style={styles.exportExcelBtn}
+                  onPress={handleExportToExcel}
+                  disabled={exportingReport}
+                >
+                  <Ionicons name="document-text-outline" size={16} color="#fff" />
+                  <Text style={styles.exportBtnText}>
+                    {exportingReport ? 'Generowanie...' : 'Eksport Excel (.xlsx)'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.exportPdfBtn}
+                  onPress={handleExportToPdf}
+                  disabled={exportingReport}
+                >
+                  <Ionicons name="print-outline" size={16} color="#fff" />
+                  <Text style={styles.exportBtnText}>Raport PDF</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         )}
@@ -1244,6 +1597,79 @@ export default function PanelTrenera() {
                 </View>
               </View>
             ))}
+          </View>
+        )}
+
+        {/* ==================== ZAKŁADKA TESTY MOTORYCZNE (+ WŁASNY TEST) ==================== */}
+        {activeTab === 'testy' && (
+          <View>
+            <View style={styles.cardHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pageMainTitle}>Testy Motoryczne ⏱️</Text>
+                <Text style={styles.pageSubTitle}>
+                  Gotowe testy oraz Kreator Własnych Testów z automatyczną normalizacją liczb (przecinek/kropka)
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.motorGrid}>
+              {motorTests.map((t) => (
+                <TouchableOpacity
+                  key={t.id}
+                  style={styles.motorTile}
+                  onPress={() => handleOpenMotorTestModal(t)}
+                >
+                  <Text style={{ fontSize: 26 }}>{t.icon}</Text>
+                  <Text style={styles.motorTileTitle}>{t.name}</Text>
+                  <Text style={styles.motorTileMeta}>
+                    Jednostka: {t.unit} • {t.betterDirection === 'lower' ? '⬇️ Mniej = lepiej' : '⬆️ Więcej = lepiej'}
+                  </Text>
+                  {t.isCustom && (
+                    <View style={styles.customTestBadge}>
+                      <Text style={styles.customTestBadgeText}>WŁASNY TEST</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+
+              {/* KAFELEK: + WŁASNY TEST */}
+              <TouchableOpacity
+                style={styles.addCustomTestTile}
+                onPress={() => setCustomTestModalVisible(true)}
+              >
+                <Ionicons name="add-circle-outline" size={32} color="#2563eb" />
+                <Text style={styles.addCustomTestTitle}>+ Własny test</Text>
+                <Text style={styles.addCustomTestSub}>Stwórz autorski pomiar</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* OSTATNIE WYNIKI TESTÓW W DRUŻYNIE */}
+            <View style={[styles.whiteCard, { marginTop: 12 }]}>
+              <Text style={styles.cardSectionTitle}>📋 Ostatnie zapisane wyniki w kadrze</Text>
+              {players.every((p) => !p.tests || p.tests.length === 0) ? (
+                <Text style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', marginTop: 8 }}>
+                  Kliknij dowolny kafelek powyżej, aby wpisać pierwszy wynik (np. 3,76 lub 3.76).
+                </Text>
+              ) : (
+                <View style={{ marginTop: 8, gap: 6 }}>
+                  {players.flatMap((p) =>
+                    (p.tests || []).slice(0, 2).map((t, idx) => (
+                      <View key={`${p.id}-${idx}`} style={styles.bulkRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#0f172a' }}>
+                            {p.firstName} {p.lastName || ''} — {t.testName}
+                          </Text>
+                          <Text style={{ fontSize: 10, color: '#64748b' }}>Data: {t.date}</Text>
+                        </View>
+                        <View style={styles.assignedSizeBadge}>
+                          <Text style={styles.assignedSizeBadgeText}>{t.result}</Text>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </View>
+              )}
+            </View>
           </View>
         )}
 
@@ -1971,6 +2397,181 @@ export default function PanelTrenera() {
           </View>
         </View>
       </Modal>
+      {/* MODAL 4: KREATOR WŁASNEGO TESTU MOTORYCZNEGO */}
+      <Modal visible={customTestModalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalWhiteBox}>
+            <View style={styles.cardHeaderRow}>
+              <Text style={styles.cardSectionTitle}>✨ Kreator Własnego Testu</Text>
+              <TouchableOpacity onPress={() => setCustomTestModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.fieldMiniLabel}>NAZWA TESTU *</Text>
+            <TextInput
+              style={styles.lightInput}
+              placeholder="np. Test Illinois, Żonglerka 60s, Rzut piłką"
+              value={ctName}
+              onChangeText={setCtName}
+            />
+
+            <Text style={styles.fieldMiniLabel}>JEDNOSTKA POMIARU</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+              {(['s', 'cm', 'm', 'powt.', 'pkt'] as MotorTestUnit[]).map((u) => (
+                <TouchableOpacity
+                  key={u}
+                  style={[styles.quickSizeBtn, ctUnit === u && styles.quickSizeBtnActive]}
+                  onPress={() => setCtUnit(u)}
+                >
+                  <Text style={[styles.quickSizeBtnText, ctUnit === u && { color: '#fff', fontWeight: 'bold' }]}>
+                    {u}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.fieldMiniLabel}>KIERUNEK PROGRESU (CO JEST REKORDEM?)</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+              <TouchableOpacity
+                style={[styles.quickSizeBtn, { flex: 1, alignItems: 'center' }, ctDirection === 'lower' && styles.quickSizeBtnActive]}
+                onPress={() => setCtDirection('lower')}
+              >
+                <Text style={[styles.quickSizeBtnText, ctDirection === 'lower' && { color: '#fff', fontWeight: 'bold' }]}>
+                  ⬇️ Mniej = lepiej (czas)
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.quickSizeBtn, { flex: 1, alignItems: 'center' }, ctDirection === 'higher' && styles.quickSizeBtnActive]}
+                onPress={() => setCtDirection('higher')}
+              >
+                <Text style={[styles.quickSizeBtnText, ctDirection === 'higher' && { color: '#fff', fontWeight: 'bold' }]}>
+                  ⬆️ Więcej = lepiej
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.recurringBoxRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#0f172a' }}>Włącz wbudowany Stoper</Text>
+                <Text style={{ fontSize: 10, color: '#64748b' }}>Przydatne przy pomiarach w sekundach</Text>
+              </View>
+              <Switch value={ctUseStopwatch} onValueChange={setCtUseStopwatch} />
+            </View>
+
+            <TouchableOpacity style={styles.greenSaveScheduleBtn} onPress={handleCreateCustomTest}>
+              <Ionicons name="add-circle-outline" size={18} color="#fff" />
+              <Text style={styles.greenSaveScheduleText}>Dodaj kafelek testu</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL 5: WPISYWANIE WYNIKU TESTU + STOPER + NORMALIZACJA PRZECINKA/KROPKI */}
+      <Modal visible={!!activeMotorTest} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalWhiteBox}>
+            {activeMotorTest && (
+              <>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.cardSectionTitle}>
+                    {activeMotorTest.icon} {activeMotorTest.name} ({activeMotorTest.unit})
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSwRunning(false);
+                      setActiveMotorTest(null);
+                    }}
+                  >
+                    <Ionicons name="close" size={24} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.fieldMiniLabel}>WYBIERZ ZAWODNIKA:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                  {players.map((p) => {
+                    const isSel = String(p.id) === String(testTargetPlayerId);
+                    return (
+                      <TouchableOpacity
+                        key={p.id}
+                        style={[styles.playerSelectChip, isSel && styles.playerSelectChipActive]}
+                        onPress={() => setTestTargetPlayerId(String(p.id))}
+                      >
+                        <Text style={[styles.playerSelectChipText, isSel && { color: '#fff', fontWeight: 'bold' }]}>
+                          #{p.number} {p.firstName}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                {activeMotorTest.useStopwatch && (
+                  <View style={styles.stopwatchBox}>
+                    <Text style={styles.stopwatchTime}>{(swMs / 1000).toFixed(2)} s</Text>
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                      <TouchableOpacity
+                        style={[styles.miniActionChip, { backgroundColor: swRunning ? '#dc2626' : '#16a34a', borderColor: 'transparent', paddingHorizontal: 14, paddingVertical: 7 }]}
+                        onPress={() => {
+                          if (swRunning) {
+                            setSwRunning(false);
+                            setTestRawValue((swMs / 1000).toFixed(2));
+                          } else {
+                            setSwRunning(true);
+                          }
+                        }}
+                      >
+                        <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 12 }}>
+                          {swRunning ? '⏹ Stop i wpisz' : '▶ Start'}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.miniActionChip, { paddingHorizontal: 12, paddingVertical: 7 }]}
+                        onPress={() => {
+                          setSwRunning(false);
+                          setSwMs(0);
+                        }}
+                      >
+                        <Text style={styles.miniActionChipText}>Reset</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+
+                <Text style={styles.fieldMiniLabel}>
+                  WYNIK ({activeMotorTest.unit}) — wpisz z przecinkiem lub kropką (np. 3,76 albo 3.76):
+                </Text>
+                <TextInput
+                  style={styles.lightInput}
+                  keyboardType="decimal-pad"
+                  placeholder={`np. ${activeMotorTest.unit === 's' ? '3,76' : '185'}`}
+                  value={testRawValue}
+                  onChangeText={setTestRawValue}
+                />
+
+                {testRawValue.trim().length > 0 && (
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 'bold',
+                      marginTop: 4,
+                      color: parseNumericInput(testRawValue) !== null ? '#16a34a' : '#dc2626',
+                    }}
+                  >
+                    {parseNumericInput(testRawValue) !== null
+                      ? `✅ Rozpoznano jako: ${parseNumericInput(testRawValue)} ${activeMotorTest.unit}`
+                      : '⚠️ Wpisz poprawną liczbę'}
+                  </Text>
+                )}
+
+                <TouchableOpacity style={styles.greenSaveScheduleBtn} onPress={handleSaveMotorTestResult}>
+                  <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                  <Text style={styles.greenSaveScheduleText}>Zapisz wynik zawodnika</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2537,4 +3138,68 @@ const styles = StyleSheet.create({
   },
   xpPill: { backgroundColor: '#dcfce7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   xpPillText: { fontSize: 11, fontWeight: 'bold', color: '#15803d' },
+
+  exportExcelBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: '#15803d',
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  exportPdfBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: '#1e293b',
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  exportBtnText: { fontSize: 12, fontWeight: 'bold', color: '#fff' },
+
+  motorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  motorTile: {
+    width: '48%',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  motorTileTitle: { fontSize: 14, fontWeight: 'bold', color: '#0f172a', marginTop: 6 },
+  motorTileMeta: { fontSize: 10, color: '#64748b', marginTop: 4 },
+  customTestBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 6,
+  },
+  customTestBadgeText: { fontSize: 9, fontWeight: '900', color: '#2563eb' },
+  addCustomTestTile: {
+    width: '48%',
+    backgroundColor: '#eff6ff',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#3b82f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addCustomTestTitle: { fontSize: 13, fontWeight: 'bold', color: '#1d4ed8', marginTop: 4 },
+  addCustomTestSub: { fontSize: 10, color: '#3b82f6', marginTop: 2, textAlign: 'center' },
+  stopwatchBox: {
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    marginVertical: 8,
+  },
+  stopwatchTime: { fontSize: 32, fontWeight: '900', color: '#38bdf8' },
 });
