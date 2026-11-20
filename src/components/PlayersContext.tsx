@@ -470,6 +470,27 @@ const mapDbToTickerEvent = (row: any): LiveTickerEvent => ({
   reportedBy: row.reported_by || 'Rodzic (Trybuny)',
 });
 
+const mapDbToAiTrainerPlan = (row: any): AiPersonalTrainerPlan => ({
+  playerId: String(row.player_id),
+  durationWeeks: Number(row.duration_weeks) === 12 ? 12 : 8,
+  currentWeek: Number(row.current_week ?? 1),
+  level: (row.level || 'Start') as AiTrainerLevel,
+  teamTrainingDays: Array.isArray(row.team_training_days) ? row.team_training_days : [],
+  matchDays: Array.isArray(row.match_days) ? row.match_days : [],
+  extraTrainingDays: Array.isArray(row.extra_training_days) ? row.extra_training_days : [],
+  baselineCompleted: Boolean(row.baseline_completed),
+  baselineScorePercent:
+    row.baseline_score_percent !== null && row.baseline_score_percent !== undefined
+      ? Number(row.baseline_score_percent)
+      : undefined,
+  weeklyLoadCap: Number(row.weekly_load_cap ?? 2),
+  isDeloadWeek: Boolean(row.is_deload_week),
+  statusMessage: row.status_message || '',
+  exercises: Array.isArray(row.exercises) ? row.exercises : [],
+  logs: Array.isArray(row.logs) ? row.logs : [],
+  updatedAt: row.updated_at || new Date().toISOString(),
+});
+
 const mapDbToPlayer = (row: any): Player => {
   const fName = row.first_name ?? row.firstName ?? '';
   const lName = row.last_name ?? row.lastName ?? '';
@@ -533,6 +554,54 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
     setVoiceCoachEnabled((prev) => !prev);
   };
 
+  const fetchAiTrainerPlans = async () => {
+    const { data, error } = await supabase
+      .from('ai_trainer_plans')
+      .select('*');
+    if (error) {
+      console.error('Błąd pobierania ai_trainer_plans:', error.message);
+      return;
+    }
+    if (data) {
+      const mapped: Record<string, AiPersonalTrainerPlan> = {};
+      data.forEach((row) => {
+        const plan = mapDbToAiTrainerPlan(row);
+        mapped[plan.playerId] = plan;
+      });
+      setAiTrainerPlans(mapped);
+    }
+  };
+
+  const persistAiTrainerPlan = (plan: AiPersonalTrainerPlan) => {
+    supabase
+      .from('ai_trainer_plans')
+      .upsert(
+        [
+          {
+            player_id: String(plan.playerId),
+            duration_weeks: plan.durationWeeks,
+            current_week: plan.currentWeek,
+            level: plan.level,
+            team_training_days: plan.teamTrainingDays,
+            match_days: plan.matchDays,
+            extra_training_days: plan.extraTrainingDays,
+            baseline_completed: plan.baselineCompleted,
+            baseline_score_percent: plan.baselineScorePercent ?? null,
+            weekly_load_cap: plan.weeklyLoadCap,
+            is_deload_week: plan.isDeloadWeek,
+            status_message: plan.statusMessage,
+            exercises: plan.exercises,
+            logs: plan.logs,
+            updated_at: plan.updatedAt,
+          },
+        ],
+        { onConflict: 'player_id' }
+      )
+      .then(({ error }) => {
+        if (error) console.error('Błąd zapisu ai_trainer_plans:', error.message);
+      });
+  };
+
   const setupAiTrainerPlan = (
     playerId: string,
     config: {
@@ -564,6 +633,7 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
     };
 
     setAiTrainerPlans((prev) => ({ ...prev, [playerId]: newPlan }));
+    persistAiTrainerPlan(newPlan);
   };
 
   const completeAiBaselineTest = (
@@ -584,18 +654,20 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
         assignedLevel = 'Podstawowy';
       }
 
+      const updatedPlan: AiPersonalTrainerPlan = {
+        ...existing,
+        level: assignedLevel,
+        baselineCompleted: true,
+        baselineScorePercent: results.formQualityPercent,
+        isDeloadWeek: false,
+        exercises: buildAiExercises(assignedLevel, false),
+        statusMessage: `Próba wstępna zaliczona (technika ${results.formQualityPercent}%). Dobrany poziom: ${assignedLevel}.`,
+        updatedAt: new Date().toISOString(),
+      };
+      persistAiTrainerPlan(updatedPlan);
       return {
         ...prev,
-        [playerId]: {
-          ...existing,
-          level: assignedLevel,
-          baselineCompleted: true,
-          baselineScorePercent: results.formQualityPercent,
-          isDeloadWeek: false,
-          exercises: buildAiExercises(assignedLevel, false),
-          statusMessage: `Próba wstępna zaliczona (technika ${results.formQualityPercent}%). Dobrany poziom: ${assignedLevel}.`,
-          updatedAt: new Date().toISOString(),
-        },
+        [playerId]: updatedPlan,
       };
     });
   };
@@ -653,17 +725,19 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
         ? Math.min(plan.durationWeeks, plan.currentWeek + 1)
         : plan.currentWeek;
 
+      const updatedPlan: AiPersonalTrainerPlan = {
+        ...plan,
+        currentWeek: nextWeek,
+        isDeloadWeek: nextDeload,
+        exercises: nextExercises,
+        statusMessage: nextMessage,
+        logs: updatedLogs,
+        updatedAt: new Date().toISOString(),
+      };
+      persistAiTrainerPlan(updatedPlan);
       return {
         ...prev,
-        [playerId]: {
-          ...plan,
-          currentWeek: nextWeek,
-          isDeloadWeek: nextDeload,
-          exercises: nextExercises,
-          statusMessage: nextMessage,
-          logs: updatedLogs,
-          updatedAt: new Date().toISOString(),
-        },
+        [playerId]: updatedPlan,
       };
     });
   };
@@ -1009,6 +1083,7 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
     fetchWellbeingLogs();
     fetchSafeSportAlerts();
     fetchLiveMatchTicker();
+    fetchAiTrainerPlans();
 
     const channel = supabase
       .channel('public:sportsclub_realtime')
@@ -1027,6 +1102,9 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'live_ticker_events' }, () => {
         fetchLiveMatchTicker();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ai_trainer_plans' }, () => {
+        fetchAiTrainerPlans();
+      })
       .subscribe();
 
     const { data: authSub } = supabase.auth.onAuthStateChange(() => {
@@ -1034,6 +1112,7 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
       fetchWellbeingLogs();
       fetchSafeSportAlerts();
       fetchLiveMatchTicker();
+      fetchAiTrainerPlans();
     });
 
     return () => {
