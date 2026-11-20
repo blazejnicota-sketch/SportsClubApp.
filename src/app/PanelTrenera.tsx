@@ -116,6 +116,9 @@ export default function PanelTrenera() {
     setKits,
     assignPlayerKitSize,
     togglePlayerKitPaid,
+    aiTrainerPlans,
+    voiceCoachEnabled,
+    toggleVoiceCoach,
   } = usePlayers();
 
   const [coachWorkMode, setCoachWorkMode] = useState<CoachWorkMode>('both');
@@ -1153,6 +1156,72 @@ ${activeMotorTest.name}: ${normalizedStr}
               </TouchableOpacity>
             </View>
 
+            {/* STRAŻNIK REGENERACJI I TRENER PERSONALNY AI W DRUŻYNIE */}
+            <View style={[styles.whiteCard, { marginTop: 14, borderColor: '#bae6fd', backgroundColor: '#f8fafc' }]}>
+              <View style={styles.cardHeaderRow}>
+                <Text style={styles.cardSectionTitle}>🛡️ Strażnik Regeneracji & Trener AI</Text>
+                <View style={[styles.statusBadge, { backgroundColor: '#e0f2fe', borderColor: '#7dd3fc' }]}>
+                  <Text style={[styles.statusBadgeText, { color: '#0369a1' }]}>
+                    Aktywne plany: {Object.keys(aiTrainerPlans).length}
+                  </Text>
+                </View>
+              </View>
+              <Text style={{ fontSize: 11, color: '#64748b', marginTop: 4, marginBottom: 8 }}>
+                Podgląd obciążeń z Trenera Personalnego AI. Jeśli zawodnik zgłosi ból lub wysokie zmęczenie, pojawi się tu alert deloadu.
+              </Text>
+
+              {Object.values(aiTrainerPlans).length === 0 ? (
+                <Text style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>
+                  Brak aktywnych planów Trenera AI w tej sesji. Gdy zawodnik ułoży plan w Strefie Zawodnika, zobaczysz tu jego status regeneracji.
+                </Text>
+              ) : (
+                <View style={{ gap: 8 }}>
+                  {Object.values(aiTrainerPlans).map((aiPlan) => {
+                    const matchedPlayer = players.find((p) => String(p.id) === String(aiPlan.playerId));
+                    const displayName = matchedPlayer
+                      ? `#${matchedPlayer.number} ${matchedPlayer.firstName} ${matchedPlayer.lastName || ''}`.trim()
+                      : `Zawodnik (${aiPlan.playerId})`;
+                    const lastLog = aiPlan.logs[0];
+                    const hasPainAlert = lastLog && lastLog.painArea !== 'brak';
+
+                    return (
+                      <View
+                        key={aiPlan.playerId}
+                        style={{
+                          backgroundColor: hasPainAlert ? '#fef2f2' : aiPlan.isDeloadWeek ? '#fffbeb' : '#f0fdf4',
+                          borderWidth: 1,
+                          borderColor: hasPainAlert ? '#fca5a5' : aiPlan.isDeloadWeek ? '#fde68a' : '#bbf7d0',
+                          borderRadius: 10,
+                          padding: 10,
+                        }}
+                      >
+                        <View style={styles.cardHeaderRow}>
+                          <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#0f172a' }}>{displayName}</Text>
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 'bold',
+                              color: hasPainAlert ? '#dc2626' : aiPlan.isDeloadWeek ? '#b45309' : '#15803d',
+                            }}
+                          >
+                            {hasPainAlert
+                              ? `⚠️ ALERT BÓLU (${lastLog.painArea.toUpperCase()})`
+                              : aiPlan.isDeloadWeek
+                              ? '🛡️ TRYB DELOAD'
+                              : '✅ ZIELONE ŚWIATŁO'}
+                          </Text>
+                        </View>
+                        <Text style={{ fontSize: 11, color: '#475569', marginTop: 3 }}>
+                          Tydz. {aiPlan.currentWeek}/{aiPlan.durationWeeks} • Poziom: {aiPlan.level}
+                          {lastLog ? ` • Ostatnia technika: ${lastLog.formQualityPercent}%` : ''}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+
             {/* CENTRUM EKSPORTU: EXCEL (.XLSX) I PDF */}
             <View style={[styles.whiteCard, { marginTop: 14 }]}>
               <Text style={styles.cardSectionTitle}>📊 Eksport Danych na Komputer (Excel / PDF)</Text>
@@ -2170,6 +2239,21 @@ ${activeMotorTest.name}: ${normalizedStr}
                 onPress={() => toggleFeature('enableAiTasks')}
               >
                 <Text style={styles.toggleBtnText}>{features?.enableAiTasks ? 'WŁĄCZONY' : 'WYŁĄCZONY'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.settingItemRow}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.settingItemTitle}>🔊 Lektor Głosowy AI w Ćwiczeniach (TTS)</Text>
+                <Text style={styles.settingItemSub}>
+                  Korekta techniki głosem na żywo w MediaPipe (lokalnie, 0 zł)
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.toggleBtn, voiceCoachEnabled && styles.toggleBtnActive]}
+                onPress={toggleVoiceCoach}
+              >
+                <Text style={styles.toggleBtnText}>{voiceCoachEnabled ? 'WŁĄCZONY' : 'WYŁĄCZONY'}</Text>
               </TouchableOpacity>
             </View>
           </View>
