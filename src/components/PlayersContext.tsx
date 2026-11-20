@@ -14,6 +14,108 @@ export interface HomeworkPrescription {
   assignedAt: string;
 }
 
+export type AiTrainerLevel = 'Start' | 'Podstawowy' | 'Średni' | 'Zaawansowany';
+export type AiFatigueFeedback = 'lekko' | 'w_sam_raz' | 'ciezko';
+export type AiPainArea = 'brak' | 'kolano' | 'biodro' | 'plecy' | 'kostka' | 'inne';
+
+export interface AiPlannedExercise {
+  id: string;
+  title: string;
+  sets: number;
+  repsOrSec: number;
+  unit: 'powt.' | 'sek.';
+  focus: string;
+}
+
+export interface AiSessionLog {
+  id: string;
+  date: string;
+  weekNumber: number;
+  completed: boolean;
+  formQualityPercent: number; // 0-100 z MediaPipe
+  fatigue: AiFatigueFeedback;
+  painArea: AiPainArea;
+  notes?: string;
+}
+
+export interface AiPersonalTrainerPlan {
+  playerId: string;
+  durationWeeks: 8 | 12;
+  currentWeek: number;
+  level: AiTrainerLevel;
+  teamTrainingDays: number[]; // 0 = Nd, 1 = Pn, ..., 6 = Sb
+  matchDays: number[];
+  extraTrainingDays: number[]; // Wyznaczone automatycznie z buforem świeżych nóg
+  baselineCompleted: boolean;
+  baselineScorePercent?: number;
+  weeklyLoadCap: number; // Bezpiecznik maksymalnej liczby sesji dodatkowych w tygodniu
+  isDeloadWeek: boolean;
+  statusMessage: string;
+  exercises: AiPlannedExercise[];
+  logs: AiSessionLog[];
+  updatedAt: string;
+}
+
+const calculateSafeExtraDays = (
+  teamDays: number[],
+  matchDays: number[],
+  weeklyLoadCap: number = 2
+): number[] => {
+  // Bufor "świeżych nóg": blokujemy dni treningów drużynowych, dni meczowe oraz dzień PRZED meczem
+  const blockedDays = new Set<number>([...teamDays, ...matchDays]);
+  matchDays.forEach((mDay) => {
+    const dayBeforeMatch = (mDay + 6) % 7;
+    blockedDays.add(dayBeforeMatch);
+  });
+
+  // Preferowana kolejność dni tygodnia (Pn-Nd)
+  const weekOrder = [1, 2, 3, 4, 5, 6, 0];
+  const freeDays = weekOrder.filter((day) => !blockedDays.has(day));
+  return freeDays.slice(0, Math.max(1, Math.min(weeklyLoadCap, 3)));
+};
+
+const buildAiExercises = (level: AiTrainerLevel, isDeload: boolean): AiPlannedExercise[] => {
+  const baseMap: Record<
+    AiTrainerLevel,
+    { sets: number; jumpReps: number; skaterReps: number; mobilitySec: number }
+  > = {
+    Start: { sets: 2, jumpReps: 6, skaterReps: 8, mobilitySec: 30 },
+    Podstawowy: { sets: 3, jumpReps: 8, skaterReps: 10, mobilitySec: 40 },
+    Średni: { sets: 3, jumpReps: 10, skaterReps: 12, mobilitySec: 45 },
+    Zaawansowany: { sets: 4, jumpReps: 12, skaterReps: 14, mobilitySec: 50 },
+  };
+
+  const cfg = baseMap[level];
+  const factor = isDeload ? 0.7 : 1;
+
+  return [
+    {
+      id: 'squat-jumps',
+      title: 'Wyskoki z przysiadu (Plyometria)',
+      sets: isDeload ? Math.max(2, cfg.sets - 1) : cfg.sets,
+      repsOrSec: Math.max(4, Math.round(cfg.jumpReps * factor)),
+      unit: 'powt.',
+      focus: 'Skoczność i miękkie lądowanie',
+    },
+    {
+      id: 'skater-jumps',
+      title: 'Przeskoki boczne (Łyżwiarz)',
+      sets: isDeload ? Math.max(2, cfg.sets - 1) : cfg.sets,
+      repsOrSec: Math.max(6, Math.round(cfg.skaterReps * factor)),
+      unit: 'powt.',
+      focus: 'Stabilizacja kolan i zwinność',
+    },
+    {
+      id: 'hip-hamstring-mobility',
+      title: 'Mobilność bioder i dwugłowych',
+      sets: 2,
+      repsOrSec: cfg.mobilitySec,
+      unit: 'sek.',
+      focus: 'Regeneracja i ochrona przed kontuzją',
+    },
+  ];
+};
+
 export interface TestResult {
   testName: string;
   result: string;
@@ -92,7 +194,6 @@ export interface LiveMatchTickerState {
   allowAllParentsToReport: boolean; // Tryb otwarty: każdy rodzic na trybunach może kliknąć zdarzenie
   events: LiveTickerEvent[];
 }
-
 
 export const FULL_KIT_SIZES = [
   '122 cm',
@@ -252,6 +353,29 @@ interface PlayersContextType {
   safeSportAlerts: SafeSportAlert[];
   addSafeSportAlert: (alert: Omit<SafeSportAlert, 'id' | 'createdAt' | 'resolved'>) => void;
   resolveSafeSportAlert: (alertId: string) => void;
+  // Moduł Trenera Personalnego AI (8-12 tyg. + Strażnik regeneracji)
+  aiTrainerPlans: Record<string, AiPersonalTrainerPlan>;
+  setupAiTrainerPlan: (
+    playerId: string,
+    config: {
+      durationWeeks: 8 | 12;
+      teamTrainingDays: number[];
+      matchDays: number[];
+      weeklyLoadCap?: number;
+    }
+  ) => void;
+  completeAiBaselineTest: (
+    playerId: string,
+    results: { jumpReps: number; plankSec: number; formQualityPercent: number }
+  ) => void;
+  logAiTrainingSession: (
+    playerId: string,
+    log: Omit<AiSessionLog, 'id' | 'date' | 'weekNumber'>
+  ) => void;
+  // Przełącznik Lektora Głosowego AI (TTS WŁ./WYŁ.)
+  voiceCoachEnabled: boolean;
+  setVoiceCoachEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  toggleVoiceCoach: () => void;
 }
 
 const PlayersContext = createContext<PlayersContextType | undefined>(undefined);
@@ -401,6 +525,148 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
 
   const [wellbeingLogs, setWellbeingLogs] = useState<WellbeingLog[]>([]);
   const [safeSportAlerts, setSafeSportAlerts] = useState<SafeSportAlert[]>([]);
+
+  const [aiTrainerPlans, setAiTrainerPlans] = useState<Record<string, AiPersonalTrainerPlan>>({});
+  const [voiceCoachEnabled, setVoiceCoachEnabled] = useState<boolean>(true);
+
+  const toggleVoiceCoach = () => {
+    setVoiceCoachEnabled((prev) => !prev);
+  };
+
+  const setupAiTrainerPlan = (
+    playerId: string,
+    config: {
+      durationWeeks: 8 | 12;
+      teamTrainingDays: number[];
+      matchDays: number[];
+      weeklyLoadCap?: number;
+    }
+  ) => {
+    const cap = config.weeklyLoadCap ?? 2;
+    const safeExtraDays = calculateSafeExtraDays(config.teamTrainingDays, config.matchDays, cap);
+
+    const newPlan: AiPersonalTrainerPlan = {
+      playerId,
+      durationWeeks: config.durationWeeks,
+      currentWeek: 1,
+      level: 'Start',
+      teamTrainingDays: config.teamTrainingDays,
+      matchDays: config.matchDays,
+      extraTrainingDays: safeExtraDays,
+      baselineCompleted: false,
+      weeklyLoadCap: cap,
+      isDeloadWeek: false,
+      statusMessage:
+        'Harmonogram gotowy (z buforem świeżych nóg przed meczem). Wykonaj próbę wstępną, aby dobrać obciążenie.',
+      exercises: buildAiExercises('Start', false),
+      logs: [],
+      updatedAt: new Date().toISOString(),
+    };
+
+    setAiTrainerPlans((prev) => ({ ...prev, [playerId]: newPlan }));
+  };
+
+  const completeAiBaselineTest = (
+    playerId: string,
+    results: { jumpReps: number; plankSec: number; formQualityPercent: number }
+  ) => {
+    setAiTrainerPlans((prev) => {
+      const existing = prev[playerId];
+      if (!existing) return prev;
+
+      // Jakość ruchu ma priorytet nad liczbą powtórzeń
+      let assignedLevel: AiTrainerLevel = 'Start';
+      if (results.formQualityPercent >= 85 && results.jumpReps >= 12 && results.plankSec >= 45) {
+        assignedLevel = 'Zaawansowany';
+      } else if (results.formQualityPercent >= 75 && results.jumpReps >= 9 && results.plankSec >= 30) {
+        assignedLevel = 'Średni';
+      } else if (results.formQualityPercent >= 65 && results.jumpReps >= 6) {
+        assignedLevel = 'Podstawowy';
+      }
+
+      return {
+        ...prev,
+        [playerId]: {
+          ...existing,
+          level: assignedLevel,
+          baselineCompleted: true,
+          baselineScorePercent: results.formQualityPercent,
+          isDeloadWeek: false,
+          exercises: buildAiExercises(assignedLevel, false),
+          statusMessage: `Próba wstępna zaliczona (technika ${results.formQualityPercent}%). Dobrany poziom: ${assignedLevel}.`,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    });
+  };
+
+  const logAiTrainingSession = (
+    playerId: string,
+    log: Omit<AiSessionLog, 'id' | 'date' | 'weekNumber'>
+  ) => {
+    setAiTrainerPlans((prev) => {
+      const plan = prev[playerId];
+      if (!plan) return prev;
+
+      const newLog: AiSessionLog = {
+        ...log,
+        id: `ai-log-${Date.now()}`,
+        date: formatDateLocal(new Date()),
+        weekNumber: plan.currentWeek,
+      };
+
+      const updatedLogs = [newLog, ...plan.logs];
+      let nextDeload = false;
+      let nextExercises = plan.exercises;
+      let nextMessage = 'Dobra robota! Utrzymujemy aktualny, bezpieczny poziom obciążeń.';
+
+      // 1. STRAŻNIK BÓLU: natychmiastowa blokada progresu i obniżenie obciążeń
+      if (log.painArea !== 'brak') {
+        nextDeload = true;
+        nextExercises = buildAiExercises(plan.level, true);
+        nextMessage = `Zgłoszono dyskomfort (${log.painArea}). Progres zablokowany — przełączono na lżejszy tryb regeneracyjny.`;
+      }
+      // 2. STRAŻNIK ZMĘCZENIA I JAKOŚCI RUCHU: brak dokładania przy słabej technice lub zmęczeniu
+      else if (log.fatigue === 'ciezko' || log.formQualityPercent < 70) {
+        nextDeload = true;
+        nextExercises = buildAiExercises(plan.level, true);
+        nextMessage =
+          'Wykryto wysokie zmęczenie lub spadek jakości ruchu. Zostawiamy lżejszą wersję, żeby uniknąć przeciążenia.';
+      }
+      // 3. BEZPIECZNY PROGRES: dobra technika (>= 80%) i niskie/średnie zmęczenie
+      else if (log.completed && log.formQualityPercent >= 80) {
+        nextDeload = false;
+        nextExercises = plan.exercises.map((ex) => ({
+          ...ex,
+          repsOrSec:
+            ex.unit === 'powt.'
+              ? Math.min(ex.repsOrSec + 1, 18) // Bezpieczny sufit powtórzeń
+              : Math.min(ex.repsOrSec + 5, 75), // Bezpieczny sufit sekund
+        }));
+        nextMessage =
+          'Świetna kontrola ruchu i regeneracja! W kolejnej sesji dokładamy lekki, bezpieczny progres.';
+      }
+
+      const sessionsInCurrentWeek = updatedLogs.filter((l) => l.weekNumber === plan.currentWeek).length;
+      const shouldAdvanceWeek = sessionsInCurrentWeek >= plan.extraTrainingDays.length;
+      const nextWeek = shouldAdvanceWeek
+        ? Math.min(plan.durationWeeks, plan.currentWeek + 1)
+        : plan.currentWeek;
+
+      return {
+        ...prev,
+        [playerId]: {
+          ...plan,
+          currentWeek: nextWeek,
+          isDeloadWeek: nextDeload,
+          exercises: nextExercises,
+          statusMessage: nextMessage,
+          logs: updatedLogs,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    });
+  };
 
   const fetchWellbeingLogs = async () => {
     const { data, error } = await supabase
@@ -892,7 +1158,14 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
         if (existingIdx >= 0) {
           updatedOrders = kit.orders.map((o, idx) =>
             idx === existingIdx
-              ? { ...o, size, playerName: fullName, playerNumber: player.number, year: pYear, updatedAt: new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) }
+              ? {
+                  ...o,
+                  size,
+                  playerName: fullName,
+                  playerNumber: player.number,
+                  year: pYear,
+                  updatedAt: new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }),
+                }
               : o
           );
         } else {
@@ -1026,6 +1299,13 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
         safeSportAlerts,
         addSafeSportAlert,
         resolveSafeSportAlert,
+        aiTrainerPlans,
+        setupAiTrainerPlan,
+        completeAiBaselineTest,
+        logAiTrainingSession,
+        voiceCoachEnabled,
+        setVoiceCoachEnabled,
+        toggleVoiceCoach,
       }}
     >
       {children}

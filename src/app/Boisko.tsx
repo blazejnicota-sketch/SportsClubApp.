@@ -64,6 +64,22 @@ interface MatchRecord {
   events: MatchEvent[];
 }
 
+interface MvpAward {
+  id: string;
+  badgeTitle: string;
+  badgeEmoji: string;
+  playerId: string;
+  playerName: string;
+  xpBonus: number;
+}
+
+const MVP_BADGES = [
+  { id: 'fighter', emoji: '🔥', title: 'Walczak Meczu', xp: 50 },
+  { id: 'wall', emoji: '🛡️', title: 'Mur w Obronie', xp: 50 },
+  { id: 'assist', emoji: '🎯', title: 'Król Asyst', xp: 50 },
+  { id: 'gk', emoji: '🧤', title: 'Złote Rękawice', xp: 50 },
+];
+
 const FORMAT_FORMATIONS: Record<GameFormat, { name: string; slots: PositionSlot[] }[]> = {
   '5v5': [{ name: '1-2-1', slots: [{ id: 'GK', label: 'Bramkarz', x: 50, y: 85 }, { id: 'CB', label: 'Obrońca', x: 50, y: 65 }, { id: 'LM', label: 'Lewy Pomocnik', x: 25, y: 40 }, { id: 'RM', label: 'Prawy Pomocnik', x: 75, y: 40 }, { id: 'ST', label: 'Napastnik', x: 50, y: 20 }] }],
   '7v7': [{ name: '1-3-2-1', slots: [{ id: 'GK', label: 'Bramkarz', x: 50, y: 85 }, { id: 'LB', label: 'Lewy Obr.', x: 20, y: 65 }, { id: 'CB', label: 'Środkowy Obr.', x: 50, y: 70 }, { id: 'RB', label: 'Prawy Obr.', x: 80, y: 65 }, { id: 'LM', label: 'Lewy Pom.', x: 25, y: 40 }, { id: 'RM', label: 'Prawy Pom.', x: 75, y: 40 }, { id: 'ST', label: 'Napastnik', x: 50, y: 20 }] }],
@@ -204,6 +220,16 @@ export default function BoiskoScreen() {
   const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
   const [halfDuration, setHalfDuration] = useState<string>('45');
 
+  // Licznik Minut na Boisku (Fair Play Tracker) — sekundy gry każdego zawodnika
+  const [playerPlaySeconds, setPlayerPlaySeconds] = useState<Record<string, number>>({});
+  const [subModalVisible, setSubModalVisible] = useState<boolean>(false);
+  const [subOutSlotId, setSubOutSlotId] = useState<string | null>(null);
+
+  // Karta Po Meczu & Odznaki MVP (+50 XP)
+  const [mvpModalVisible, setMvpModalVisible] = useState<boolean>(false);
+  const [selectedMvpBadge, setSelectedMvpBadge] = useState(MVP_BADGES[0]);
+  const [matchMvpAwards, setMatchMvpAwards] = useState<MvpAward[]>([]);
+
   const filteredPlayersForCallUp = useMemo(() => {
     return players.filter(p => filterYear === 'WSZYSTKIE' || String(p.year) === filterYear);
   }, [players, filterYear]);
@@ -291,6 +317,11 @@ export default function BoiskoScreen() {
     setLineup({});
   };
 
+  const lineupRef = useRef(lineup);
+  useEffect(() => {
+    lineupRef.current = lineup;
+  }, [lineup]);
+
   useEffect(() => {
     let interval: any;
     if (isTimerRunning) {
@@ -301,6 +332,17 @@ export default function BoiskoScreen() {
           setLiveMatchTicker((tPrev) => ({ ...tPrev, currentMinute: curMin }));
           return nextSec;
         });
+        const onPitchPlayers = Object.values(lineupRef.current);
+        if (onPitchPlayers.length > 0) {
+          setPlayerPlaySeconds((prevSecs) => {
+            const next = { ...prevSecs };
+            onPitchPlayers.forEach((pl) => {
+              const pId = String(pl.id);
+              next[pId] = (next[pId] || 0) + 1;
+            });
+            return next;
+          });
+        }
       }, 1000);
     }
     return () => clearInterval(interval);
@@ -379,6 +421,30 @@ export default function BoiskoScreen() {
   const availableFormations = FORMAT_FORMATIONS[selectedFormat];
   const currentFormation = availableFormations[formationIndex] || availableFormations[0];
   const currentSlots = currentFormation.slots;
+
+  const handleQuickSubstitute = (incomingPlayer: Player) => {
+    if (!subOutSlotId) return;
+    setLineup((prev) => ({ ...prev, [subOutSlotId]: incomingPlayer }));
+    setSubModalVisible(false);
+    setSubOutSlotId(null);
+  };
+
+  const handleAwardMvp = (player: Player) => {
+    const newAward: MvpAward = {
+      id: `mvp-${Date.now()}`,
+      badgeTitle: selectedMvpBadge.title,
+      badgeEmoji: selectedMvpBadge.emoji,
+      playerId: String(player.id),
+      playerName: `${player.firstName} ${player.lastName || ''}`.trim() || player.name,
+      xpBonus: selectedMvpBadge.xp,
+    };
+    setMatchMvpAwards((prev) => [newAward, ...prev]);
+    updatePlayer(player.id, { xp: (player.xp || 300) + selectedMvpBadge.xp });
+    setMvpModalVisible(false);
+    const msg = `Przyznano odznakę ${selectedMvpBadge.emoji} ${selectedMvpBadge.title} dla ${newAward.playerName} (+${selectedMvpBadge.xp} XP do Karty FIFA)!`;
+    if (Platform.OS === 'web') window.alert(msg);
+    else Alert.alert('Odznaka MVP Przyznana! 🏆', msg);
+  };
 
   const handleAssignPlayer = (player: Player) => {
     if (!activeSlot) return;
@@ -827,6 +893,98 @@ export default function BoiskoScreen() {
             <Text style={styles.noEventsText}>Brak zarejestrowanych zdarzeń w tym meczu.</Text>
           )}
           
+          {/* LICZNIK MINUT NA BOISKU (FAIR PLAY TRACKER) */}
+          <View style={styles.fairPlayCard}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fairPlayTitle}>⏱️ Licznik Minut (Fair Play Tracker)</Text>
+                <Text style={styles.fairPlaySub}>
+                  Automatycznie zlicza czas gry zawodników ustawionych w zakładce Taktyka
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.mvpTriggerBtn}
+                onPress={() => setMvpModalVisible(true)}
+              >
+                <Ionicons name="trophy" size={14} color="#854d0e" />
+                <Text style={styles.mvpTriggerBtnText}>Odznaka MVP</Text>
+              </TouchableOpacity>
+            </View>
+
+            {Object.keys(lineup).length === 0 ? (
+              <Text style={styles.noEventsText}>
+                Ustaw skład w zakładce „Taktyka”, aby stoper automatycznie zliczał minuty gry na boisku.
+              </Text>
+            ) : (
+              <View style={{ gap: 6 }}>
+                {Object.entries(lineup).map(([slotId, pl]) => {
+                  const secs = playerPlaySeconds[String(pl.id)] || 0;
+                  const mins = Math.floor(secs / 60);
+                  const remSecs = secs % 60;
+                  return (
+                    <View key={slotId} style={styles.fairPlayRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.fairPlayPlayerName}>
+                          🟢 #{pl.number} {pl.firstName} {pl.lastName || ''} ({slotId})
+                        </Text>
+                      </View>
+                      <Text style={styles.fairPlayMinutes}>
+                        {mins}:{String(remSecs).padStart(2, '0')} min
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.quickSubBtn}
+                        onPress={() => {
+                          setSubOutSlotId(slotId);
+                          setSubModalVisible(true);
+                        }}
+                      >
+                        <Ionicons name="swap-horizontal" size={14} color="#2563eb" />
+                        <Text style={styles.quickSubBtnText}>Zmiana</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Ławka rezerwowych z licznikiem minut */}
+            {players.filter((p) => !Object.values(lineup).some((lp) => String(lp.id) === String(p.id))).length > 0 && (
+              <View style={{ marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#e2e8f0' }}>
+                <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#64748b', marginBottom: 4 }}>
+                  🪑 Ławka rezerwowych (zagrane minuty):
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {players
+                    .filter((p) => !Object.values(lineup).some((lp) => String(lp.id) === String(p.id)))
+                    .map((bp) => {
+                      const bMin = Math.floor((playerPlaySeconds[String(bp.id)] || 0) / 60);
+                      return (
+                        <View key={bp.id} style={styles.benchChip}>
+                          <Text style={styles.benchChipText}>
+                            #{bp.number} {bp.firstName}: {bMin} min
+                          </Text>
+                        </View>
+                      );
+                    })}
+                </View>
+              </View>
+            )}
+
+            {/* Przyznane Odznaki MVP w tym meczu */}
+            {matchMvpAwards.length > 0 && (
+              <View style={{ marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#fde047' }}>
+                <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#854d0e', marginBottom: 4 }}>
+                  🏆 Wyróżnienia MVP w tym meczu:
+                </Text>
+                {matchMvpAwards.map((aw) => (
+                  <Text key={aw.id} style={{ fontSize: 12, color: '#0f172a', fontWeight: '600', marginBottom: 2 }}>
+                    {aw.badgeEmoji} {aw.badgeTitle}: {aw.playerName} (+{aw.xpBonus} XP)
+                  </Text>
+                ))}
+              </View>
+            )}
+          </View>
+
           {matchHistory.length > 0 && (
             <View style={styles.historySection}>
               <Text style={styles.sectionHeader}>Historia Ostatnich Spotkań:</Text>
@@ -966,6 +1124,89 @@ export default function BoiskoScreen() {
         </View>
       </Modal>
 
+      {/* MODAL: SZYBKA ZMIANA (FAIR PLAY TRACKER) */}
+      <Modal animationType="slide" transparent={true} visible={subModalVisible}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>🔄 Szybka Zmiana (Pozycja: {subOutSlotId})</Text>
+              <TouchableOpacity onPress={() => setSubModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+            <Text style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
+              Wybierz rezerwowego, który wchodzi na boisko (jego czas zacznie się naliczać automatycznie):
+            </Text>
+            <ScrollView style={styles.playerList}>
+              {players
+                .filter((p) => !Object.values(lineup).some((lp) => String(lp.id) === String(p.id)))
+                .map((p) => {
+                  const pMin = Math.floor((playerPlaySeconds[String(p.id)] || 0) / 60);
+                  return (
+                    <TouchableOpacity key={p.id} style={styles.playerSelectRow} onPress={() => handleQuickSubstitute(p)}>
+                      <View style={styles.selectAvatar}>
+                        <Text style={styles.selectAvatarText}>#{p.number}</Text>
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={styles.selectPlayerName}>{p.firstName} {p.lastName || ''}</Text>
+                        <Text style={{ fontSize: 10, color: '#64748b' }}>Dotychczas na boisku: {pMin} min</Text>
+                      </View>
+                      <Ionicons name="arrow-forward-circle" size={22} color="#16a34a" />
+                    </TouchableOpacity>
+                  );
+                })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL: KARTA PO MECZU & ODZNAKI MVP (+50 XP) */}
+      <Modal animationType="slide" transparent={true} visible={mvpModalVisible}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>🏆 Przyznaj Odznakę MVP (+50 XP)</Text>
+              <TouchableOpacity onPress={() => setMvpModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.inputLabel}>1. Wybierz kategorię wyróżnienia:</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+              {MVP_BADGES.map((b) => {
+                const isSel = selectedMvpBadge.id === b.id;
+                return (
+                  <TouchableOpacity
+                    key={b.id}
+                    style={[styles.mvpBadgePill, isSel && styles.mvpBadgePillActive]}
+                    onPress={() => setSelectedMvpBadge(b)}
+                  >
+                    <Text style={[styles.mvpBadgePillText, isSel && { color: '#fff' }]}>
+                      {b.emoji} {b.title}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.inputLabel}>2. Kliknij zawodnika, który otrzymuje odznakę:</Text>
+            <ScrollView style={styles.playerList}>
+              {players.map((p) => (
+                <TouchableOpacity key={p.id} style={styles.playerSelectRow} onPress={() => handleAwardMvp(p)}>
+                  <View style={styles.selectAvatar}>
+                    <Text style={styles.selectAvatarText}>#{p.number}</Text>
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.selectPlayerName}>{p.firstName} {p.lastName || ''}</Text>
+                    <Text style={{ fontSize: 10, color: '#64748b' }}>Obecne XP: {p.xp || 300}</Text>
+                  </View>
+                  <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#16a34a' }}>+{selectedMvpBadge.xp} XP</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1095,4 +1336,70 @@ const styles = StyleSheet.create({
   selectionRowActive: { backgroundColor: '#f8fafc' },
   selectionName: { fontSize: 13, fontWeight: 'bold', color: '#0f172a' },
   selectionMeta: { fontSize: 11, color: '#64748b', marginTop: 2 },
+
+  fairPlayCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  fairPlayTitle: { fontSize: 14, fontWeight: 'bold', color: '#0f172a' },
+  fairPlaySub: { fontSize: 10, color: '#64748b', marginTop: 2 },
+  fairPlayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    gap: 8,
+  },
+  fairPlayPlayerName: { fontSize: 12, fontWeight: 'bold', color: '#0f172a' },
+  fairPlayMinutes: { fontSize: 12, fontWeight: '900', color: '#16a34a' },
+  quickSubBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    gap: 4,
+  },
+  quickSubBtnText: { fontSize: 10, fontWeight: 'bold', color: '#2563eb' },
+  benchChip: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  benchChipText: { fontSize: 10, fontWeight: '600', color: '#475569' },
+  mvpTriggerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef9c3',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fde047',
+    gap: 4,
+  },
+  mvpTriggerBtnText: { fontSize: 11, fontWeight: 'bold', color: '#854d0e' },
+  mvpBadgePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  mvpBadgePillActive: { backgroundColor: '#ca8a04', borderColor: '#ca8a04' },
+  mvpBadgePillText: { fontSize: 11, fontWeight: 'bold', color: '#334155' },
 });

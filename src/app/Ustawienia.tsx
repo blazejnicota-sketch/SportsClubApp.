@@ -19,6 +19,7 @@ import {
   SportDiscipline,
   SportCategory,
 } from '../components/ClubSettingsContext';
+import { usePlayers } from '../components/PlayersContext';
 import { supabase } from '../services/supabase';
 
 const SAFE_TOP_PADDING = Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 10 : 50;
@@ -35,6 +36,7 @@ export default function UstawieniaScreen() {
     darkMode,
     setDarkMode,
   } = useClubSettings();
+  const { voiceCoachEnabled, toggleVoiceCoach } = usePlayers();
 
   const [selectedCategory, setSelectedCategory] = useState<SportCategory | 'Wszystkie'>('Wszystkie');
 
@@ -216,6 +218,25 @@ export default function UstawieniaScreen() {
               onValueChange={() => toggleFeature('enableAiTasks')}
               trackColor={{ false: '#cbd5e1', true: '#93c5fd' }}
               thumbColor={features.enableAiTasks ? '#2563eb' : '#f1f5f9'}
+            />
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={[styles.toggleTitle, darkMode && { color: '#f8fafc' }]}>
+                🔊 Lektor Głosowy AI w Ćwiczeniach (TTS)
+              </Text>
+              <Text style={styles.toggleSub}>
+                Korekta techniki głosem na żywo na podstawie MediaPipe (działa lokalnie, 0 zł). Wyłącz, aby ćwiczyć w ciszy.
+              </Text>
+            </View>
+            <Switch
+              value={voiceCoachEnabled}
+              onValueChange={toggleVoiceCoach}
+              trackColor={{ false: '#cbd5e1', true: '#86efac' }}
+              thumbColor={voiceCoachEnabled ? '#16a34a' : '#f1f5f9'}
             />
           </View>
 

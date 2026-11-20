@@ -1,6 +1,8 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator, Text, Platform, TouchableOpacity } from 'react-native';
 import { WebView } from 'react-native-webview';
+import * as Speech from 'expo-speech';
+import { usePlayers } from './PlayersContext';
 
 interface MediaPipeScannerProps {
   facing: 'front' | 'back';
@@ -25,13 +27,75 @@ export default function MediaPipePoseScanner({
   onRepCountChange,
   onComplete,
 }: MediaPipeScannerProps) {
+  const { voiceCoachEnabled, toggleVoiceCoach } = usePlayers();
   const webviewRef = useRef<WebView>(null);
   const [currentFacing, setCurrentFacing] = useState<'front' | 'back'>(facing);
   const cameraMode = currentFacing === 'front' ? 'user' : 'environment';
   const [webSimReps, setWebSimReps] = useState(0);
-  
+  const [lastVoiceCue, setLastVoiceCue] = useState<string>('');
 
-  const htmlContent = `
+  // Refy dla lektora głosowego (zapobiegają przeładowywaniu WebView przy klikaniu WŁ./WYŁ.)
+  const voiceEnabledRef = useRef<boolean>(voiceCoachEnabled);
+  const lastSpokenAtRef = useRef<number>(0);
+  const lastCorrectionAtRef = useRef<number>(0);
+
+  useEffect(() => {
+    voiceEnabledRef.current = voiceCoachEnabled;
+    if (!voiceCoachEnabled) {
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      } else {
+        Speech.stop();
+      }
+    }
+  }, [voiceCoachEnabled]);
+
+  useEffect(() => {
+    return () => {
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      } else {
+        Speech.stop();
+      }
+    };
+  }, []);
+
+  const speakCoach = (text: string, priority: 'correction' | 'rep' | 'system' = 'system') => {
+    if (!voiceEnabledRef.current || !text) return;
+
+    const now = Date.now();
+    // Cooldown dla korekt błędów (min. 4.5s przerwy, żeby lektor nie powtarzał się w kółko)
+    if (priority === 'correction') {
+      if (now - lastCorrectionAtRef.current < 4500) return;
+      lastCorrectionAtRef.current = now;
+    } else if (priority === 'system') {
+      if (now - lastSpokenAtRef.current < 900) return;
+    }
+
+    lastSpokenAtRef.current = now;
+    setLastVoiceCue(text);
+
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const msg = new SpeechSynthesisUtterance(text);
+        msg.lang = 'pl-PL';
+        msg.rate = 1.05;
+        window.speechSynthesis.speak(msg);
+      }
+      return;
+    }
+
+    Speech.stop();
+    Speech.speak(text, {
+      language: 'pl-PL',
+      rate: 1.04,
+      pitch: 1.0,
+    });
+  };
+
+  const htmlContent = useMemo(
+    () => `
 <!DOCTYPE html>
 <html>
 <head>
@@ -144,6 +208,12 @@ export default function MediaPipePoseScanner({
     let standingHipKneeDist = null;
     let baselineHipX = null;
 
+    // Liczniki progu czasu dla błędów technicznych (zapobiegają fałszywym alarmom z 1 klatki)
+    let kneeValgusFrames = 0;
+    let asymmetryFrames = 0;
+    let plankErrorFrames = 0;
+    let pushupSagFrames = 0;
+
     let asymmetrySamples = [];
     let minAnglesPerRep = [];
     let currentRepMinAngle = 180;
@@ -154,23 +224,21 @@ export default function MediaPipePoseScanner({
     let currentCamIndex = 0;
     let currentStream = null;
 
-    function speakTTS(text) {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        const msg = new SpeechSynthesisUtterance(text);
-        msg.lang = 'pl-PL';
-        msg.rate = 1.05;
-        window.speechSynthesis.speak(msg);
-      }
-    }
-
-
     function sendToRN(payload) {
       if (window.ReactNativeWebView) {
         window.ReactNativeWebView.postMessage(JSON.stringify(payload));
       } else if (window.parent) {
         window.parent.postMessage(JSON.stringify(payload), '*');
       }
+    }
+
+    // Przekazuje komunikaty do natywnego lektora expo-speech w React Native (respektuje przycisk WŁ./WYŁ. i cooldown)
+    function speakTTS(text, priority) {
+      sendToRN({
+        type: 'SPEAK',
+        text: text,
+        priority: priority || 'system'
+      });
     }
 
     function analyzeLighting() {
@@ -232,6 +300,7 @@ export default function MediaPipePoseScanner({
       isFinished = true;
       statusBadge.className = 'badge status-ok';
       statusBadge.innerText = '🏆 Zadanie zaliczone! Twój Awatar zyskuje XP!';
+      speakTTS('Świetna robota! Seria zaliczona.', 'rep');
 
       const avgAsym = asymmetrySamples.length > 0
         ? Math.min(18, Math.max(1, Math.round(asymmetrySamples.reduce((a, b) => a + b, 0) / asymmetrySamples.length * 1.8)))
@@ -307,14 +376,13 @@ export default function MediaPipePoseScanner({
       drawLandmarks(canvasCtx, lm, { color: '#FF3366', lineWidth: 1, radius: 4 });
 
       // Obniżone progi widoczności (0.38 - 0.42), aby nie gubić klatek przy dynamicznych wyskokach i słabszym świetle
-      const shouldersVisible = lShoulder.visibility > 0.42 && rShoulder.visibility > 0.42;
       const hipsVisible = lHip.visibility > 0.40 && rHip.visibility > 0.40 && lHip.y < 0.96 && rHip.y < 0.96;
       const kneesVisible = lKnee.visibility > 0.38 && rKnee.visibility > 0.38 && lKnee.y < 0.99 && rKnee.y < 0.99;
       const anklesVisible = lAnkle.visibility > 0.35 && rAnkle.visibility > 0.35;
 
       if (currentDrill !== 'plank' && currentDrill !== 'pushups' && (!hipsVisible || !kneesVisible)) {
         resetCountdownIfNeeded('⚠️ COFNIJ SIĘ O KROK: Kamera musi widzieć Twoje BIODRA i KOLANA!');
-        if (frameCounter % 60 === 0) speakTTS('Cofnij się o krok');
+        if (frameCounter % 60 === 0) speakTTS('Cofnij się o krok', 'correction');
         canvasCtx.restore();
         return;
       }
@@ -352,6 +420,7 @@ export default function MediaPipePoseScanner({
       const avgHipY = (lHip.y + rHip.y) / 2;
       const avgKneeY = (lKnee.y + rKnee.y) / 2;
       const avgHipX = (lHip.x + rHip.x) / 2;
+      const avgShoulderY = (lShoulder.y + rShoulder.y) / 2;
       const currentHipKneeVertDist = Math.max(0.01, avgKneeY - avgHipY);
 
       if (phase === 'ALIGN') {
@@ -367,7 +436,7 @@ export default function MediaPipePoseScanner({
           if (countdownLeft > 0) {
             statusBadge.className = 'badge status-ready';
             statusBadge.innerText = '⏱️ Przygotuj pozycję! Start za ' + countdownLeft + 's';
-            if (countdownLeft <= 3 && countdownLeft > 0) speakTTS(countdownLeft.toString());
+            if (countdownLeft <= 3 && countdownLeft > 0) speakTTS(countdownLeft.toString(), 'system');
           } else {
             clearInterval(countdownInterval);
             countdownInterval = null;
@@ -380,7 +449,7 @@ export default function MediaPipePoseScanner({
               : currentDrill === 'pushups'
               ? '🔥 START! Ugnij łokcie poniżej 115° i wróć w górę.'
               : '🔥 START! Wykonuj powtórzenia w ramce AI.';
-            speakTTS('Start');
+            speakTTS('Start', 'rep');
           }
         }, 1000);
 
@@ -397,14 +466,15 @@ export default function MediaPipePoseScanner({
 
       const hipAsym = Math.abs(lHip.y - rHip.y) * 100;
       const kneeAsym = Math.abs(lKnee.y - rKnee.y) * 100;
+      const shoulderAsym = Math.abs(lShoulder.y - rShoulder.y) * 100;
       asymmetrySamples.push((hipAsym + kneeAsym) / 2);
 
-      // 1. LOGIKA DLA DESKI (PLANK - STATYCZNE)
+      // 1. LOGIKA DLA DESKI (PLANK - STATYCZNE) + KOREKTA GŁOSOWA NA ŻYWO
       if (currentDrill === 'plank') {
-        const avgShoulderY = (lShoulder.y + rShoulder.y) / 2;
         const bodyVerticalDiff = Math.abs(avgHipY - avgShoulderY);
 
         if (bodyVerticalDiff < 0.25) {
+          plankErrorFrames = 0;
           statusBadge.className = 'badge status-ok';
           statusBadge.innerText = '💪 Świetnie! Trzymaj stabilny szkielet w desce.';
           const now = Date.now();
@@ -413,20 +483,45 @@ export default function MediaPipePoseScanner({
             reps += 1;
             repsBadge.innerText = 'CZAS: ' + reps + ' / ' + targetReps + ' s';
             sendToRN({ type: 'REP', reps, statusText: 'Utrzymano pozycję: ' + reps + 's' });
-            if (reps >= targetReps) { finishExercise(); } else if (reps > 0 && reps % 5 === 0) { speakTTS(reps.toString()); }
+            if (reps >= targetReps) {
+              finishExercise();
+            } else if (reps > 0 && reps % 5 === 0) {
+              speakTTS(reps + ' sekund, trzymaj', 'rep');
+            }
           }
         } else {
+          plankErrorFrames += 1;
           statusBadge.className = 'badge status-warn';
           statusBadge.innerText = '⚠️ Wyrównaj biodra z linią barków!';
+          if (plankErrorFrames >= 15) {
+            detectedErrorsSet.add('plank_alignment');
+            if (avgHipY > avgShoulderY) {
+              speakTTS('Podnieś biodra, napnij brzuch', 'correction');
+            } else {
+              speakTTS('Obniż biodra do linii barków', 'correction');
+            }
+            plankErrorFrames = 0;
+          }
         }
         canvasCtx.restore();
         return;
       }
 
-      // 2. LOGIKA DLA POMPEK (PUSHUPS - DYNAMICZNE)
+      // 2. LOGIKA DLA POMPEK (PUSHUPS - DYNAMICZNE) + KOREKTA GŁOSOWA NA ŻYWO
       if (currentDrill === 'pushups') {
         const isDown = smoothPrimaryAngle < 120;
         const isUp = smoothPrimaryAngle > 152;
+
+        if (Math.abs(avgHipY - avgShoulderY) > 0.26) {
+          pushupSagFrames += 1;
+          if (pushupSagFrames >= 15) {
+            detectedErrorsSet.add('pushup_hip_sag');
+            speakTTS('Trzymaj prosty tułów, nie opuszczaj bioder', 'correction');
+            pushupSagFrames = 0;
+          }
+        } else {
+          pushupSagFrames = 0;
+        }
 
         if (repStage === 'UP' && isDown) {
           downFramesCount++;
@@ -451,20 +546,51 @@ export default function MediaPipePoseScanner({
             statusBadge.className = 'badge status-ok';
             statusBadge.innerText = '✅ Pompka #' + reps + ' zaliczona!';
             sendToRN({ type: 'REP', reps, statusText: 'Pompka #' + reps });
-            speakTTS(reps.toString());
-            if (reps >= targetReps) { finishExercise(); } else if (reps > 0 && reps % 5 === 0) { speakTTS(reps.toString()); }
+            if (reps >= targetReps) {
+              finishExercise();
+            } else {
+              speakTTS(reps.toString(), 'rep');
+            }
           }
         }
         canvasCtx.restore();
         return;
       }
 
-      // 3. LOGIKA DLA PRZYSIAÓW / WYSKOKÓW / ZWINNOŚCI / ROZCIĄGANIA
+      // 3. LOGIKA DLA PRZYSIADÓW / WYSKOKÓW / ZWINNOŚCI / ROZCIĄGANIA + KOREKTA GŁOSOWA NA ŻYWO
       const baseDist = standingHipKneeDist || 0.22;
       const thighCompressionRatio = currentHipKneeVertDist / baseDist;
 
       const isKneeBent = smoothPrimaryAngle < 135 || thighCompressionRatio < 0.78;
       const isKneeStraight = smoothPrimaryAngle > 156 && thighCompressionRatio > 0.87;
+
+      // Sprawdzanie zbiegania się kolan do środka (koślawość) w fazie ugięcia
+      const hipWidth = Math.abs(lHip.x - rHip.x);
+      const kneeWidth = Math.abs(lKnee.x - rKnee.x);
+      if (isKneeBent && hipWidth > 0.08 && kneeWidth < hipWidth * 0.72) {
+        kneeValgusFrames += 1;
+        if (kneeValgusFrames >= 10) {
+          detectedErrorsSet.add('knee_valgus');
+          statusBadge.className = 'badge status-warn';
+          statusBadge.innerText = '⚠️ Pilnuj kolan – prowadź je na zewnątrz!';
+          speakTTS('Pilnuj kolan na zewnątrz', 'correction');
+          kneeValgusFrames = 0;
+        }
+      } else {
+        kneeValgusFrames = 0;
+      }
+
+      // Sprawdzanie przechyłu bocznego / asymetrii bioder i barków
+      if (hipAsym > 8.5 || shoulderAsym > 9.0) {
+        asymmetryFrames += 1;
+        if (asymmetryFrames >= 16) {
+          detectedErrorsSet.add('posture_asymmetry');
+          speakTTS('Trzymaj równo biodra i barki', 'correction');
+          asymmetryFrames = 0;
+        }
+      } else {
+        asymmetryFrames = 0;
+      }
 
       if (repStage === 'UP') {
         if (isKneeBent) {
@@ -500,9 +626,14 @@ export default function MediaPipePoseScanner({
             statusBadge.className = 'badge status-ok';
             statusBadge.innerText = '✅ Powtórzenie #' + reps + ' zaliczone!';
             sendToRN({ type: 'REP', reps, statusText: 'Zaliczone powtórzenie #' + reps });
-            speakTTS(reps.toString());
 
-            if (reps >= targetReps) { finishExercise(); } else if (reps > 0 && reps % 5 === 0) { speakTTS(reps.toString()); }
+            if (reps >= targetReps) {
+              finishExercise();
+            } else if (reps > 0 && reps % 5 === 0) {
+              speakTTS(reps + ', świetnie, trzymaj tempo', 'rep');
+            } else {
+              speakTTS(reps.toString(), 'rep');
+            }
           }
         } else {
           upFramesCount = 0;
@@ -609,12 +740,28 @@ export default function MediaPipePoseScanner({
   </script>
 </body>
 </html>
-  `;
+  `,
+    [cameraMode, currentFacing, drillType, isHandheld, targetReps]
+  );
 
   // Obsługa podglądu w przeglądarce PC (Platform.OS === 'web'), gdzie natywny komponent WebView nie jest wspierany
   if (Platform.OS === 'web') {
     return (
       <View style={styles.webFallbackBox}>
+        <View style={styles.webTopBar}>
+          <TouchableOpacity
+            style={[
+              styles.voiceToggleBtn,
+              voiceCoachEnabled ? styles.voiceToggleOn : styles.voiceToggleOff,
+            ]}
+            onPress={toggleVoiceCoach}
+          >
+            <Text style={styles.voiceToggleText}>
+              {voiceCoachEnabled ? '🔊 Lektor AI: WŁ.' : '🔇 Lektor AI: WYŁ.'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <Text style={styles.webTitle}>🧬 Skaner Biomechaniczny AI (MediaPipe Pose FULL)</Text>
         <Text style={styles.webSub}>
           Tryb: {drillType.toUpperCase()} • Cel: {targetReps} {drillType === 'plank' ? 'sek.' : 'powt.'} • Wygładzanie czasowe: WŁĄCZONE
@@ -625,6 +772,12 @@ export default function MediaPipePoseScanner({
           </Text>
         </View>
 
+        {lastVoiceCue !== '' && voiceCoachEnabled && (
+          <View style={styles.voiceCuePill}>
+            <Text style={styles.voiceCueText}>🗣️ Lektor: „{lastVoiceCue}”</Text>
+          </View>
+        )}
+
         <View style={styles.webSimCounterBox}>
           <Text style={styles.webSimCounterVal}>
             {webSimReps} / {targetReps}
@@ -632,13 +785,14 @@ export default function MediaPipePoseScanner({
           <Text style={{ color: '#94a3b8', fontSize: 12 }}>Symulacja powtórzeń w przeglądarce PC</Text>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, flexWrap: 'wrap', justifyContent: 'center' }}>
           <TouchableOpacity
             style={styles.webActionBtn}
             onPress={() => {
               const next = webSimReps + 1;
               setWebSimReps(next);
               onRepCountChange?.(next, `Zaliczone powtórzenie #${next}`);
+              speakCoach(next >= targetReps ? 'Świetna robota! Seria zaliczona.' : String(next), 'rep');
               if (next >= targetReps) {
                 onComplete({
                   reps: next,
@@ -653,15 +807,23 @@ export default function MediaPipePoseScanner({
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={[styles.webActionBtn, { backgroundColor: '#f59e0b' }]}
+            onPress={() => speakCoach('Pilnuj kolan na zewnątrz', 'correction')}
+          >
+            <Text style={[styles.webActionBtnText, { color: '#0f172a' }]}>🗣️ Test Korekty Lektora</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.webActionBtn, { backgroundColor: '#22c55e' }]}
-            onPress={() =>
+            onPress={() => {
+              speakCoach('Świetna robota! Seria zaliczona.', 'rep');
               onComplete({
                 reps: targetReps,
                 score: 96,
                 asymmetryIndex: 2.4,
                 detectedErrors: [],
-              })
-            }
+              });
+            }}
           >
             <Text style={[styles.webActionBtnText, { color: '#0f172a' }]}>🏆 Zakończ i Nalicz XP</Text>
           </TouchableOpacity>
@@ -695,7 +857,9 @@ export default function MediaPipePoseScanner({
           try {
             const data = JSON.parse(event.nativeEvent.data);
             if (data.type === 'SWITCH_CAMERA') {
-              setCurrentFacing(prev => prev === 'front' ? 'back' : 'front');
+              setCurrentFacing((prev) => (prev === 'front' ? 'back' : 'front'));
+            } else if (data.type === 'SPEAK') {
+              speakCoach(data.text, data.priority || 'system');
             } else if (data.type === 'REP' || data.type === 'STATUS') {
               onRepCountChange?.(data.reps, data.statusText);
             } else if (data.type === 'COMPLETE') {
@@ -706,6 +870,20 @@ export default function MediaPipePoseScanner({
           }
         }}
       />
+
+      {/* Szybki przycisk WŁ./WYŁ. lektora głosowego AI – bez przeładowywania kamery */}
+      <TouchableOpacity
+        style={[
+          styles.nativeVoiceFloatingBtn,
+          voiceCoachEnabled ? styles.voiceToggleOn : styles.voiceToggleOff,
+        ]}
+        onPress={toggleVoiceCoach}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.voiceToggleText}>
+          {voiceCoachEnabled ? '🔊 Lektor: WŁ.' : '🔇 Lektor: WYŁ.'}
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -716,6 +894,55 @@ const styles = StyleSheet.create({
   loader: { ...StyleSheet.absoluteFillObject, backgroundColor: '#0f172a', justifyContent: 'center', alignItems: 'center' },
   loaderText: { color: '#00FF66', marginTop: 10, fontSize: 13, fontWeight: 'bold' },
 
+  nativeVoiceFloatingBtn: {
+    position: 'absolute',
+    bottom: 62,
+    right: 14,
+    zIndex: 25,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 18,
+    borderWidth: 1.5,
+  },
+  voiceToggleBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+    borderWidth: 1.5,
+  },
+  voiceToggleOn: {
+    backgroundColor: 'rgba(15, 23, 42, 0.92)',
+    borderColor: '#22c55e',
+  },
+  voiceToggleOff: {
+    backgroundColor: 'rgba(15, 23, 42, 0.92)',
+    borderColor: '#ef4444',
+  },
+  voiceToggleText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 11,
+  },
+  voiceCuePill: {
+    marginTop: 12,
+    backgroundColor: 'rgba(34, 197, 94, 0.14)',
+    borderWidth: 1,
+    borderColor: '#22c55e',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  voiceCueText: {
+    color: '#86efac',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  webTopBar: {
+    width: '100%',
+    alignItems: 'flex-end',
+    marginBottom: 8,
+  },
   webFallbackBox: {
     flex: 1,
     backgroundColor: '#0f172a',

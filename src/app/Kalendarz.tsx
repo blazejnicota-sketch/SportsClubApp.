@@ -33,6 +33,16 @@ const SAFE_TOP_PADDING = Platform.OS === 'android' ? (StatusBar.currentHeight ||
 
 type ViewMode = 'miesiac' | 'tydzien' | 'lista' | 'dzien';
 
+interface CarpoolEntry {
+  id: string;
+  eventId: string;
+  type: 'offer' | 'need'; // offer = jadę autem (wolne miejsca), need = szukam transportu
+  parentName: string;
+  seatsTotal: number;
+  passengers: string[];
+  pickupNote: string;
+}
+
 const MONTH_NAMES = [
   'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
   'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
@@ -86,6 +96,15 @@ export default function KalendarzScreen() {
   const firstDayOffset = firstDayIndexRaw === 0 ? 6 : firstDayIndexRaw - 1;
 
   const [dayModalVisible, setDayModalVisible] = useState<boolean>(false);
+  // Wspólne Dojazdy (Carpooling) przy meczach i wyjazdach
+  const [carpoolModalVisible, setCarpoolModalVisible] = useState<boolean>(false);
+  const [carpoolEvent, setCarpoolEvent] = useState<EventItem | null>(null);
+  const [carpoolEntries, setCarpoolEntries] = useState<CarpoolEntry[]>([]);
+  const [cpType, setCpType] = useState<'offer' | 'need'>('offer');
+  const [cpParentName, setCpParentName] = useState<string>('');
+  const [cpSeats, setCpSeats] = useState<string>('2');
+  const [cpPickupNote, setCpPickupNote] = useState<string>('');
+  const [cpPassengerInput, setCpPassengerInput] = useState<string>('');
   const [formModalVisible, setFormModalVisible] = useState<boolean>(false);
 
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -432,6 +451,47 @@ export default function KalendarzScreen() {
       'Wysłano Powiadomienia Push 📲 & Skopiowano 📋',
       `Powołanie dostarczono do ${selectedSquad.length} zawodników. Tekst powołania został skopiowany do schowka!`
     );
+  };
+
+  const handleOpenCarpool = (ev: EventItem) => {
+    setDayModalVisible(false);
+    setCarpoolEvent(ev);
+    setCarpoolModalVisible(true);
+  };
+
+  const handleAddCarpoolEntry = () => {
+    if (!carpoolEvent) return;
+    if (!cpParentName.trim()) {
+      const msg = 'Podaj swoje imię / nazwisko (np. Tata Janka).';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Brak danych', msg);
+      return;
+    }
+    const seatsNum = Math.max(1, parseInt(cpSeats, 10) || 1);
+    const newEntry: CarpoolEntry = {
+      id: `cp-${Date.now()}`,
+      eventId: carpoolEvent.id,
+      type: cpType,
+      parentName: cpParentName.trim(),
+      seatsTotal: seatsNum,
+      passengers: [],
+      pickupNote: cpPickupNote.trim() || (cpType === 'offer' ? 'Wyjazd ze zbiórki' : 'Szukam 1 miejsca dla dziecka'),
+    };
+    setCarpoolEntries((prev) => [newEntry, ...prev]);
+    setCpParentName('');
+    setCpPickupNote('');
+  };
+
+  const handleBookCarpoolSeat = (entryId: string) => {
+    const passengerName = cpPassengerInput.trim() || 'Zawodnik (Zarezerwowane)';
+    setCarpoolEntries((prev) =>
+      prev.map((item) => {
+        if (item.id !== entryId) return item;
+        if (item.passengers.length >= item.seatsTotal) return item;
+        return { ...item, passengers: [...item.passengers, passengerName] };
+      })
+    );
+    setCpPassengerInput('');
   };
 
   const openMapLocation = (loc: string) => {
@@ -865,6 +925,17 @@ export default function KalendarzScreen() {
                       >
                         <Ionicons name="football-outline" size={16} color="#fff" style={{marginRight: 6}} />
                         <Text style={styles.quickAttendanceRouteBtnText}>Otwórz Pełny Ekran: Płyta Boiska ⚡</Text>
+                      </TouchableOpacity>
+
+                      {/* WSPÓLNE DOJAZDY (CARPOOLING) */}
+                      <TouchableOpacity
+                        style={styles.carpoolRouteBtn}
+                        onPress={() => handleOpenCarpool(ev)}
+                      >
+                        <Ionicons name="car-outline" size={16} color="#0369a1" style={{ marginRight: 6 }} />
+                        <Text style={styles.carpoolRouteBtnText}>
+                          🚗 Wspólne Dojazdy / Carpooling ({carpoolEntries.filter((c) => c.eventId === ev.id).length})
+                        </Text>
                       </TouchableOpacity>
 
                       {/* MASOWA OBECNOŚĆ */}
@@ -1304,6 +1375,149 @@ export default function KalendarzScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+          </View>
+        </View>
+      </Modal>
+      {/* MODAL 3: WSPÓLNE DOJAZDY (CARPOOLING NA MECZE WYJAZDOWE) */}
+      <Modal animationType="slide" transparent={true} visible={carpoolModalVisible}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: '90%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>🚗 Wspólne Dojazdy (Carpooling)</Text>
+              <TouchableOpacity onPress={() => setCarpoolModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            {carpoolEvent && (
+              <Text style={{ fontSize: 12, color: '#475569', marginBottom: 10 }}>
+                Wydarzenie: <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>{carpoolEvent.title}</Text> ({carpoolEvent.startDate})
+              </Text>
+            )}
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 460 }}>
+              {/* Formularz dodawania ogłoszenia */}
+              <View style={styles.carpoolFormBox}>
+                <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
+                  <TouchableOpacity
+                    style={[styles.typeOptionBtn, cpType === 'offer' && { backgroundColor: '#16a34a', borderColor: '#16a34a' }]}
+                    onPress={() => setCpType('offer')}
+                  >
+                    <Text style={[styles.typeOptionText, cpType === 'offer' && { color: '#fff', fontWeight: 'bold' }]}>
+                      🚗 Jadę autem (wolne miejsca)
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.typeOptionBtn, cpType === 'need' && { backgroundColor: '#ea580c', borderColor: '#ea580c' }]}
+                    onPress={() => setCpType('need')}
+                  >
+                    <Text style={[styles.typeOptionText, cpType === 'need' && { color: '#fff', fontWeight: 'bold' }]}>
+                      🙋 Szukam transportu
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Kto pisze? (np. Tata Janka / Mama Oliwiera)"
+                  value={cpParentName}
+                  onChangeText={setCpParentName}
+                />
+
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {cpType === 'offer' && (
+                    <TextInput
+                      style={[styles.modalInput, { width: 95, textAlign: 'center' }]}
+                      keyboardType="numeric"
+                      placeholder="Miejsc"
+                      value={cpSeats}
+                      onChangeText={setCpSeats}
+                    />
+                  )}
+                  <TextInput
+                    style={[styles.modalInput, { flex: 1 }]}
+                    placeholder={cpType === 'offer' ? 'Skąd jedziesz? (np. Os. Południe)' : 'Skąd odebrać dziecko?'}
+                    value={cpPickupNote}
+                    onChangeText={setCpPickupNote}
+                  />
+                </View>
+
+                <TouchableOpacity style={styles.addNewEventInDayBtn} onPress={handleAddCarpoolEntry}>
+                  <Ionicons name="add-circle-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.addNewEventInDayText}>
+                    {cpType === 'offer' ? 'Dodaj wolne miejsca w aucie' : 'Zgłoś potrzebę transportu'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Lista aktywnych ogłoszeń dla tego meczu */}
+              <Text style={[styles.inputLabel, { marginTop: 12 }]}>Aktywne zgłoszenia na ten wyjazd:</Text>
+              {carpoolEntries.filter((c) => c.eventId === carpoolEvent?.id).length === 0 ? (
+                <Text style={styles.noEventsDayText}>
+                  Brak ogłoszeń transportowych. Dodaj pierwszą ofertę powyżej!
+                </Text>
+              ) : (
+                carpoolEntries
+                  .filter((c) => c.eventId === carpoolEvent?.id)
+                  .map((item) => {
+                    const freeSeats = Math.max(0, item.seatsTotal - item.passengers.length);
+                    return (
+                      <View
+                        key={item.id}
+                        style={[
+                          styles.carpoolItemCard,
+                          { borderLeftColor: item.type === 'offer' ? '#16a34a' : '#ea580c' },
+                        ]}
+                      >
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#0f172a' }}>
+                            {item.type === 'offer' ? '🚗' : '🙋'} {item.parentName}
+                          </Text>
+                          <View
+                            style={[
+                              styles.miniBadge,
+                              { backgroundColor: item.type === 'offer' ? '#dcfce7' : '#ffedd5' },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.miniBadgeText,
+                                { color: item.type === 'offer' ? '#15803d' : '#c2410c' },
+                              ]}
+                            >
+                              {item.type === 'offer' ? `Wolne: ${freeSeats}/${item.seatsTotal}` : 'Szuka transportu'}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={{ fontSize: 11, color: '#475569', marginTop: 3 }}>📍 {item.pickupNote}</Text>
+
+                        {item.passengers.length > 0 && (
+                          <Text style={{ fontSize: 11, color: '#15803d', fontWeight: '600', marginTop: 4 }}>
+                            ✅ Jadą: {item.passengers.join(', ')}
+                          </Text>
+                        )}
+
+                        {item.type === 'offer' && freeSeats > 0 && (
+                          <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
+                            <TextInput
+                              style={[styles.modalInput, { flex: 1, marginBottom: 0, paddingVertical: 5, fontSize: 11 }]}
+                              placeholder="Imię dziecka do rezerwacji..."
+                              value={cpPassengerInput}
+                              onChangeText={setCpPassengerInput}
+                            />
+                            <TouchableOpacity
+                              style={styles.bookSeatBtn}
+                              onPress={() => handleBookCarpoolSeat(item.id)}
+                            >
+                              <Text style={styles.bookSeatBtnText}>+ Zarezerwuj</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -1953,5 +2167,48 @@ const styles = StyleSheet.create({
   miniBadgeText: {
     fontSize: 9,
     fontWeight: 'bold',
+  },
+  carpoolRouteBtn: {
+    backgroundColor: '#e0f2fe',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    borderRadius: 8,
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: '#7dd3fc',
+  },
+  carpoolRouteBtnText: {
+    color: '#0369a1',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  carpoolFormBox: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  carpoolItemCard: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderLeftWidth: 4,
+  },
+  bookSeatBtn: {
+    backgroundColor: '#16a34a',
+    paddingHorizontal: 10,
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  bookSeatBtnText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 11,
   },
 });
