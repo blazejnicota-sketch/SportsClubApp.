@@ -67,9 +67,6 @@ export default function RodzicPanel() {
     setLiveMatchTicker,
     addLiveTickerEvent,
     removeLiveTickerEvent,
-    aiTrainerPlans,
-    voiceCoachEnabled,
-    toggleVoiceCoach,
   } = usePlayers();
 
   const [loading, setLoading] = useState(true);
@@ -766,86 +763,6 @@ export default function RodzicPanel() {
               </View>
             </View>
 
-            {/* PRZEŁĄCZNIK LEKTORA GŁOSOWEGO AI + PODGLĄD TRENERA PERSONALNEGO AI DZIECKA */}
-            <View
-              style={{
-                backgroundColor: '#fff',
-                borderRadius: 12,
-                padding: 12,
-                borderWidth: 1,
-                borderColor: '#e2e8f0',
-                marginBottom: 14,
-              }}
-            >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <View style={{ flex: 1, paddingRight: 8 }}>
-                  <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#0f172a' }}>
-                    🔊 Lektor Głosowy AI w ćwiczeniach
-                  </Text>
-                  <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                    Włącz lub wycisz podpowiedzi głosowe podczas nagrywania dziecka w domu.
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 7,
-                    borderRadius: 16,
-                    backgroundColor: voiceCoachEnabled ? '#dcfce7' : '#fee2e2',
-                    borderWidth: 1,
-                    borderColor: voiceCoachEnabled ? '#22c55e' : '#ef4444',
-                  }}
-                  onPress={toggleVoiceCoach}
-                >
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 'bold',
-                      color: voiceCoachEnabled ? '#15803d' : '#dc2626',
-                    }}
-                  >
-                    {voiceCoachEnabled ? '🔊 WŁ.' : '🔇 WYŁ.'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {connectedPlayer && aiTrainerPlans[String(connectedPlayer.id)] && (() => {
-                const childPlan = aiTrainerPlans[String(connectedPlayer.id)];
-                const lastLog = childPlan.logs[0];
-                return (
-                  <View
-                    style={{
-                      marginTop: 10,
-                      paddingTop: 10,
-                      borderTopWidth: 1,
-                      borderTopColor: '#f1f5f9',
-                    }}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#1e3a8a' }}>
-                      🤖 Plan Trenera AI dziecka: Tydzień {childPlan.currentWeek}/{childPlan.durationWeeks} ({childPlan.level})
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        marginTop: 3,
-                        fontWeight: '600',
-                        color: childPlan.isDeloadWeek ? '#b45309' : '#15803d',
-                      }}
-                    >
-                      {childPlan.isDeloadWeek
-                        ? '🛡️ Aktywny tryb regeneracyjny (Deload) — lżejsze obciążenia.'
-                        : '✅ Strażnik regeneracji: obciążenia bezpieczne (bufor przed meczem aktywny).'}
-                    </Text>
-                    {lastLog && (
-                      <Text style={{ fontSize: 10, color: '#64748b', marginTop: 3 }}>
-                        Ostatnia sesja ({lastLog.date}): technika {lastLog.formQualityPercent}% • zmęczenie: {lastLog.fatigue} • ból: {lastLog.painArea}
-                      </Text>
-                    )}
-                  </View>
-                );
-              })()}
-            </View>
-
             <Text style={styles.sectionTitle}>Zadania domowe od Trenera</Text>
             {loadingAI ? (
               <ActivityIndicator size="small" color="#2563eb" style={{ marginVertical: 20 }} />
@@ -1160,14 +1077,27 @@ export default function RodzicPanel() {
                 <View style={styles.demoVideoContainer}>
                   <Video
                     style={{ width: '100%', height: 100 }}
-                    source={{ uri: 'https://www.w3schools.com/html/mov_bbb.mp4' }}
+                    source={{
+                      uri:
+                        selectedDrillForScan.drill_type === 'plank'
+                          ? 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'
+                          : selectedDrillForScan.drill_type === 'pushups'
+                          ? 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4'
+                          : 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+                    }}
                     useNativeControls={false}
                     resizeMode={ResizeMode.COVER}
                     isLooping
                     shouldPlay
                     isMuted
                   />
-                  <Text style={{color:'#94a3b8', fontSize: 11, marginTop: 4, fontWeight: 'bold', position: 'absolute', bottom: 4}}>Obejrzyj technikę przed startem</Text>
+                  <Text style={{color:'#e2e8f0', fontSize: 10, fontWeight: 'bold', position: 'absolute', bottom: 4, backgroundColor: 'rgba(15,23,42,0.75)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6}}>
+                    {selectedDrillForScan.drill_type === 'plank'
+                      ? 'Podgląd techniki: Deska (Plank) + MediaPipe'
+                      : selectedDrillForScan.drill_type === 'pushups'
+                      ? 'Podgląd techniki: Pompki klasyczne + MediaPipe'
+                      : 'Podgląd techniki przed startem'}
+                  </Text>
                 </View>
                 <MediaPipePoseScanner
                 facing={cameraFacing}
