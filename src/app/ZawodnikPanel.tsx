@@ -13,6 +13,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Video, ResizeMode } from 'expo-av';
 import { useRouter } from 'expo-router';
 import { supabase } from '../services/supabase';
 import { useClubSettings } from '../components/ClubSettingsContext';
@@ -1279,6 +1280,30 @@ export default function ZawodnikPanel() {
               Zanim uruchomisz kamerę dla ćwiczenia „{activeDrill?.title}”, przygotuj mięśnie i stawy, aby uniknąć kontuzji (+25 XP bonusu za pełną rozgrzewkę):
             </Text>
 
+            {activeDrill && (activeDrill.drill_type === 'pushups' || activeDrill.drill_type === 'agility_skater' || activeDrill.drill_type === 'mobility_stretch') && (
+              <View style={styles.mpPreviewBanner}>
+                <Video
+                  style={{ width: '100%', height: 110, borderRadius: 10 }}
+                  source={{
+                    uri:
+                      activeDrill.drill_type === 'pushups'
+                        ? 'http://googleusercontent.com/generated_video_content/5797546079038096363'
+                        : activeDrill.drill_type === 'agility_skater'
+                        ? 'http://googleusercontent.com/generated_video_content/10283269573213398132'
+                        : 'http://googleusercontent.com/generated_video_content/9565356140825529223',
+                  }}
+                  useNativeControls={false}
+                  resizeMode={ResizeMode.COVER}
+                  isLooping
+                  shouldPlay
+                  isMuted
+                />
+                <Text style={styles.mpPreviewCaption}>
+                  Podgląd wzorca + szkielet MediaPipe: {activeDrill.title}
+                </Text>
+              </View>
+            )}
+
             <View style={{ marginVertical: 10 }}>
               {WARMUP_STEPS.map((st) => {
                 const isDone = checkedWarmupSteps.includes(st.id);
@@ -1857,4 +1882,27 @@ const styles = StyleSheet.create({
   scannerSub: { color: '#38bdf8', fontSize: 11, marginTop: 2 },
   switchCamBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#1e293b', alignItems: 'center', justifyContent: 'center', marginRight: 8 },
   closeScannerBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center' },
+  mpPreviewBanner: {
+    marginTop: 8,
+    marginBottom: 4,
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#38bdf8',
+    backgroundColor: '#0f172a',
+    position: 'relative',
+  },
+  mpPreviewCaption: {
+    position: 'absolute',
+    bottom: 6,
+    left: 8,
+    right: 8,
+    color: '#f8fafc',
+    fontSize: 10,
+    fontWeight: 'bold',
+    backgroundColor: 'rgba(15, 23, 42, 0.78)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
 });
