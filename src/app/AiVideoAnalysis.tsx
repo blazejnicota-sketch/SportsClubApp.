@@ -12,6 +12,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Video, ResizeMode } from 'expo-av';
 import { useRouter } from 'expo-router';
 import { CameraType, useCameraPermissions } from 'expo-camera';
 import { usePlayers, Player } from '../components/PlayersContext';
@@ -38,6 +39,70 @@ const DRILL_OPTIONS = [
   { label: 'Wyskok do główki / Blok', type: 'jump_squat' },
   { label: 'Stabilizacja Core / Plank (Poziomy)', type: 'plank' },
 ];
+
+const getExerciseMediaPipeVideo = (drillType?: string, title?: string) => {
+  const t = (drillType || '').toLowerCase();
+  const name = (title || '').toLowerCase();
+
+  if (name.includes('pajacyk') || name.includes('rozgrzewk') || name.includes('trucht') || name.includes('krążeni') || name.includes('wymach')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/2816902761046287383',
+      label: 'Wzorzec + MediaPipe: Rozgrzewka i aktywacja',
+    };
+  }
+  if (name.includes('drabink') || name.includes('slalom') || name.includes('kopert') || name.includes('ósemc') || name.includes('a-skip') || name.includes('krok dostawny') || name.includes('zwin')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/12910597520604266242',
+      label: 'Wzorzec + MediaPipe: Zwinność i praca nóg',
+    };
+  }
+  if (name.includes('jednej nodze') || name.includes('równowag') || name.includes('jaskółk')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/7857278671429224685',
+      label: 'Wzorzec + MediaPipe: Równowaga i stabilizacja jednostronna',
+    };
+  }
+  if (name.includes('wykrok') || name.includes('lunge')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/9305064507880722458',
+      label: 'Wzorzec + MediaPipe: Wykroki i kontrola osi ruchu',
+    };
+  }
+  if (name.includes('wznosy bioder') || name.includes('glute bridge') || name.includes('bioder')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/1169095152822511311',
+      label: 'Wzorzec + MediaPipe: Wznosy bioder i stabilizacja miednicy',
+    };
+  }
+  if (t.includes('plank') || name.includes('desk') || name.includes('core') || name.includes('gorset')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/6050247604474293292',
+      label: 'Wzorzec + MediaPipe: Deska (Plank) — stabilizacja tułowia',
+    };
+  }
+  if (t.includes('pushup') || name.includes('pompk') || name.includes('kalistenik')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/10163247222223545443',
+      label: 'Wzorzec + MediaPipe: Pompki klasyczne i kontrola osi',
+    };
+  }
+  if (t.includes('skater') || t.includes('agility') || name.includes('łyżwiarz') || name.includes('przeskok') || name.includes('kierunk') || name.includes('v-max')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/17438914309093186369',
+      label: 'Wzorzec + MediaPipe: Przeskoki boczne (Łyżwiarz)',
+    };
+  }
+  if (t.includes('mobility') || t.includes('stretch') || name.includes('mobiln') || name.includes('rozciąg') || name.includes('prewenc') || name.includes('acl')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/10863733826626462269',
+      label: 'Wzorzec + MediaPipe: Mobilność i rozciąganie',
+    };
+  }
+  return {
+    uri: 'http://googleusercontent.com/generated_video_content/13756362820221857551',
+    label: 'Wzorzec + MediaPipe: Wyskoki i dynamika ruchu',
+  };
+};
 
 export default function AiVideoAnalysisScreen() {
   const router = useRouter();
@@ -328,6 +393,23 @@ export default function AiVideoAnalysisScreen() {
         {/* SKANER NA ŻYWO */}
         {analysisState === 'recording' && (
           <View style={styles.activeProcessCard}>
+            {(() => {
+              const vid = getExerciseMediaPipeVideo(selectedDrill.type, selectedDrill.label);
+              return (
+                <View style={styles.demoVideoStrip}>
+                  <Video
+                    style={{ width: '100%', height: 96 }}
+                    source={{ uri: vid.uri }}
+                    useNativeControls={false}
+                    resizeMode={ResizeMode.COVER}
+                    isLooping
+                    shouldPlay
+                    isMuted
+                  />
+                  <Text style={styles.demoVideoCaption}>{vid.label}</Text>
+                </View>
+              );
+            })()}
             <View style={styles.cameraViewport}>
               <MediaPipePoseScanner
                 facing={cameraFacing === 'front' ? 'front' : 'back'}
@@ -540,6 +622,30 @@ const styles = StyleSheet.create({
   },
   startRecordBtnDisabled: { backgroundColor: '#94a3b8' },
   startRecordBtnText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
+  demoVideoStrip: {
+    width: '100%',
+    height: 96,
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#38bdf8',
+    backgroundColor: '#0f172a',
+    position: 'relative',
+  },
+  demoVideoCaption: {
+    position: 'absolute',
+    bottom: 5,
+    left: 8,
+    right: 8,
+    color: '#f8fafc',
+    fontSize: 10,
+    fontWeight: 'bold',
+    backgroundColor: 'rgba(15, 23, 42, 0.82)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
   activeProcessCard: {
     backgroundColor: '#1e293b',
     borderRadius: 16,

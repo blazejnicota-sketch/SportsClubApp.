@@ -24,6 +24,7 @@ import {
   AiPlannedExercise,
 } from '../components/PlayersContext';
 import MediaPipePoseScanner from '../components/MediaPipePoseScanner';
+import SafetyOnboardingGate, { SafetyConsentPayload } from '../components/SafetyOnboardingGate';
 import WearablesSyncModal from '../components/WearablesSyncModal';
 import { registerForPushNotificationsAsync } from '../components/services/pushNotifications';
 
@@ -217,6 +218,52 @@ const DEFAULT_Categorized_DRILLS: AssignedDrill[] = [
   },
 ];
 
+const getMediaPipeDrillVideo = (drillType?: string, title?: string) => {
+  const t = (drillType || '').toLowerCase();
+  const name = (title || '').toLowerCase();
+
+  if (t.includes('plank') || name.includes('desk')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/6050247604474293292',
+      label: 'Wzorzec + MediaPipe: Deska (Plank) — stabilizacja tułowia',
+    };
+  }
+  if (t.includes('jump') || t.includes('squat') || name.includes('wysk') || name.includes('główk') || name.includes('blok') || name.includes('próba wstępna') || name.includes('test')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/13756362820221857551',
+      label: 'Wzorzec + MediaPipe: Wyskoki i dynamika lądowania',
+    };
+  }
+  if (t.includes('pushup') || name.includes('pompk')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/5797546079038096363',
+      label: 'Wzorzec + MediaPipe: Pompki klasyczne',
+    };
+  }
+  if (t.includes('skater') || t.includes('agility') || name.includes('łyżwiarz') || name.includes('przeskok')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/10283269573213398132',
+      label: 'Wzorzec + MediaPipe: Przeskoki boczne (Łyżwiarz)',
+    };
+  }
+  if (t.includes('mobility') || t.includes('stretch') || name.includes('mobiln') || name.includes('rozciąg')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/9565356140825529223',
+      label: 'Wzorzec + MediaPipe: Mobilność bioder i dwugłowych',
+    };
+  }
+  if (t.includes('warmup') || name.includes('rozgrzew') || name.includes('krążeni')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/7402144877664608190',
+      label: 'Wzorzec + MediaPipe: Rozgrzewka i kontrola ruchu',
+    };
+  }
+  return {
+    uri: 'http://googleusercontent.com/generated_video_content/13756362820221857551',
+    label: 'Wzorzec + MediaPipe: Test ćwiczenia i kontrola ruchu',
+  };
+};
+
 export default function ZawodnikPanel() {
   const router = useRouter();
   const { hasAiAccess, features, sportConfig } = useClubSettings();
@@ -262,6 +309,14 @@ export default function ZawodnikPanel() {
   const [baselineJumps, setBaselineJumps] = useState<number>(8);
   const [baselinePlankSec, setBaselinePlankSec] = useState<number>(30);
 
+  // Dwustopniowa akceptacja zadań dla młodszych roczników (< 13 lat)
+  const [approvedDrillIds, setApprovedDrillIds] = useState<Record<string, boolean>>({});
+  const [parentApprovalBannerVisible, setParentApprovalBannerVisible] = useState<boolean>(false);
+
+  // Bramka bezpieczeństwa i zgód na wejściu do panelu zawodnika
+  const [safetyGateVisible, setSafetyGateVisible] = useState<boolean>(false);
+  const [safetyConsentSaved, setSafetyConsentSaved] = useState<boolean>(false);
+
   // Stan modalu Strażnika Regeneracji i Bólu po zakończeniu sesji AI
   const [fatigueModalVisible, setFatigueModalVisible] = useState<boolean>(false);
   const [lastAiScanScore, setLastAiScanScore] = useState<number>(86);
@@ -271,6 +326,12 @@ export default function ZawodnikPanel() {
   useEffect(() => {
     fetchCurrentZawodnik();
   }, []);
+
+  useEffect(() => {
+    if (!loading && currentPlayer && !safetyConsentSaved) {
+      checkPlayerSafetyConsent(String(currentPlayer.id));
+    }
+  }, [loading, currentPlayer, safetyConsentSaved]);
 
   const activePlayerId = String(currentPlayer?.id || 'demo');
   const activeAiPlan = aiTrainerPlans[activePlayerId];
@@ -292,6 +353,39 @@ export default function ZawodnikPanel() {
     const earnedInTier = Math.max(0, totalXP - currentAvatarTier.minXp);
     return Math.min(100, Math.round((earnedInTier / span) * 100));
   }, [totalXP, currentAvatarTier]);
+
+  const isYoungerCohortRequiresParentApproval = useMemo(() => {
+    const yr = Number(currentPlayer?.year || currentPlayer?.birth_year);
+    if (!Number.isNaN(yr) && yr > 1950 && yr <= 2026) {
+      return 2026 - yr < 13;
+    }
+    return true;
+  }, [currentPlayer]);
+
+  const isDrillApprovedByParent = (drill: AssignedDrill) => {
+    if (!isYoungerCohortRequiresParentApproval) return true;
+    return !!approvedDrillIds[drill.drill_id] || !!approvedDrillIds[drill.assignment_id];
+  };
+
+  const fetchParentApprovals = async (playerId: string) => {
+    if (!playerId || playerId === 'demo') return;
+    try {
+      const { data, error } = await supabase
+        .from('parent_drill_approvals')
+        .select('drill_id, assignment_id, approved')
+        .eq('player_id', playerId);
+      if (!error && data) {
+        const map: Record<string, boolean> = {};
+        data.forEach((row: any) => {
+          if (row.drill_id) map[String(row.drill_id)] = !!row.approved;
+          if (row.assignment_id) map[String(row.assignment_id)] = !!row.approved;
+        });
+        setApprovedDrillIds(map);
+      }
+    } catch (_) {
+      // Jeśli tabela jeszcze nie istnieje, pozostawiamy status oczekiwania na zgodę rodzica
+    }
+  };
 
   const filteredDrills = useMemo(() => {
     return assignedDrills
@@ -318,6 +412,7 @@ export default function ZawodnikPanel() {
         if (player) {
           setCurrentPlayer(player);
           registerForPushNotificationsAsync(String(player.id)).catch(() => {});
+          await fetchParentApprovals(String(player.id));
           await fetchPlayerData(String(player.id), player);
         } else {
           setCurrentPlayer({ id: 'demo', first_name: 'Zawodnik', number: 10, xp: 300 });
@@ -404,6 +499,56 @@ export default function ZawodnikPanel() {
     }
   };
 
+  const checkPlayerSafetyConsent = async (playerId: string) => {
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const uid = authData?.user?.id || null;
+      let query = supabase
+        .from('safety_consents')
+        .select('id, consent_version')
+        .eq('consent_version', '2026.11-v1');
+
+      if (uid) {
+        query = query.eq('user_id', uid);
+      } else if (playerId && playerId !== 'demo') {
+        query = query.eq('player_id', playerId);
+      }
+
+      const { data, error } = await query.maybeSingle();
+      if (!error && data) {
+        setSafetyConsentSaved(true);
+        setSafetyGateVisible(false);
+        return;
+      }
+    } catch (_) {
+      // Jeśli tabela jeszcze nie istnieje lub brak połączenia, pokaż bramkę na wszelki wypadek
+    }
+    setSafetyGateVisible(true);
+  };
+
+  const handleAcceptSafetyConsent = async (payload: SafetyConsentPayload) => {
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const uid = authData?.user?.id || null;
+      await supabase.from('safety_consents').insert([
+        {
+          user_id: uid,
+          player_id: currentPlayer?.id ? String(currentPlayer.id) : null,
+          accepted_by_role: payload.role,
+          consent_version: payload.version,
+          accepted_terms: payload.acceptedTerms,
+          accepted_risk_clause: payload.acceptedRiskClause,
+          confirmed_safe_environment: payload.confirmedSafeEnvironment,
+          accepted_at: payload.acceptedAt,
+        },
+      ]);
+    } catch (_) {
+      // Zapis lokalny w stanie sesji, nawet jeśli baza dopiero jest wdrażana
+    }
+    setSafetyConsentSaved(true);
+    setSafetyGateVisible(false);
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
@@ -429,6 +574,20 @@ export default function ZawodnikPanel() {
   ) => {
     if (!hasAiAccess) {
       router.push('/ZadaniaDomowe');
+      return;
+    }
+    if (mode === 'standard' && !isDrillApprovedByParent(drill)) {
+      setParentApprovalBannerVisible(true);
+      const msg =
+        `Trener przypisał Ci ćwiczenie „${drill.title}”.
+
+` +
+        `W tym roczniku wymagana jest najpierw akceptacja rodzica / opiekuna. Poproś rodzica o zatwierdzenie zadania w Strefie Rodzica.`;
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Oczekuje na zgodę rodzica 🛡️', msg);
+      }
       return;
     }
     setScannerContextMode(mode);
@@ -738,6 +897,23 @@ export default function ZawodnikPanel() {
                   </TouchableOpacity>
                 )}
 
+                {/* WSTĘPNE POWIADOMIENIE O ZADANIU OCZEKUJĄCYM NA ZGODĘ RODZICA */}
+                {(parentApprovalBannerVisible ||
+                  (isYoungerCohortRequiresParentApproval &&
+                    assignedDrills.some((d) => !isDrillApprovedByParent(d)))) && (
+                  <View style={styles.pendingApprovalBox}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Ionicons name="time-outline" size={18} color="#fbbf24" />
+                      <Text style={styles.pendingApprovalTitle}>
+                        Zadanie oczekuje na zgodę rodzica
+                      </Text>
+                    </View>
+                    <Text style={styles.pendingApprovalDesc}>
+                      Trener przypisał ćwiczenie — zwróć się do rodzica o akceptację w Strefie Rodzica, aby odblokować jego wykonanie w skanerze AI.
+                    </Text>
+                  </View>
+                )}
+
                 {/* FILTROWANIE PO MODUŁACH */}
                 <Text style={styles.sectionTitle}>Moduły Treningowe (Dopasowane pod: {sportConfig.name}):</Text>
                 <ScrollView
@@ -846,27 +1022,39 @@ export default function ZawodnikPanel() {
                         </View>
                       )}
 
-                      <TouchableOpacity
-                        style={[
-                          styles.startScannerBtn,
-                          drill.is_completed && styles.startScannerBtnRepeat,
-                          !hasAiAccess && { backgroundColor: '#f59e0b' },
-                        ]}
-                        onPress={() => handleInitiateDrillWithWarmup(drill, 'standard')}
-                      >
-                        <Ionicons
-                          name={hasAiAccess ? 'shield-checkmark-outline' : 'lock-closed'}
-                          size={16}
-                          color="#0f172a"
-                        />
-                        <Text style={styles.startScannerBtnText}>
-                          {!hasAiAccess
-                            ? 'Odblokuj Skaner AI (Pakiet PRO)'
-                            : drill.is_completed
-                            ? 'Rozgrzewka & Popraw wynik w AI'
-                            : 'Rozgrzewka & Uruchom Skaner AI'}
-                        </Text>
-                      </TouchableOpacity>
+                      {!drill.is_completed && !isDrillApprovedByParent(drill) ? (
+                        <TouchableOpacity
+                          style={[styles.startScannerBtn, { backgroundColor: '#f59e0b' }]}
+                          onPress={() => handleInitiateDrillWithWarmup(drill, 'standard')}
+                        >
+                          <Ionicons name="time-outline" size={16} color="#0f172a" />
+                          <Text style={styles.startScannerBtnText}>
+                            Poproś rodzica o zgodę (Status wstępny)
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={[
+                            styles.startScannerBtn,
+                            drill.is_completed && styles.startScannerBtnRepeat,
+                            !hasAiAccess && { backgroundColor: '#f59e0b' },
+                          ]}
+                          onPress={() => handleInitiateDrillWithWarmup(drill, 'standard')}
+                        >
+                          <Ionicons
+                            name={hasAiAccess ? 'shield-checkmark-outline' : 'lock-closed'}
+                            size={16}
+                            color="#0f172a"
+                          />
+                          <Text style={styles.startScannerBtnText}>
+                            {!hasAiAccess
+                              ? 'Odblokuj Skaner AI (Pakiet PRO)'
+                              : drill.is_completed
+                              ? 'Rozgrzewka & Popraw wynik w AI'
+                              : 'Rozgrzewka & Uruchom Skaner AI'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   );
                 })}
@@ -1265,6 +1453,15 @@ export default function ZawodnikPanel() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
+      {/* BRAMKA BEZPIECZEŃSTWA I ZGÓD (ZAPIS W SUPABASE safety_consents) */}
+      <SafetyOnboardingGate
+        visible={safetyGateVisible}
+        playerName={currentPlayer?.first_name || currentPlayer?.name || 'Zawodnik'}
+        playerBirthYear={currentPlayer?.year || currentPlayer?.birth_year}
+        onAccept={handleAcceptSafetyConsent}
+        onDecline={handleLogout}
+      />
+
       {/* MODAL 1: EKRAN POMOSTOWY BEZPIECZEŃSTWA ZDROWOTNEGO I OBOWIĄZKOWEJ ROZGRZEWKI */}
       <Modal visible={warmupModalVisible} animationType="fade" transparent={true}>
         <View style={styles.warmupOverlay}>
@@ -1280,29 +1477,25 @@ export default function ZawodnikPanel() {
               Zanim uruchomisz kamerę dla ćwiczenia „{activeDrill?.title}”, przygotuj mięśnie i stawy, aby uniknąć kontuzji (+25 XP bonusu za pełną rozgrzewkę):
             </Text>
 
-            {activeDrill && (activeDrill.drill_type === 'pushups' || activeDrill.drill_type === 'agility_skater' || activeDrill.drill_type === 'mobility_stretch') && (
-              <View style={styles.mpPreviewBanner}>
-                <Video
-                  style={{ width: '100%', height: 110, borderRadius: 10 }}
-                  source={{
-                    uri:
-                      activeDrill.drill_type === 'pushups'
-                        ? 'http://googleusercontent.com/generated_video_content/5797546079038096363'
-                        : activeDrill.drill_type === 'agility_skater'
-                        ? 'http://googleusercontent.com/generated_video_content/10283269573213398132'
-                        : 'http://googleusercontent.com/generated_video_content/9565356140825529223',
-                  }}
-                  useNativeControls={false}
-                  resizeMode={ResizeMode.COVER}
-                  isLooping
-                  shouldPlay
-                  isMuted
-                />
-                <Text style={styles.mpPreviewCaption}>
-                  Podgląd wzorca + szkielet MediaPipe: {activeDrill.title}
-                </Text>
-              </View>
-            )}
+            {activeDrill && (() => {
+              const vid = getMediaPipeDrillVideo(activeDrill.drill_type, activeDrill.title);
+              return (
+                <View style={styles.mpPreviewBanner}>
+                  <Video
+                    style={{ width: '100%', height: 110, borderRadius: 10 }}
+                    source={{ uri: vid.uri }}
+                    useNativeControls={false}
+                    resizeMode={ResizeMode.COVER}
+                    isLooping
+                    shouldPlay
+                    isMuted
+                  />
+                  <Text style={styles.mpPreviewCaption}>
+                    {vid.label} — {activeDrill.title}
+                  </Text>
+                </View>
+              );
+            })()}
 
             <View style={{ marginVertical: 10 }}>
               {WARMUP_STEPS.map((st) => {
@@ -1460,15 +1653,34 @@ export default function ZawodnikPanel() {
             </TouchableOpacity>
           </View>
           <View style={{ flex: 1 }}>
-            {activeDrill && (
-              <MediaPipePoseScanner
-                facing={cameraFacing}
-                targetReps={activeDrill.target_reps}
-                drillType={activeDrill.drill_type}
-                isHandheld={isHandheldMode}
-                onComplete={handleScannerComplete}
-              />
-            )}
+            {activeDrill && (() => {
+              const vid = getMediaPipeDrillVideo(activeDrill.drill_type, activeDrill.title);
+              return (
+                <>
+                  <View style={styles.scannerDemoStrip}>
+                    <Video
+                      style={{ width: '100%', height: 96 }}
+                      source={{ uri: vid.uri }}
+                      useNativeControls={false}
+                      resizeMode={ResizeMode.COVER}
+                      isLooping
+                      shouldPlay
+                      isMuted
+                    />
+                    <Text style={styles.mpPreviewCaption}>
+                      {vid.label}
+                    </Text>
+                  </View>
+                  <MediaPipePoseScanner
+                    facing={cameraFacing}
+                    targetReps={activeDrill.target_reps}
+                    drillType={activeDrill.drill_type}
+                    isHandheld={isHandheldMode}
+                    onComplete={handleScannerComplete}
+                  />
+                </>
+              );
+            })()}
           </View>
         </SafeAreaView>
       </Modal>
@@ -1734,6 +1946,17 @@ const styles = StyleSheet.create({
   painChipWarn: { backgroundColor: '#f87171', borderColor: '#ef4444' },
   painChipText: { fontSize: 11, color: '#cbd5e1' },
 
+  pendingApprovalBox: {
+    backgroundColor: 'rgba(245, 158, 11, 0.14)',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#f59e0b',
+    marginBottom: 12,
+  },
+  pendingApprovalTitle: { fontSize: 13, fontWeight: 'bold', color: '#fbbf24' },
+  pendingApprovalDesc: { fontSize: 11, color: '#fde68a', marginTop: 4, lineHeight: 16 },
+
   sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#f8fafc', marginBottom: 10, marginTop: 4 },
   taskCard: {
     backgroundColor: '#1e293b',
@@ -1904,5 +2127,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
+  },
+  scannerDemoStrip: {
+    backgroundColor: '#1e293b',
+    height: 96,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+    position: 'relative',
   },
 });

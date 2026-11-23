@@ -241,6 +241,8 @@ export default function MediaPipePoseScanner({
       });
     }
 
+    let avgLumaSmooth = null;
+
     function analyzeLighting() {
       try {
         lightCtx.drawImage(videoElement, 0, 0, 32, 32);
@@ -255,17 +257,29 @@ export default function MediaPipePoseScanner({
           if (luma > 240) brightPixels++;
         }
 
-        const avgLuma = Math.round(sumLuma / totalPixels);
+        const rawAvgLuma = Math.round(sumLuma / totalPixels);
+        avgLumaSmooth = avgLumaSmooth === null ? rawAvgLuma : Math.round(avgLumaSmooth * 0.65 + rawAvgLuma * 0.35);
 
-        if (avgLuma < 52) {
-          lightBadge.className = 'light-pill light-bad';
-          lightBadge.innerText = '💡 ZA CIEMNO (' + avgLuma + '): Zapal światło lub stań przodem do lampy!';
-        } else if (brightPixels > totalPixels * 0.35) {
-          lightBadge.className = 'light-pill light-bad';
-          lightBadge.innerText = '☀️ POD ŚWIATŁO: Nie stój na tle jasnego okna!';
+        const isDark = avgLumaSmooth < 45;
+        const isBacklit = brightPixels > totalPixels * 0.40;
+
+        if (isDark || isBacklit) {
+          badLightStreak += 1;
+          goodLightStreak = 0;
         } else {
+          goodLightStreak += 1;
+          badLightStreak = 0;
+        }
+
+        if (badLightStreak >= 2 && isDark) {
+          lightBadge.className = 'light-pill light-bad';
+          lightBadge.innerText = '💡 ZA CIEMNO (' + avgLumaSmooth + '): Dodaj światło lub ustaw się przodem do lampy';
+        } else if (badLightStreak >= 2 && isBacklit) {
+          lightBadge.className = 'light-pill light-bad';
+          lightBadge.innerText = '☀️ POD ŚWIATŁO: Unikaj jasnego okna za plecami';
+        } else if (goodLightStreak >= 1 || badLightStreak < 2) {
           lightBadge.className = 'light-pill light-ok';
-          lightBadge.innerText = '💡 Oświetlenie optymalne (' + avgLuma + ') • Szkielet stabilny';
+          lightBadge.innerText = '💡 Oświetlenie stabilne (' + avgLumaSmooth + ') • Szkielet aktywny';
         }
       } catch (e) {}
     }
@@ -295,12 +309,25 @@ export default function MediaPipePoseScanner({
       ctx.restore();
     }
 
+    let badLightStreak = 0;
+    let goodLightStreak = 0;
+
     function finishExercise() {
       if (isFinished) return;
       isFinished = true;
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
       statusBadge.className = 'badge status-ok';
-      statusBadge.innerText = '🏆 Zadanie zaliczone! Twój Awatar zyskuje XP!';
-      speakTTS('Świetna robota! Seria zaliczona.', 'rep');
+      statusBadge.innerText = '🏆 Doskonała robota! Seria zaliczona. Trzymaj tak dalej.';
+      repsBadge.innerText = (currentDrill === 'plank' ? 'CZAS: ' : 'POWTÓRZENIA: ') + reps + ' / ' + targetReps;
+      sendToRN({
+        type: 'STATUS',
+        reps: reps,
+        statusText: 'Doskonała robota! Seria zaliczona. Trzymaj tak dalej.'
+      });
+      speakTTS('Doskonała robota! Seria zaliczona. Trzymaj tak dalej.', 'rep');
 
       const avgAsym = asymmetrySamples.length > 0
         ? Math.min(18, Math.max(1, Math.round(asymmetrySamples.reduce((a, b) => a + b, 0) / asymmetrySamples.length * 1.8)))
@@ -327,7 +354,7 @@ export default function MediaPipePoseScanner({
             detectedErrors: Array.from(detectedErrorsSet)
           }
         });
-      }, 600);
+      }, 1850);
     }
 
     function resetCountdownIfNeeded(reasonText) {
@@ -346,7 +373,7 @@ export default function MediaPipePoseScanner({
       if (isFinished) return;
 
       frameCounter++;
-      if (frameCounter % 20 === 0) {
+      if (frameCounter % 36 === 0) {
         analyzeLighting();
       }
 
@@ -606,7 +633,7 @@ export default function MediaPipePoseScanner({
         } else {
           downFramesCount = 0;
           statusBadge.className = 'badge status-ok';
-          statusBadge.innerText = '🦵 Zejdź nisko na nogach (poniżej 135°)';
+          statusBadge.innerText = '🦵 Rytmiczny ruch (' + roundedAngle + '°) • Zejście poniżej 135°';
         }
       } else if (repStage === 'DOWN') {
         currentRepMinAngle = Math.min(currentRepMinAngle, roundedAngle);

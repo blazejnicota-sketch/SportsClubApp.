@@ -25,13 +25,24 @@ import MediaPipePoseScanner from '../components/MediaPipePoseScanner';
 
 const SAFE_TOP_PADDING = Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 10 : 50;
 
-type ModuleCategory = 'Wszystkie' | 'Skoczność' | 'Zwinność' | 'Dynamiczne' | 'Statyczne' | 'Rozciągające';
+type ModuleCategory =
+  | 'Wszystkie'
+  | 'Skocznościowe'
+  | 'Plyometryczne'
+  | 'Siłowe'
+  | 'Rozciągające'
+  | 'Stabilizujące'
+  | 'Zwinność i koordynacja'
+  | 'Rozgrzewka i aktywacja';
+
+export type DifficultyLevel = 'Początkujący' | 'Średniozaawansowany' | 'Zaawansowany';
 
 interface VaultExercise {
   id: string;
   title: string;
   drillType: string;
   module: Exclude<ModuleCategory, 'Wszystkie'>;
+  difficulty: DifficultyLevel;
   defaultSets: number;
   defaultRepsOrSec: number;
   unit: 'powt.' | 'sek.';
@@ -41,73 +52,102 @@ interface VaultExercise {
   description: string;
 }
 
-const EXERCISE_VAULT: VaultExercise[] = [
-  {
-    id: 'ex-1',
-    title: 'Wyskoki eksplozywne (Główka / Blok / Zbiórka)',
-    drillType: 'jump_squat',
-    module: 'Skoczność',
-    defaultSets: 3,
-    defaultRepsOrSec: 10,
-    unit: 'powt.',
-    defaultRestSec: 30,
-    xpPerSet: 35,
-    recommendedSports: ['football', 'volleyball', 'basketball', 'handball'],
-    description: 'Zejdź poniżej kąta 135° w stawach kolanowych i wykonaj dynamiczny wyskok w górę.',
-  },
-  {
-    id: 'ex-2',
-    title: 'Deska (Plank) - Stabilizacja głęboka Core',
-    drillType: 'plank',
-    module: 'Statyczne',
-    defaultSets: 3,
-    defaultRepsOrSec: 45,
-    unit: 'sek.',
-    defaultRestSec: 30,
-    xpPerSet: 40,
-    recommendedSports: ['football', 'swimming', 'gym', 'cycling', 'running'],
-    description: 'Utrzymaj prostą linię tułowia (barki-biodra-kostki) przez zadany czas.',
-  },
-  {
-    id: 'ex-3',
-    title: 'Pompki klasyczne z kontrolą symetrii',
-    drillType: 'pushups',
-    module: 'Dynamiczne',
-    defaultSets: 3,
-    defaultRepsOrSec: 15,
-    unit: 'powt.',
-    defaultRestSec: 45,
-    xpPerSet: 35,
-    recommendedSports: ['martial_arts', 'gym', 'handball', 'swimming'],
-    description: 'Ugnij stawy łokciowe poniżej 115° z zachowaniem równej pracy prawej i lewej strony.',
-  },
-  {
-    id: 'ex-4',
-    title: 'Przeskoki boczne (Łyżwiarz / Split-Step)',
-    drillType: 'agility_skater',
-    module: 'Zwinność',
-    defaultSets: 4,
-    defaultRepsOrSec: 16,
-    unit: 'powt.',
-    defaultRestSec: 30,
-    xpPerSet: 30,
-    recommendedSports: ['tennis', 'basketball', 'football', 'handball', 'martial_arts'],
-    description: 'Szybkie zmiany kierunku z kontrolą osi kolana przy lądowaniu.',
-  },
-  {
-    id: 'ex-5',
-    title: 'Mobilizacja bioder i prewencja urazów',
-    drillType: 'mobility_stretch',
-    module: 'Rozciągające',
-    defaultSets: 2,
-    defaultRepsOrSec: 10,
-    unit: 'powt.',
-    defaultRestSec: 20,
-    xpPerSet: 40,
-    recommendedSports: ['running', 'nordic_walking', 'cycling', 'football', 'volleyball'],
-    description: 'Kontrolowane zejścia rozciągające grupę kulszowo-goleniową i obręcz biodrową.',
-  },
+export type SingleExerciseModuleKey =
+  | 'Wszystkie'
+  | 'Skocznościowe'
+  | 'Plyometryczne'
+  | 'Siłowe'
+  | 'Rozciągające'
+  | 'Stabilizujące'
+  | 'Zwinność i koordynacja'
+  | 'Rozgrzewka i aktywacja';
+
+const FULL_70_SINGLE_EXERCISES: VaultExercise[] = [
+  // 1. Ćwiczenia skocznościowe (10)
+  { id: 'sk-1', difficulty: 'Początkujący', title: 'Wyskoki dosiężne w górę', drillType: 'jump_squat', module: 'Skocznościowe', defaultSets: 3, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'volleyball', 'basketball'], description: 'Miękkie zejście do półprzysiadu i dynamiczny wyskok w górę z wyprostowaniem ramion.' },
+  { id: 'sk-2', difficulty: 'Średniozaawansowany', title: 'Wyskoki z przysiadu (Squat Jump)', drillType: 'jump_squat', module: 'Skocznościowe', defaultSets: 3, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'volleyball'], description: 'Start z pozycji zatrzymanego przysiadu, bez fazy zamachu w dół.' },
+  { id: 'sk-3', difficulty: 'Średniozaawansowany', title: 'Wyskoki do główki / bloku', drillType: 'jump_squat', module: 'Skocznościowe', defaultSets: 3, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'volleyball', 'basketball'], description: 'Wybicie w górę z lekkim odchyleniem tułowia i kontrolą lądowania na przedniej części stopy.' },
+  { id: 'sk-4', difficulty: 'Zaawansowany', title: 'Wyskoki na jednej nodze (prawa / lewa)', drillType: 'jump_squat', module: 'Skocznościowe', defaultSets: 3, defaultRepsOrSec: 8, unit: 'powt.', defaultRestSec: 35, xpPerSet: 40, recommendedSports: ['football', 'basketball', 'handball'], description: 'Badanie i wyrównywanie mocy oraz równowagi między stronami.' },
+  { id: 'sk-5', difficulty: 'Zaawansowany', title: 'Wyskoki z półobrotem (90° / 180°)', drillType: 'jump_squat', module: 'Skocznościowe', defaultSets: 3, defaultRepsOrSec: 8, unit: 'powt.', defaultRestSec: 35, xpPerSet: 40, recommendedSports: ['football', 'basketball', 'handball'], description: 'Kontrola osi kolan i bioder podczas rotacji w powietrzu.' },
+  { id: 'sk-6', difficulty: 'Średniozaawansowany', title: 'Wyskoki w przód z zatrzymaniem lądowania', drillType: 'jump_squat', module: 'Skocznościowe', defaultSets: 3, defaultRepsOrSec: 8, unit: 'powt.', defaultRestSec: 35, xpPerSet: 35, recommendedSports: ['football', 'handball'], description: 'Nacisk na amortyzację i „przyklejenie” lądowania bez koślawienia kolan.' },
+  { id: 'sk-7', difficulty: 'Zaawansowany', title: 'Wyskoki w tył z asekuracją', drillType: 'jump_squat', module: 'Skocznościowe', defaultSets: 2, defaultRepsOrSec: 8, unit: 'powt.', defaultRestSec: 35, xpPerSet: 35, recommendedSports: ['football', 'volleyball'], description: 'Mniejsza objętość, nauka orientacji przestrzennej i miękkiego lądowania.' },
+  { id: 'sk-8', difficulty: 'Zaawansowany', title: 'Wyskoki kolanami do klatki piersiowej (Tuck Jump)', drillType: 'jump_squat', module: 'Skocznościowe', defaultSets: 3, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 35, xpPerSet: 40, recommendedSports: ['football', 'volleyball', 'basketball'], description: 'Dynamiczne podciągnięcie kolan w górę z zachowaniem pionowego tułowia.' },
+  { id: 'sk-9', difficulty: 'Zaawansowany', title: 'Wyskoki z wykroku (Split Squat Jump)', drillType: 'jump_squat', module: 'Skocznościowe', defaultSets: 3, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 35, xpPerSet: 40, recommendedSports: ['football', 'basketball', 'handball'], description: 'Naprzemienna praca nóg w pozycji wykrocznej.' },
+  { id: 'sk-10', difficulty: 'Średniozaawansowany', title: 'Wyskoki na niski stopień / pachołek', drillType: 'jump_squat', module: 'Skocznościowe', defaultSets: 3, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'volleyball'], description: 'Wejście dynamiczne na podwyższenie z pełnym wyprostem biodra na górze.' },
+
+  // 2. Ćwiczenia plyometryczne (10)
+  { id: 'pl-1', difficulty: 'Początkujący', title: 'Szybkie odbicia w miejscu (Pogo Jumps)', drillType: 'jump_squat', module: 'Plyometryczne', defaultSets: 3, defaultRepsOrSec: 15, unit: 'powt.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'running', 'basketball'], description: 'Sztywne kostki, minimalny czas kontaktu z podłożem, praca głównie łydką i ścięgnem Achillesa.' },
+  { id: 'pl-2', difficulty: 'Zaawansowany', title: 'Szybkie odbicia na jednej nodze (Single-Leg Pogo)', drillType: 'jump_squat', module: 'Plyometryczne', defaultSets: 3, defaultRepsOrSec: 12, unit: 'powt.', defaultRestSec: 35, xpPerSet: 40, recommendedSports: ['football', 'running'], description: 'Reaktywność i sztywność stawu skokowego w wersji jednostronnej.' },
+  { id: 'pl-3', difficulty: 'Średniozaawansowany', title: 'Przeskoki boczne typu „łyżwiarz” (Skater Jumps)', drillType: 'agility_skater', module: 'Plyometryczne', defaultSets: 4, defaultRepsOrSec: 16, unit: 'powt.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'handball', 'tennis'], description: 'Dynamiczne przeskoki w bok z wyhamowaniem na jednej nodze.' },
+  { id: 'pl-4', difficulty: 'Zaawansowany', title: 'Drop Jump z niskiego podwyższenia', drillType: 'jump_squat', module: 'Plyometryczne', defaultSets: 3, defaultRepsOrSec: 8, unit: 'powt.', defaultRestSec: 45, xpPerSet: 45, recommendedSports: ['football', 'volleyball', 'basketball'], description: 'Zejście z niskiego stopnia i natychmiastowy wyskok w górę z naciskiem na miękkie lądowanie.' },
+  { id: 'pl-5', difficulty: 'Średniozaawansowany', title: 'Przeskoki przez niskie płotki / linie w przód', drillType: 'jump_squat', module: 'Plyometryczne', defaultSets: 3, defaultRepsOrSec: 12, unit: 'powt.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'running'], description: 'Seria szybkich, rytmicznych przeskoków z utrzymaniem tempa.' },
+  { id: 'pl-6', difficulty: 'Średniozaawansowany', title: 'Przeskoki przez niskie płotki bokiem', drillType: 'agility_skater', module: 'Plyometryczne', defaultSets: 3, defaultRepsOrSec: 12, unit: 'powt.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'handball'], description: 'Praca bioder i przywodzicieli/odwodzicieli w płaszczyźnie czołowej.' },
+  { id: 'pl-7', difficulty: 'Średniozaawansowany', title: 'Skoki obunóż zygzakiem', drillType: 'agility_skater', module: 'Plyometryczne', defaultSets: 3, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 35, xpPerSet: 35, recommendedSports: ['football', 'basketball'], description: 'Dynamiczna zmiana kierunku z zachowaniem równowagi.' },
+  { id: 'pl-8', difficulty: 'Zaawansowany', title: 'Naprzemienne „nożyce” w wyskoku', drillType: 'jump_squat', module: 'Plyometryczne', defaultSets: 3, defaultRepsOrSec: 12, unit: 'powt.', defaultRestSec: 35, xpPerSet: 40, recommendedSports: ['football', 'volleyball'], description: 'Szybka zmiana nóg w powietrzu przy zachowaniu stabilnego centrum.' },
+  { id: 'pl-9', difficulty: 'Średniozaawansowany', title: 'Wyskok z szybkim zejściem do półprzysiadu (Snap-Down)', drillType: 'squat', module: 'Plyometryczne', defaultSets: 3, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'basketball', 'volleyball'], description: 'Błyskawiczne przyjęcie pozycji amortyzującej po lądowaniu.' },
+  { id: 'pl-10', difficulty: 'Zaawansowany', title: 'Skoki wieloskokowe w dal (Bounding)', drillType: 'jump_squat', module: 'Plyometryczne', defaultSets: 3, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 40, xpPerSet: 40, recommendedSports: ['football', 'running'], description: 'Długie, sprężyste kroki bieżne z mocnym odepchnięciem.' },
+
+  // 3. Ćwiczenia siłowe (10)
+  { id: 'si-1', difficulty: 'Początkujący', title: 'Przysiady klasyczne', drillType: 'squat', module: 'Siłowe', defaultSets: 3, defaultRepsOrSec: 15, unit: 'powt.', defaultRestSec: 35, xpPerSet: 30, recommendedSports: ['football', 'gym', 'volleyball'], description: 'Kontrola głębokości, neutralnych pleców i toru kolan.' },
+  { id: 'si-2', difficulty: 'Średniozaawansowany', title: 'Przysiady bułgarskie (tylna noga na podwyższeniu)', drillType: 'squat', module: 'Siłowe', defaultSets: 3, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 40, xpPerSet: 40, recommendedSports: ['football', 'gym', 'running'], description: 'Budowanie siły jednostronnej i stabilności biodra.' },
+  { id: 'si-3', difficulty: 'Średniozaawansowany', title: 'Wykroki w przód', drillType: 'squat', module: 'Siłowe', defaultSets: 3, defaultRepsOrSec: 12, unit: 'powt.', defaultRestSec: 30, xpPerSet: 30, recommendedSports: ['football', 'running'], description: 'Krok w przód, zejście biodrami w dół i powrót do pozycji wyjściowej.' },
+  { id: 'si-4', difficulty: 'Średniozaawansowany', title: 'Wykroki w tył (Reverse Lunges)', drillType: 'squat', module: 'Siłowe', defaultSets: 3, defaultRepsOrSec: 12, unit: 'powt.', defaultRestSec: 30, xpPerSet: 30, recommendedSports: ['football', 'running', 'handball'], description: 'Bardziej odciążające dla kolan, świetne do nauki kontroli tułowia.' },
+  { id: 'si-5', difficulty: 'Średniozaawansowany', title: 'Pompki klasyczne', drillType: 'pushups', module: 'Siłowe', defaultSets: 3, defaultRepsOrSec: 15, unit: 'powt.', defaultRestSec: 40, xpPerSet: 35, recommendedSports: ['football', 'gym', 'martial_arts', 'handball'], description: 'Praca ramion i klatki piersiowej z utrzymaniem prostej linii ciała.' },
+  { id: 'si-6', difficulty: 'Zaawansowany', title: 'Pompki w wąskim chwycie (tricepsowe)', drillType: 'pushups', module: 'Siłowe', defaultSets: 3, defaultRepsOrSec: 12, unit: 'powt.', defaultRestSec: 40, xpPerSet: 35, recommendedSports: ['gym', 'martial_arts'], description: 'Większy akcent na prostowniki łokcia i stabilizację barków.' },
+  { id: 'si-7', difficulty: 'Zaawansowany', title: 'Pompki z rotacją tułowia (T-Pushup)', drillType: 'pushups', module: 'Siłowe', defaultSets: 3, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 40, xpPerSet: 40, recommendedSports: ['football', 'gym', 'handball'], description: 'Siła górnej części ciała połączona z kontrolą antyrotacyjną.' },
+  { id: 'si-8', difficulty: 'Początkujący', title: 'Wznosy bioder w leżeniu tyłem (Glute Bridge)', drillType: 'plank', module: 'Siłowe', defaultSets: 3, defaultRepsOrSec: 15, unit: 'powt.', defaultRestSec: 30, xpPerSet: 30, recommendedSports: ['football', 'running', 'cycling'], description: 'Aktywacja pośladków i prostowników biodra.' },
+  { id: 'si-9', difficulty: 'Średniozaawansowany', title: 'Wznosy bioder na jednej nodze', drillType: 'plank', module: 'Siłowe', defaultSets: 3, defaultRepsOrSec: 12, unit: 'powt.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'running'], description: 'Wyrównywanie siły pośladków i tylnej taśmy.' },
+  { id: 'si-10', difficulty: 'Początkujący', title: 'Wspięcia na palce (stojąc / na jednej nodze)', drillType: 'squat', module: 'Siłowe', defaultSets: 3, defaultRepsOrSec: 20, unit: 'powt.', defaultRestSec: 25, xpPerSet: 30, recommendedSports: ['football', 'running', 'basketball'], description: 'Wzmocnienie mięśni łydki i stabilizacji stawu skokowego.' },
+
+  // 4. Ćwiczenia rozciągające (10)
+  { id: 'ro-1', difficulty: 'Początkujący', title: 'Skłon w przód do stóp (mięśnie dwugłowe uda)', drillType: 'mobility_stretch', module: 'Rozciągające', defaultSets: 2, defaultRepsOrSec: 20, unit: 'sek.', defaultRestSec: 15, xpPerSet: 25, recommendedSports: ['football', 'running', 'cycling'], description: 'Płynne pogłębianie bez szarpania.' },
+  { id: 'ro-2', difficulty: 'Początkujący', title: 'Rozciąganie mięśnia czworogłowego uda', drillType: 'mobility_stretch', module: 'Rozciągające', defaultSets: 2, defaultRepsOrSec: 20, unit: 'sek.', defaultRestSec: 15, xpPerSet: 25, recommendedSports: ['football', 'running'], description: 'Przyciągnięcie pięty do pośladka z zachowaniem prostego tułowia.' },
+  { id: 'ro-3', difficulty: 'Średniozaawansowany', title: 'Pozycja „gołębia” / rozciąganie pośladka i biodra', drillType: 'mobility_stretch', module: 'Rozciągające', defaultSets: 2, defaultRepsOrSec: 25, unit: 'sek.', defaultRestSec: 15, xpPerSet: 25, recommendedSports: ['football', 'running', 'cycling'], description: 'Rozluźnienie głębokich rotatorów biodra.' },
+  { id: 'ro-4', difficulty: 'Średniozaawansowany', title: 'Wykrok niski z otwarciem klatki piersiowej i zginaczy biodra', drillType: 'mobility_stretch', module: 'Rozciągające', defaultSets: 2, defaultRepsOrSec: 20, unit: 'sek.', defaultRestSec: 15, xpPerSet: 25, recommendedSports: ['football', 'running'], description: 'Rozciągnięcie przedniej strony biodra po treningu.' },
+  { id: 'ro-5', difficulty: 'Średniozaawansowany', title: 'Rozciąganie przywodzicieli w siadzie / wykroku bocznym', drillType: 'mobility_stretch', module: 'Rozciągające', defaultSets: 2, defaultRepsOrSec: 20, unit: 'sek.', defaultRestSec: 15, xpPerSet: 25, recommendedSports: ['football', 'handball', 'tennis'], description: 'Praca nad elastycznością wewnętrznej strony uda.' },
+  { id: 'ro-6', difficulty: 'Początkujący', title: '„Koci grzbiet – krowa” w klęku podpartym', drillType: 'mobility_stretch', module: 'Rozciągające', defaultSets: 2, defaultRepsOrSec: 12, unit: 'powt.', defaultRestSec: 15, xpPerSet: 25, recommendedSports: ['football', 'swimming', 'gym'], description: 'Mobilizacja kręgosłupa w spokojnym oddechu.' },
+  { id: 'ro-7', difficulty: 'Początkujący', title: 'Rotacja tułowia w leżeniu na boku („otwieranie książki”)', drillType: 'mobility_stretch', module: 'Rozciągające', defaultSets: 2, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 15, xpPerSet: 25, recommendedSports: ['football', 'volleyball', 'tennis'], description: 'Mobilność odcinka piersiowego i barków.' },
+  { id: 'ro-8', difficulty: 'Początkujący', title: 'Rozciąganie łydek przy ścianie', drillType: 'mobility_stretch', module: 'Rozciągające', defaultSets: 2, defaultRepsOrSec: 20, unit: 'sek.', defaultRestSec: 15, xpPerSet: 25, recommendedSports: ['football', 'running', 'basketball'], description: 'Rozluźnienie łydki i ścięgna Achillesa (proste i ugięte kolano).' },
+  { id: 'ro-9', difficulty: 'Początkujący', title: 'Pozycja dziecka z sięgnięciem dłońmi w bok', drillType: 'mobility_stretch', module: 'Rozciągające', defaultSets: 2, defaultRepsOrSec: 20, unit: 'sek.', defaultRestSec: 15, xpPerSet: 25, recommendedSports: ['football', 'swimming', 'volleyball'], description: 'Rozciągnięcie najszerszego grzbietu i boków tułowia.' },
+  { id: 'ro-10', difficulty: 'Początkujący', title: 'Rozciąganie klatki piersiowej i barków', drillType: 'mobility_stretch', module: 'Rozciągające', defaultSets: 2, defaultRepsOrSec: 20, unit: 'sek.', defaultRestSec: 15, xpPerSet: 25, recommendedSports: ['football', 'handball', 'volleyball'], description: 'Otwarcie klatki po wysiłku.' },
+
+  // 5. Ćwiczenia stabilizujące (10)
+  { id: 'st-1', difficulty: 'Początkujący', title: 'Deska na przedramionach (Forearm Plank)', drillType: 'plank', module: 'Stabilizujące', defaultSets: 3, defaultRepsOrSec: 40, unit: 'sek.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'running', 'cycling', 'swimming'], description: 'Utrzymanie prostej linii barki–biodra–kostki.' },
+  { id: 'st-2', difficulty: 'Średniozaawansowany', title: 'Deska na wyprostowanych ramionach (High Plank)', drillType: 'plank', module: 'Stabilizujące', defaultSets: 3, defaultRepsOrSec: 35, unit: 'sek.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'gym', 'handball'], description: 'Stabilizacja barków i tułowia.' },
+  { id: 'st-3', difficulty: 'Średniozaawansowany', title: 'Deska bokiem (Side Plank — lewa / prawa)', drillType: 'plank', module: 'Stabilizujące', defaultSets: 3, defaultRepsOrSec: 30, unit: 'sek.', defaultRestSec: 25, xpPerSet: 35, recommendedSports: ['football', 'running'], description: 'Wzmocnienie mięśni skośnych i bocznej stabilizacji biodra.' },
+  { id: 'st-4', difficulty: 'Początkujący', title: '„Bird-Dog” w klęku podpartym', drillType: 'plank', module: 'Stabilizujące', defaultSets: 3, defaultRepsOrSec: 12, unit: 'powt.', defaultRestSec: 25, xpPerSet: 30, recommendedSports: ['football', 'running'], description: 'Naprzemienne unoszenie przeciwnej ręki i nogi bez kołysania biodrami.' },
+  { id: 'st-5', difficulty: 'Początkujący', title: '„Dead Bug” w leżeniu tyłem', drillType: 'plank', module: 'Stabilizujące', defaultSets: 3, defaultRepsOrSec: 12, unit: 'powt.', defaultRestSec: 25, xpPerSet: 30, recommendedSports: ['football', 'running', 'swimming'], description: 'Kontrola odcinka lędźwiowego przy ruchu rąk i nóg.' },
+  { id: 'st-6', difficulty: 'Początkujący', title: 'Stanie na jednej nodze (kontrola równowagi)', drillType: 'plank', module: 'Stabilizujące', defaultSets: 3, defaultRepsOrSec: 30, unit: 'sek.', defaultRestSec: 20, xpPerSet: 30, recommendedSports: ['football', 'running', 'basketball'], description: 'Trening propriocepcji stawu skokowego i kolana.' },
+  { id: 'st-7', difficulty: 'Średniozaawansowany', title: '„Jaskółka” / waga przodem na jednej nodze', drillType: 'mobility_stretch', module: 'Stabilizujące', defaultSets: 3, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 25, xpPerSet: 35, recommendedSports: ['football', 'running'], description: 'Równowaga i praca tylnej taśmy w podporze na jednej nodze.' },
+  { id: 'st-8', difficulty: 'Średniozaawansowany', title: 'Chód w pozycji niskiego przysiadu (Monster / Crab Walk)', drillType: 'agility_skater', module: 'Stabilizujące', defaultSets: 3, defaultRepsOrSec: 14, unit: 'powt.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'basketball', 'handball'], description: 'Stabilizacja bioder i kolan w ruchu.' },
+  { id: 'st-9', difficulty: 'Zaawansowany', title: 'Deska z unoszeniem nogi lub ręki', drillType: 'plank', module: 'Stabilizujące', defaultSets: 3, defaultRepsOrSec: 30, unit: 'sek.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'gym'], description: 'Utrudnienie antyrotacyjne i stabilizacyjne.' },
+  { id: 'st-10', difficulty: 'Zaawansowany', title: 'Lądowanie na jednej nodze z zatrzymaniem (3 sekundy)', drillType: 'jump_squat', module: 'Stabilizujące', defaultSets: 3, defaultRepsOrSec: 8, unit: 'powt.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'volleyball', 'basketball'], description: 'Kontrola kolana i miednicy tuż po kontakcie z podłożem.' },
+
+  // 6. Zwinność i koordynacja ruchowa (10)
+  { id: 'zw-1', difficulty: 'Początkujący', title: 'Szybkie przebieżki w miejscu z wysokim unoszeniem kolan (A-Skip)', drillType: 'agility_skater', module: 'Zwinność i koordynacja', defaultSets: 3, defaultRepsOrSec: 20, unit: 'sek.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'running', 'basketball'], description: 'Rytm i koordynacja góra–dół.' },
+  { id: 'zw-2', difficulty: 'Początkujący', title: 'Krok dostawny boczny w niskiej pozycji', drillType: 'agility_skater', module: 'Zwinność i koordynacja', defaultSets: 3, defaultRepsOrSec: 20, unit: 'sek.', defaultRestSec: 30, xpPerSet: 35, recommendedSports: ['football', 'basketball', 'handball', 'tennis'], description: 'Szybkie przemieszczanie w bok z zachowaniem niskiego środka ciężkości.' },
+  { id: 'zw-3', difficulty: 'Średniozaawansowany', title: 'Bieg slalomem między pachołkami', drillType: 'agility_skater', module: 'Zwinność i koordynacja', defaultSets: 3, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 35, xpPerSet: 35, recommendedSports: ['football', 'handball'], description: 'Płynne zmiany kierunku i praca ramion.' },
+  { id: 'zw-4', difficulty: 'Zaawansowany', title: '„Koperta” / szybkie zmiany kierunku przód–bok–tył', drillType: 'agility_skater', module: 'Zwinność i koordynacja', defaultSets: 3, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 35, xpPerSet: 40, recommendedSports: ['football', 'tennis', 'basketball'], description: 'Reakcja i zmiana wektora ruchu.' },
+  { id: 'zw-5', difficulty: 'Początkujący', title: 'Praca na drabince koordynacyjnej (1 krok w kwadracie)', drillType: 'agility_skater', module: 'Zwinność i koordynacja', defaultSets: 3, defaultRepsOrSec: 15, unit: 'sek.', defaultRestSec: 25, xpPerSet: 30, recommendedSports: ['football', 'basketball', 'tennis'], description: 'Szybka kadencja stóp.' },
+  { id: 'zw-6', difficulty: 'Średniozaawansowany', title: 'Praca na drabince koordynacyjnej (2 kroki w kwadracie)', drillType: 'agility_skater', module: 'Zwinność i koordynacja', defaultSets: 3, defaultRepsOrSec: 15, unit: 'sek.', defaultRestSec: 25, xpPerSet: 30, recommendedSports: ['football', 'basketball'], description: 'Rytm i dokładność postawienia stopy.' },
+  { id: 'zw-7', difficulty: 'Zaawansowany', title: 'Przejście z leżenia przodem do szybkiego startu na 5 m', drillType: 'pushups', module: 'Zwinność i koordynacja', defaultSets: 3, defaultRepsOrSec: 8, unit: 'powt.', defaultRestSec: 35, xpPerSet: 35, recommendedSports: ['football', 'handball'], description: 'Dynamika wstawania i pierwszy krok.' },
+  { id: 'zw-8', difficulty: 'Zaawansowany', title: 'Skok z zatrzymaniem na jednej nodze + zmiana kierunku', drillType: 'agility_skater', module: 'Zwinność i koordynacja', defaultSets: 3, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 35, xpPerSet: 40, recommendedSports: ['football', 'basketball'], description: 'Kontrola hamowania przed zwrotem.' },
+  { id: 'zw-9', difficulty: 'Średniozaawansowany', title: 'Naprzemienne szybkie dotknięcia stóp do linii / pachołka', drillType: 'agility_skater', module: 'Zwinność i koordynacja', defaultSets: 3, defaultRepsOrSec: 20, unit: 'sek.', defaultRestSec: 25, xpPerSet: 30, recommendedSports: ['football', 'tennis', 'volleyball'], description: 'Koordynacja i szybkość reakcji.' },
+  { id: 'zw-10', difficulty: 'Średniozaawansowany', title: 'Bieg po ósemce', drillType: 'agility_skater', module: 'Zwinność i koordynacja', defaultSets: 3, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 30, xpPerSet: 30, recommendedSports: ['football', 'basketball'], description: 'Płynne prowadzenie toru ruchu i kontrola przechyłu ciała.' },
+
+  // 7. Rozgrzewka i aktywacja przedtreningowa (10)
+  { id: 'rz-1', difficulty: 'Początkujący', title: 'Trucht w miejscu z krążeniem ramion', drillType: 'mobility_stretch', module: 'Rozgrzewka i aktywacja', defaultSets: 2, defaultRepsOrSec: 30, unit: 'sek.', defaultRestSec: 15, xpPerSet: 20, recommendedSports: ['football', 'swimming', 'volleyball'], description: 'Podniesienie temperatury ciała i rozgrzanie barków.' },
+  { id: 'rz-2', difficulty: 'Początkujący', title: 'Krążenia bioder na zewnątrz i do wewnątrz', drillType: 'mobility_stretch', module: 'Rozgrzewka i aktywacja', defaultSets: 2, defaultRepsOrSec: 12, unit: 'powt.', defaultRestSec: 15, xpPerSet: 20, recommendedSports: ['football', 'running'], description: 'Przygotowanie stawów biodrowych w marszu lub miejscu.' },
+  { id: 'rz-3', difficulty: 'Początkujący', title: 'Pajacyki klasyczne', drillType: 'jump_squat', module: 'Rozgrzewka i aktywacja', defaultSets: 2, defaultRepsOrSec: 25, unit: 'powt.', defaultRestSec: 20, xpPerSet: 20, recommendedSports: ['football', 'basketball', 'handball'], description: 'Ogólne pobudzenie krążeniowo-oddechowe.' },
+  { id: 'rz-4', difficulty: 'Początkujący', title: 'Półprzysiady aktywacyjne z zatrzymaniem', drillType: 'squat', module: 'Rozgrzewka i aktywacja', defaultSets: 2, defaultRepsOrSec: 12, unit: 'powt.', defaultRestSec: 20, xpPerSet: 20, recommendedSports: ['football', 'volleyball'], description: 'Obudzenie mięśni nóg i pośladków.' },
+  { id: 'rz-5', difficulty: 'Początkujący', title: 'Wymachy nóg w przód i w tył (z podparciem)', drillType: 'mobility_stretch', module: 'Rozgrzewka i aktywacja', defaultSets: 2, defaultRepsOrSec: 12, unit: 'powt.', defaultRestSec: 15, xpPerSet: 20, recommendedSports: ['football', 'running'], description: 'Dynamiczne przygotowanie dwugłowych i zginaczy biodra.' },
+  { id: 'rz-6', difficulty: 'Początkujący', title: 'Wymachy nóg w bok', drillType: 'mobility_stretch', module: 'Rozgrzewka i aktywacja', defaultSets: 2, defaultRepsOrSec: 12, unit: 'powt.', defaultRestSec: 15, xpPerSet: 20, recommendedSports: ['football', 'running', 'handball'], description: 'Przygotowanie przywodzicieli i odwodzicieli.' },
+  { id: 'rz-7', difficulty: 'Początkujący', title: 'Krążenia tułowia i skręty w staniu', drillType: 'mobility_stretch', module: 'Rozgrzewka i aktywacja', defaultSets: 2, defaultRepsOrSec: 20, unit: 'sek.', defaultRestSec: 15, xpPerSet: 20, recommendedSports: ['football', 'volleyball', 'tennis'], description: 'Rozruszanie odcinka piersiowego.' },
+  { id: 'rz-8', difficulty: 'Początkujący', title: 'Krążenia stawów skokowych i nadgarstków', drillType: 'mobility_stretch', module: 'Rozgrzewka i aktywacja', defaultSets: 2, defaultRepsOrSec: 20, unit: 'sek.', defaultRestSec: 15, xpPerSet: 20, recommendedSports: ['football', 'basketball', 'gym'], description: 'Mobilizacja obwodowa przed podporami i skokami.' },
+  { id: 'rz-9', difficulty: 'Średniozaawansowany', title: 'Dynamiczne wykroki z rotacją tułowia', drillType: 'squat', module: 'Rozgrzewka i aktywacja', defaultSets: 2, defaultRepsOrSec: 10, unit: 'powt.', defaultRestSec: 20, xpPerSet: 25, recommendedSports: ['football', 'handball', 'basketball'], description: 'Aktywacja nóg i mobilność tułowia.' },
+  { id: 'rz-10', difficulty: 'Średniozaawansowany', title: 'Krótkie przyspieszenia / wyskoki kontrolne', drillType: 'jump_squat', module: 'Rozgrzewka i aktywacja', defaultSets: 2, defaultRepsOrSec: 6, unit: 'powt.', defaultRestSec: 25, xpPerSet: 25, recommendedSports: ['football', 'running', 'basketball'], description: 'Wejście w gotowość ruchową przed zadaniem głównym.' },
 ];
+
 
 
 export type ProgramCategory = 'Wszystkie' | 'Skoczność' | 'Zwinność' | 'Siła Core' | 'Szybkość' | 'Prewencja';
@@ -299,6 +339,70 @@ const getWeekPrescription = (mod: MotorModuleProgram, week: number) => {
   return { sets, repsOrSec, restSec, phaseLabel };
 };
 
+const getExerciseMediaPipeVideo = (drillType?: string, title?: string) => {
+  const t = (drillType || '').toLowerCase();
+  const name = (title || '').toLowerCase();
+
+  if (name.includes('pajacyk') || name.includes('rozgrzewk') || name.includes('trucht') || name.includes('krążeni') || name.includes('wymach')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/2816902761046287383',
+      label: 'Wzorzec + MediaPipe: Rozgrzewka i aktywacja',
+    };
+  }
+  if (name.includes('drabink') || name.includes('slalom') || name.includes('kopert') || name.includes('ósemc') || name.includes('a-skip') || name.includes('krok dostawny') || name.includes('zwin')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/12910597520604266242',
+      label: 'Wzorzec + MediaPipe: Zwinność i praca nóg',
+    };
+  }
+  if (name.includes('jednej nodze') || name.includes('równowag') || name.includes('jaskółk')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/7857278671429224685',
+      label: 'Wzorzec + MediaPipe: Równowaga i stabilizacja jednostronna',
+    };
+  }
+  if (name.includes('wykrok') || name.includes('lunge')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/9305064507880722458',
+      label: 'Wzorzec + MediaPipe: Wykroki i kontrola osi ruchu',
+    };
+  }
+  if (name.includes('wznosy bioder') || name.includes('glute bridge') || name.includes('bioder')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/1169095152822511311',
+      label: 'Wzorzec + MediaPipe: Wznosy bioder i stabilizacja miednicy',
+    };
+  }
+  if (t.includes('plank') || name.includes('desk') || name.includes('core') || name.includes('gorset')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/6050247604474293292',
+      label: 'Wzorzec + MediaPipe: Deska (Plank) — stabilizacja tułowia',
+    };
+  }
+  if (t.includes('pushup') || name.includes('pompk') || name.includes('kalistenik')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/10163247222223545443',
+      label: 'Wzorzec + MediaPipe: Pompki klasyczne i kontrola osi',
+    };
+  }
+  if (t.includes('skater') || t.includes('agility') || name.includes('łyżwiarz') || name.includes('przeskok') || name.includes('kierunk') || name.includes('v-max')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/17438914309093186369',
+      label: 'Wzorzec + MediaPipe: Przeskoki boczne (Łyżwiarz)',
+    };
+  }
+  if (t.includes('mobility') || t.includes('stretch') || name.includes('mobiln') || name.includes('rozciąg') || name.includes('prewenc') || name.includes('acl')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/10863733826626462269',
+      label: 'Wzorzec + MediaPipe: Mobilność i rozciąganie',
+    };
+  }
+  return {
+    uri: 'http://googleusercontent.com/generated_video_content/13756362820221857551',
+    label: 'Wzorzec + MediaPipe: Wyskoki i dynamika ruchu',
+  };
+};
+
 export default function ZadaniaDomoweScreen() {
   const { sport, setSport, sportConfig, allSports } = useClubSettings();
   const { players, availableYears, updatePlayer } = usePlayers();
@@ -315,6 +419,7 @@ export default function ZadaniaDomoweScreen() {
 
   const [selectedSportCategory, setSelectedSportCategory] = useState<SportCategory | 'Wszystkie'>('Wszystkie');
   const [selectedModule, setSelectedModule] = useState<ModuleCategory>('Wszystkie');
+  const [selectedDifficulty, setSelectedDifficulty] = useState<'Wszystkie' | DifficultyLevel>('Wszystkie');
   const [selectedYearFilter, setSelectedYearFilter] = useState<string>('Wszyscy');
   const [requireWarmupBumper, setRequireWarmupBumper] = useState<boolean>(true);
 
@@ -323,7 +428,7 @@ export default function ZadaniaDomoweScreen() {
     Record<string, { sets: string; repsOrSec: string; restSec: string }>
   >(() => {
     const init: Record<string, { sets: string; repsOrSec: string; restSec: string }> = {};
-    EXERCISE_VAULT.forEach((ex) => {
+    FULL_70_SINGLE_EXERCISES.forEach((ex) => {
       init[ex.id] = {
         sets: String(ex.defaultSets),
         repsOrSec: String(ex.defaultRepsOrSec),
@@ -398,15 +503,16 @@ export default function ZadaniaDomoweScreen() {
   }, [allSports, selectedSportCategory]);
 
   const filteredExercises = useMemo(() => {
-    return EXERCISE_VAULT.filter((ex) => {
+    return FULL_70_SINGLE_EXERCISES.filter((ex) => {
       if (selectedModule !== 'Wszystkie' && ex.module !== selectedModule) return false;
+      if (selectedDifficulty !== 'Wszystkie' && ex.difficulty !== selectedDifficulty) return false;
       return true;
     }).sort((a, b) => {
       const aMatch = a.recommendedSports.includes(sport) ? 1 : 0;
       const bMatch = b.recommendedSports.includes(sport) ? 1 : 0;
       return bMatch - aMatch;
     });
-  }, [selectedModule, sport]);
+  }, [selectedModule, selectedDifficulty, sport]);
 
   const showNotice = (title: string, msg: string) => {
     if (Platform.OS === 'web') {
@@ -472,7 +578,8 @@ export default function ZadaniaDomoweScreen() {
       id: `${mod.id}-w${week}`,
       title: `${mod.title} (Tydz. ${week}/${mod.durationWeeks})`,
       drillType: mod.drillType,
-      module: 'Skoczność',
+      module: 'Skocznościowe',
+      difficulty: 'Średniozaawansowany',
       defaultSets: plan.sets,
       defaultRepsOrSec: plan.repsOrSec,
       unit: mod.unit,
@@ -534,7 +641,7 @@ export default function ZadaniaDomoweScreen() {
         `Plan: ${setsNum} serii x ${repsNum} ${ex.unit} (przerwa: ${restNum}s)\n` +
         `Nagroda za całość: +${totalXp} XP\n` +
         `Odbiorcy (${selectedYearFilter === 'Wszyscy' ? 'Cała Kadra' : `Rocznik ${selectedYearFilter}`}): ${targetPlayers.length} zawodników\n` +
-        `Wymóg 3-min rozgrzewki: ${requireWarmupBumper ? 'WŁĄCZONY 🛡️' : 'Wyłączony'}`
+        `Wymóg 3-min rozgrzewki: ${requireWarmupBumper ? 'WŁĄCZONY 🛡️' : 'Wyłączony'}\nDostęp w panelu Zawodnika/Rodzica: ODBLOKOWANY PO ZLECENIU TRENERA 🔒✅`
     );
   };
 
@@ -900,7 +1007,18 @@ export default function ZadaniaDomoweScreen() {
         {/* 3. MODUŁY MOTORYCZNE */}
         <Text style={[styles.sectionTitle, { marginBottom: 8 }]}>2. Wybierz Moduł Motoryczny:</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-          {(['Wszystkie', 'Skoczność', 'Zwinność', 'Dynamiczne', 'Statyczne', 'Rozciągające'] as ModuleCategory[]).map(
+          {(
+            [
+              'Wszystkie',
+              'Skocznościowe',
+              'Plyometryczne',
+              'Siłowe',
+              'Rozciągające',
+              'Stabilizujące',
+              'Zwinność i koordynacja',
+              'Rozgrzewka i aktywacja',
+            ] as ModuleCategory[]
+          ).map(
             (mod) => (
               <TouchableOpacity
                 key={mod}
@@ -911,6 +1029,40 @@ export default function ZadaniaDomoweScreen() {
               </TouchableOpacity>
             )
           )}
+        </ScrollView>
+
+        {/* FILTR POZIOMU ZAAWANSOWANIA */}
+        <Text style={[styles.sectionTitle, { marginBottom: 8 }]}>3. Poziom zaawansowania zawodnika:</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+          {(['Wszystkie', 'Początkujący', 'Średniozaawansowany', 'Zaawansowany'] as const).map((lvl) => (
+            <TouchableOpacity
+              key={lvl}
+              style={[
+                styles.modPill,
+                selectedDifficulty === lvl && {
+                  backgroundColor:
+                    lvl === 'Początkujący'
+                      ? '#16a34a'
+                      : lvl === 'Średniozaawansowany'
+                      ? '#d97706'
+                      : lvl === 'Zaawansowany'
+                      ? '#dc2626'
+                      : '#0f172a',
+                },
+              ]}
+              onPress={() => setSelectedDifficulty(lvl)}
+            >
+              <Text style={[styles.modPillText, selectedDifficulty === lvl && { color: '#fff' }]}>
+                {lvl === 'Początkujący'
+                  ? '🟢 Początkujący'
+                  : lvl === 'Średniozaawansowany'
+                  ? '🟡 Średniozaawansowany'
+                  : lvl === 'Zaawansowany'
+                  ? '🔴 Zaawansowany'
+                  : 'Wszystkie poziomy'}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </ScrollView>
 
         {/* LISTA ĆWICZEŃ ZE SKARBNICY Z KREATOREM SERII / POWTÓRZEŃ / PRZERW */}
@@ -930,6 +1082,35 @@ export default function ZadaniaDomoweScreen() {
                 <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                   <View style={styles.modBadge}>
                     <Text style={styles.modBadgeText}>MODUŁ: {ex.module.toUpperCase()}</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.modBadge,
+                      {
+                        backgroundColor:
+                          ex.difficulty === 'Początkujący'
+                            ? '#dcfce7'
+                            : ex.difficulty === 'Średniozaawansowany'
+                            ? '#fef3c7'
+                            : '#fee2e2',
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.modBadgeText,
+                        {
+                          color:
+                            ex.difficulty === 'Początkujący'
+                              ? '#15803d'
+                              : ex.difficulty === 'Średniozaawansowany'
+                              ? '#b45309'
+                              : '#dc2626',
+                        },
+                      ]}
+                    >
+                      {ex.difficulty.toUpperCase()}
+                    </Text>
                   </View>
                   {isRec && (
                     <View style={styles.recBadge}>
@@ -1105,20 +1286,25 @@ export default function ZadaniaDomoweScreen() {
           <View style={{ flex: 1 }}>
             {previewExercise && (
               <>
-                <View style={styles.demoVideoContainer}>
-                  <Video
-                    style={{ width: '100%', height: 100 }}
-                    source={{ uri: 'https://www.w3schools.com/html/mov_bbb.mp4' }}
-                    useNativeControls={false}
-                    resizeMode={ResizeMode.COVER}
-                    isLooping
-                    shouldPlay
-                    isMuted
-                  />
-                  <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 4, fontWeight: 'bold' }}>
-                    Krótki filmik instruktażowy
-                  </Text>
-                </View>
+                {(() => {
+                  const vid = getExerciseMediaPipeVideo(previewExercise.drillType, previewExercise.title);
+                  return (
+                    <View style={styles.demoVideoContainer}>
+                      <Video
+                        style={{ width: '100%', height: 100 }}
+                        source={{ uri: vid.uri }}
+                        useNativeControls={false}
+                        resizeMode={ResizeMode.COVER}
+                        isLooping
+                        shouldPlay
+                        isMuted
+                      />
+                      <Text style={{ color: '#e2e8f0', fontSize: 10, fontWeight: 'bold', position: 'absolute', bottom: 4, backgroundColor: 'rgba(15,23,42,0.82)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                        {vid.label}
+                      </Text>
+                    </View>
+                  );
+                })()}
 
                 {isRestingBetweenSets ? (
                   <View style={styles.restOverlayBox}>

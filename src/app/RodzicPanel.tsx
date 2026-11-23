@@ -22,6 +22,7 @@ import { supabase } from '../services/supabase';
 import { useClubSettings } from '../components/ClubSettingsContext';
 import { usePlayers, FULL_KIT_SIZES, KitItem } from '../components/PlayersContext';
 import MediaPipePoseScanner from '../components/MediaPipePoseScanner';
+import SafetyOnboardingGate, { SafetyConsentPayload } from '../components/SafetyOnboardingGate';
 import { registerForPushNotificationsAsync } from '../components/services/pushNotifications';
 
 const SAFE_TOP_PADDING = Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 10 : 50;
@@ -55,6 +56,52 @@ const MOCK_NOTICES = [
     content: 'Przypominamy o wpłacie składki członkowskiej do 10 dnia miesiąca.',
   },
 ];
+
+const getMediaPipeDrillVideo = (drillType?: string, title?: string) => {
+  const t = (drillType || '').toLowerCase();
+  const name = (title || '').toLowerCase();
+
+  if (t.includes('plank') || name.includes('desk')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/6050247604474293292',
+      label: 'Wzorzec + MediaPipe: Deska (Plank) — stabilizacja tułowia',
+    };
+  }
+  if (t.includes('jump') || t.includes('squat') || name.includes('wysk') || name.includes('główk') || name.includes('blok') || name.includes('próba wstępna') || name.includes('test')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/13756362820221857551',
+      label: 'Wzorzec + MediaPipe: Wyskoki i dynamika lądowania',
+    };
+  }
+  if (t.includes('pushup') || name.includes('pompk')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/5797546079038096363',
+      label: 'Wzorzec + MediaPipe: Pompki klasyczne',
+    };
+  }
+  if (t.includes('skater') || t.includes('agility') || name.includes('łyżwiarz') || name.includes('przeskok')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/10283269573213398132',
+      label: 'Wzorzec + MediaPipe: Przeskoki boczne (Łyżwiarz)',
+    };
+  }
+  if (t.includes('mobility') || t.includes('stretch') || name.includes('mobiln') || name.includes('rozciąg')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/9565356140825529223',
+      label: 'Wzorzec + MediaPipe: Mobilność bioder i dwugłowych',
+    };
+  }
+  if (t.includes('warmup') || name.includes('rozgrzew') || name.includes('krążeni')) {
+    return {
+      uri: 'http://googleusercontent.com/generated_video_content/7402144877664608190',
+      label: 'Wzorzec + MediaPipe: Rozgrzewka i kontrola ruchu',
+    };
+  }
+  return {
+    uri: 'http://googleusercontent.com/generated_video_content/13756362820221857551',
+    label: 'Wzorzec + MediaPipe: Test ćwiczenia i kontrola ruchu',
+  };
+};
 
 export default function RodzicPanel() {
   const router = useRouter();
@@ -100,6 +147,13 @@ export default function RodzicPanel() {
     'kit-1': '140 cm',
   });
 
+  // Akceptacja zadań zleconych dziecku przez rodzica / opiekuna
+  const [drillApprovalsMap, setDrillApprovalsMap] = useState<Record<string, boolean>>({});
+
+  // Bramka bezpieczeństwa i zgód dla rodzica / opiekuna
+  const [parentSafetyGateVisible, setParentSafetyGateVisible] = useState<boolean>(false);
+  const [parentSafetyConsentSaved, setParentSafetyConsentSaved] = useState<boolean>(false);
+
   // Ekran pomostowy rozgrzewki i klauzuli bezpieczeństwa przed nagraniem dziecka
   const [warmupPromptVisible, setWarmupPromptVisible] = useState(false);
   const [parentConfirmedWarmup, setParentConfirmedWarmup] = useState(false);
@@ -111,6 +165,12 @@ export default function RodzicPanel() {
   useEffect(() => {
     checkLinkedPlayer();
   }, []);
+
+  useEffect(() => {
+    if (!loading && !parentSafetyConsentSaved) {
+      checkParentSafetyConsent();
+    }
+  }, [loading, connectedPlayer, parentSafetyConsentSaved]);
 
   const effectiveTab = activeTab === 'payments' && !features.enableFinances ? 'ai' : activeTab;
 
@@ -177,6 +237,21 @@ export default function RodzicPanel() {
       const resultsList = resultsData || [];
       setChildResults(resultsList);
 
+      try {
+        const { data: approvalsData } = await supabase
+          .from('parent_drill_approvals')
+          .select('drill_id, assignment_id, approved')
+          .eq('player_id', playerId);
+        if (approvalsData) {
+          const nextMap: Record<string, boolean> = {};
+          approvalsData.forEach((row: any) => {
+            if (row.drill_id) nextMap[String(row.drill_id)] = !!row.approved;
+            if (row.assignment_id) nextMap[String(row.assignment_id)] = !!row.approved;
+          });
+          setDrillApprovalsMap(nextMap);
+        }
+      } catch (_) {}
+
       const { data: assignmentsData } = await supabase
         .from('weekly_assignments')
         .select(`
@@ -228,6 +303,56 @@ export default function RodzicPanel() {
     }
   };
 
+  const checkParentSafetyConsent = async () => {
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const uid = authData?.user?.id || null;
+      let query = supabase
+        .from('safety_consents')
+        .select('id, consent_version')
+        .eq('consent_version', '2026.11-v1');
+
+      if (uid) {
+        query = query.eq('user_id', uid);
+      } else if (connectedPlayer?.id) {
+        query = query.eq('player_id', String(connectedPlayer.id));
+      }
+
+      const { data, error } = await query.maybeSingle();
+      if (!error && data) {
+        setParentSafetyConsentSaved(true);
+        setParentSafetyGateVisible(false);
+        return;
+      }
+    } catch (_) {
+      // Jeśli tabela jeszcze nie istnieje lub brak połączenia, pokaż bramkę
+    }
+    setParentSafetyGateVisible(true);
+  };
+
+  const handleAcceptParentSafetyConsent = async (payload: SafetyConsentPayload) => {
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const uid = authData?.user?.id || null;
+      await supabase.from('safety_consents').insert([
+        {
+          user_id: uid,
+          player_id: connectedPlayer?.id ? String(connectedPlayer.id) : null,
+          accepted_by_role: payload.role,
+          consent_version: payload.version,
+          accepted_terms: payload.acceptedTerms,
+          accepted_risk_clause: payload.acceptedRiskClause,
+          confirmed_safe_environment: payload.confirmedSafeEnvironment,
+          accepted_at: payload.acceptedAt,
+        },
+      ]);
+    } catch (_) {
+      // Zapis lokalny w stanie sesji, nawet jeśli baza dopiero jest wdrażana
+    }
+    setParentSafetyConsentSaved(true);
+    setParentSafetyGateVisible(false);
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
@@ -246,6 +371,44 @@ export default function RodzicPanel() {
         },
       },
     ]);
+  };
+
+  const handleToggleDrillApproval = async (drill: ParentAssignedDrill) => {
+    const nextApproved = !drillApprovalsMap[drill.drill_id];
+    setDrillApprovalsMap((prev) => ({
+      ...prev,
+      [drill.drill_id]: nextApproved,
+      [drill.assignment_id]: nextApproved,
+    }));
+
+    const targetPlayerId = connectedPlayer?.id || 'demo-child';
+    if (targetPlayerId !== 'demo-child') {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        await supabase.from('parent_drill_approvals').upsert(
+          [
+            {
+              player_id: String(targetPlayerId),
+              assignment_id: drill.assignment_id.startsWith('local-') ? null : drill.assignment_id,
+              drill_id: drill.drill_id,
+              approved: nextApproved,
+              approved_by_user_id: authData?.user?.id || null,
+              updated_at: new Date().toISOString(),
+            },
+          ],
+          { onConflict: 'player_id,drill_id' }
+        );
+      } catch (_) {}
+    }
+
+    const statusMsg = nextApproved
+      ? `Zaakceptowano ćwiczenie „${drill.title}”. Zawodnik może teraz przystąpić do rozgrzewki i wykonania zadania.`
+      : `Cofnięto akceptację dla ćwiczenia „${drill.title}”. Zadanie pozostaje zablokowane do ponownej zgody.`;
+    if (Platform.OS === 'web') {
+      window.alert(statusMsg);
+    } else {
+      Alert.alert(nextApproved ? 'Zgoda udzielona ✅' : 'Zgoda cofnięta ⏸️', statusMsg);
+    }
   };
 
   const handleParentStartScan = (drill: ParentAssignedDrill) => {
@@ -870,6 +1033,25 @@ export default function RodzicPanel() {
                     </View>
                   )}
 
+                  {(() => {
+                    const isApproved = !!drillApprovalsMap[drill.drill_id] || !!drillApprovalsMap[drill.assignment_id];
+                    return (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, padding: 8, borderRadius: 8, backgroundColor: isApproved ? '#f0fdf4' : '#fffbeb', borderWidth: 1, borderColor: isApproved ? '#86efac' : '#fde68a' }}>
+                        <Text style={{ fontSize: 11, fontWeight: 'bold', color: isApproved ? '#15803d' : '#b45309', flex: 1 }}>
+                          {isApproved ? '✅ Zgoda rodzica udzielona' : '⏳ Czeka na akceptację rodzica'}
+                        </Text>
+                        <TouchableOpacity
+                          style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: isApproved ? '#fee2e2' : '#16a34a' }}
+                          onPress={() => handleToggleDrillApproval(drill)}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: 'bold', color: isApproved ? '#dc2626' : '#fff' }}>
+                            {isApproved ? 'Cofnij zgodę' : 'Akceptuj zadanie'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })()}
+
                   <TouchableOpacity
                     style={[
                       styles.recordChildBtn,
@@ -1035,6 +1217,15 @@ export default function RodzicPanel() {
         )}
       </ScrollView>
 
+      {/* BRAMKA BEZPIECZEŃSTWA I ZGÓD DLA RODZICA / OPIEKUNA */}
+      <SafetyOnboardingGate
+        visible={parentSafetyGateVisible}
+        playerName={connectedPlayer?.name || 'Profil Dziecka'}
+        playerBirthYear={connectedPlayer?.year}
+        onAccept={handleAcceptParentSafetyConsent}
+        onDecline={handleLogout}
+      />
+
       {/* MODAL WYBORU STRZELCA / ZAWODNIKA PRZEZ RODZICA-REPORTERA Z TRYBUN */}
       <Modal visible={reporterEventModalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
@@ -1157,35 +1348,25 @@ export default function RodzicPanel() {
           <View style={{ flex: 1 }}>
             {selectedDrillForScan && (
               <>
-                <View style={styles.demoVideoContainer}>
-                  <Video
-                    style={{ width: '100%', height: 100 }}
-                    source={{
-                      uri:
-                        selectedDrillForScan.drill_type === 'pushups'
-                          ? 'http://googleusercontent.com/generated_video_content/5797546079038096363'
-                          : selectedDrillForScan.drill_type === 'agility_skater'
-                          ? 'http://googleusercontent.com/generated_video_content/10283269573213398132'
-                          : selectedDrillForScan.drill_type === 'mobility_stretch'
-                          ? 'http://googleusercontent.com/generated_video_content/9565356140825529223'
-                          : 'https://www.w3schools.com/html/mov_bbb.mp4',
-                    }}
-                    useNativeControls={false}
-                    resizeMode={ResizeMode.COVER}
-                    isLooping
-                    shouldPlay
-                    isMuted
-                  />
-                  <Text style={{color:'#e2e8f0', fontSize: 10, fontWeight: 'bold', position: 'absolute', bottom: 4, backgroundColor: 'rgba(15,23,42,0.75)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6}}>
-                    {selectedDrillForScan.drill_type === 'pushups'
-                      ? 'Analiza MediaPipe: Pompki klasyczne'
-                      : selectedDrillForScan.drill_type === 'agility_skater'
-                      ? 'Analiza MediaPipe: Przeskoki boczne (Łyżwiarz)'
-                      : selectedDrillForScan.drill_type === 'mobility_stretch'
-                      ? 'Analiza MediaPipe: Mobilność bioder i dwugłowych'
-                      : 'Obejrzyj technikę przed startem'}
-                  </Text>
-                </View>
+                {(() => {
+                  const vid = getMediaPipeDrillVideo(selectedDrillForScan.drill_type, selectedDrillForScan.title);
+                  return (
+                    <View style={styles.demoVideoContainer}>
+                      <Video
+                        style={{ width: '100%', height: 100 }}
+                        source={{ uri: vid.uri }}
+                        useNativeControls={false}
+                        resizeMode={ResizeMode.COVER}
+                        isLooping
+                        shouldPlay
+                        isMuted
+                      />
+                      <Text style={{color:'#e2e8f0', fontSize: 10, fontWeight: 'bold', position: 'absolute', bottom: 4, backgroundColor: 'rgba(15,23,42,0.78)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6}}>
+                        {vid.label}
+                      </Text>
+                    </View>
+                  );
+                })()}
                 <MediaPipePoseScanner
                 facing={cameraFacing}
                 targetReps={selectedDrillForScan.target_reps}
